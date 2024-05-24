@@ -61,7 +61,7 @@ if __name__ == '__main__':
     dt_now = datetime.now()
 
     # データ取得期間を設定
-    start_date = datetime(2020, 1, 1)
+    start_date = datetime(1950, 1, 1)
     end_date = datetime(dt_now.year, dt_now.month, dt_now.day)
 
     # ユーザー入力を取得
