@@ -1,10 +1,10 @@
 import pandas as pd
 
 
-def write_txt(file_path,code,start_year,end_year,month,period):
+def write_txt(file_path,code,year,month,period):
 	with open(file_path, 'w') as f:
 		#file.write(df.to_string(index=False))
-		for year in range(int(start_year), int(end_year)+1):
+		#for year in range(int(start_year), int(end_year)+1):
 			f.write("{}-{}-{}-{}".format(code,year,month,period))
 
 	print(f"DataFrame has been written to {file_path}")
@@ -27,7 +27,7 @@ def make_sh(filename,code_str,month_str,start_year,end_year,period):
 				month = month.split(",")
 				for j in range(len(month)):
 					file_path = "./txt_dir/{}-{}-{}-{}.txt".format(code,year,month[j],period)
-					write_txt(file_path,code,start_year,end_year,month[j],period)
+					write_txt(file_path,code,year,month[j],period)
 
 					f = open("{}.sh".format(filename),"a")
 					f.write("python {}.py < ./txt_dir/{}-{}-{}-{}.txt\n".format(filename,code,year,month[j],period))
@@ -37,7 +37,7 @@ def make_sh(filename,code_str,month_str,start_year,end_year,period):
 			else:
 				file_path = "./txt_dir/{}-{}-{}-{}.txt".format(code,year,month,period)
 				j = 0
-				write_txt(file_path,code,start_year,end_year,month,period)
+				write_txt(file_path,code,year,month,period)
 
 				f = open("{}".format(filename),"a")
 				f.write("python {}.py < ./txt_dir/{}-{}-{}-{}.txt\n".format(filename,code,year,month[j],period))
