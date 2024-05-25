@@ -4,7 +4,10 @@ import pandas as pd
 def write_txt(file_path,code,year,month,period):
 	with open(file_path, 'w') as f:
 		#file.write(df.to_string(index=False))
+<<<<<<< HEAD
 		#for year in range(int(start_year), int(end_year)+1):
+=======
+>>>>>>> origin/main
 			f.write("{}-{}-{}-{}".format(code,year,month,period))
 
 	print(f"DataFrame has been written to {file_path}")
