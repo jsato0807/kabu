@@ -71,6 +71,7 @@ if __name__ == '__main__':
 
     # 株価データを取得
     df = web.DataReader('{}.JP'.format(code), 'stooq', start_date, end_date).sort_index()
+    #df = yf.download('{}.JP'.format(code), start_date, end_date).sort_index()
 
     # 特定の日付のデータを抽出
     specific_date = '{}-{}-{}'.format(year, month, day)
