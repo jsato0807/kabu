@@ -1,9 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def makegraph(file_path, ax, label):
-    # エクセルファイルを読み込む
-    df = pd.read_excel(file_path)
+def makegraph(df, ax, label):
 
     # グラフを作成
     ax.plot(df["Date"], df["Log_Return_Diff"], label=label)
@@ -20,11 +18,15 @@ def main():
 
     code, year, month, period = input().split("-")
 
-    file_path = "{}-{}-{}-{}-pre_grad_output.xlsx".format(code, year, month, period)
-    makegraph("./xlsx_dir/{}".format(file_path), ax, "pre_grad")
+    file_path = "./xlsx_dir/{}-{}-{}-{}-pre_grad_output.xlsx".format(code, year, month, period)
+        # エクセルファイルを読み込む
+    df = pd.read_excel(file_path)
+    makegraph(df, ax, "pre_grad")
 
-    file_path = "{}-{}-{}-{}-post_grad_output.xlsx".format(code, year, month, period)
-    makegraph("./xlsx_dir/{}".format(file_path), ax, "post_grad")
+    file_path = "./xlsx_dir/{}-{}-{}-{}-post_grad_output.xlsx".format(code, year, month, period)
+        # エクセルファイルを読み込む
+    df = pd.read_excel(file_path)
+    makegraph(df, ax, "post_grad")
 
     # グラフを保存
     plt.savefig('./png_dir/{}-{}-{}-{}_grad.png'.format(code, year, month, period))
