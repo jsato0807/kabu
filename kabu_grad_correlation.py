@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 from kabu_makegraph import makegraph
+import glob
 
 
 def get_Log_Return_Diff(file_path):
@@ -24,19 +25,24 @@ def get_corr(data,state):
 
 
 if __name__ == "__main__":
-    print("write code, start_year,end_year, month,period")
-    code, start_year,end_year, month,period = input.split("-")
+    print("write code, start_year,end_year")
+    code, start_year,end_year = input().split()
     
+    file = glob.glob("./txt_dir/{}*.txt".format(code))
+    month = file[0].split("-")[2]
+    period = file[0].split("-")[3]
+    period = period.split(".")[0]
+
     PRE_CORR = []
     POST_CORR = []
 
-    for year in range(start_year,end_year+1):
+    for year in range(int(start_year),int(end_year)+1):
 
-      file_path = "{}-{}-{}-{}-pre_grad_output.xlsx".format(code, year, month, period)
+      file_path = "./xlsx_dir/{}-{}-{}-{}-pre_grad_output.xlsx".format(code, year, month, period)
       a = get_Log_Return_Diff(file_path)
       PRE_CORR.append(a)
 
-      file_path = "{}-{}-{}-{}-post_grad_output.xlsx".format(code, year, month, period)
+      file_path = "./xlsx_dir/{}-{}-{}-{}-post_grad_output.xlsx".format(code, year, month, period)
       b = get_Log_Return_Diff(file_path)
       POST_CORR.append(b)
 

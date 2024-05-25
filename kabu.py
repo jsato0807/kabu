@@ -4,7 +4,6 @@ from datetime import datetime
 import numpy as np
 from openpyxl import Workbook
 from openpyxl.utils.dataframe import dataframe_to_rows
-import os
 
 def get_month_end_business_day(year, month):
     # 指定した年月の初日を取得
