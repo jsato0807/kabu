@@ -85,14 +85,14 @@ if __name__ == '__main__':
 
     # ユーザー入力を取得
     codes, year, month, period = input().split("-")
-
+    period = period.split(".")[0] #periodから"."を削除する
     day = get_month_end_business_day(year, month)
 
     # 株価データを取得
     #df = web.DataReader('{}.JP'.format(code), 'stooq', start_date, end_date).sort_index()
     #df = yf.download(code, start=start_date, end=end_date)
     #time.sleep(5)
-    data = {}
+
     for code in [codes]:
         stock_data = download_data(code, start_date, end_date)
         if stock_data is not None:
