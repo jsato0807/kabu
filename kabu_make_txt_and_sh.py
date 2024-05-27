@@ -1,18 +1,15 @@
 import pandas as pd
-
+from glob import glob
+from kabu_event_study import extract_year_month
 
 def write_txt(file_path,code,year,month,period):
+
 	with open(file_path, 'w') as f:
-		#file.write(df.to_string(index=False))
-<<<<<<< HEAD
-		#for year in range(int(start_year), int(end_year)+1):
-=======
->>>>>>> origin/main
-			f.write("{}-{}-{}-{}".format(code,year,month,period))
+		f.write("{}-{}-{}-{}".format(code,year,month,period))	
 
 	print(f"DataFrame has been written to {file_path}")
 
-def make_sh(filename,code_str,month_str,start_year,end_year,period):
+def make_sh(filename,code_str,month_str,start_year,end_year,period,FLAG=False):
 	###kabu.shを初期化
 	f = open("{}".format("{}.sh".format(filename)),"w")
 	f.close()
@@ -32,8 +29,23 @@ def make_sh(filename,code_str,month_str,start_year,end_year,period):
 					file_path = "./txt_dir/{}-{}-{}-{}.txt".format(code,year,month[j],period)
 					write_txt(file_path,code,year,month[j],period)
 
+					filenames = glob("./txt_dir/{}*{}.txt".format(code,period))
+					min_year = sorted(filenames, key=lambda x: extract_year_month(x))[0].split("-")[1]
+					min_month = sorted(filenames, key=lambda x: extract_year_month(x))[0].split("-")[2]
+
 					f = open("{}.sh".format(filename),"a")
-					f.write("python {}.py < ./txt_dir/{}-{}-{}-{}.txt\n".format(filename,code,year,month[j],period))
+
+					
+
+					if FLAG:
+						if year == int(min_year) and month[j] == min_month:
+							f.write("python {}.py < ./txt_dir/{}-{}-{}-{}.txt\n".format(filename,code,year,month[j],period))
+
+						else:
+							pass
+
+					else:
+						f.write("python {}.py < ./txt_dir/{}-{}-{}-{}.txt\n".format(filename,code,year,month[j],period))
 					f.close()
 					print("write {}-{}-{}-{} in {}.sh".format(code,year,month[j],period,filename))
 
@@ -71,7 +83,10 @@ if __name__ == '__main__':
 
 
 	filename = "kabu"
-	make_sh(filename,code_str,month_str,start_year,end_year,period)
+	#make_sh(filename,code_str,month_str,start_year,end_year,period)
 
 	filename = "kabu_makegraph"
-	make_sh(filename,code_str,month_str,start_year,end_year,period)
+	#make_sh(filename,code_str,month_str,start_year,end_year,period)
+
+	filename = "kabu_event_study"
+	make_sh(filename,code_str,month_str,start_year,end_year,period,FLAG=True)
