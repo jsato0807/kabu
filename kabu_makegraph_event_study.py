@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import glob
+from glob import glob
 from kabu import get_month_end_business_day
 import yfinance as yf
 from datetime import datetime
 from pandas.tseries.offsets import CustomBusinessDay
 from workalendar.asia import Japan
+from kabu_event_study import extract_year_month
 
 def get_month_of_devidend(code):
     # エクセルファイルのパスを指定
@@ -47,9 +48,19 @@ def get_business_days_before_and_after(date, num_days):
     return business_day_before, business_day_after
 
 if __name__ == "__main__":
-    print("write code, start_year, end_year, period")
-    code, start_year, end_year, period = input().split()
-
+    print("write code,year,month,period")
+    code, year,month,period = input().split("-")
+        
+    filenames = glob('./txt_dir/{}*{}*.txt'.format(code,period))
+    print(filenames)
+    # 年と月に基づいてソート
+    sorted_files = sorted(filenames, key=lambda x: extract_year_month(x))
+  
+  
+    start_year = sorted_files[0].split("-")[1]
+    end_year = sorted_files[-1].split("-")[1]
+    
+  
     months = get_month_of_devidend(code)
 
     # 全てのグラフを表示するためのプロットの数を計算
@@ -104,4 +115,4 @@ if __name__ == "__main__":
     fig.suptitle('Event Study Analysis', fontsize=16)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     plt.savefig('./png_dir/{}-{}_{}_{}_eventstudy_combined.png'.format(code, start_year, end_year, period))
-    plt.show()
+    #plt.show()
