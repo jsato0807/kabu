@@ -24,23 +24,33 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
     if strategy == 'long_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
+        last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
             date = data.index[i]
             price = data.iloc[i]
 
-            match_counts = np.zeros(num_traps)
+            if last_price is not None:
+                # Check if price has crossed any grid between last_price and price
+                if price > last_price:
+                    for grid in grids:
+                        if last_price <= grid < price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * price
+                                positions.append((order_size, price, 'Buy'))
+                                trades.append((date, price, 'Buy'))
+                                break  # Exit loop once position is taken
+                elif price < last_price:
+                    for grid in grids:
+                        if last_price >= grid > price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * price
+                                positions.append((order_size, price, 'Buy'))
+                                trades.append((date, price, 'Buy'))
+                                break  # Exit loop once position is taken
 
-            for j, grid in enumerate(grids):
-                if price >= grid and effective_margin >= order_size * price:
-                    match_counts[j] += 1
-
-            best_match_index = np.argmax(match_counts)
-
-            if match_counts[best_match_index] > 0:
-                effective_margin -= order_size * price
-                positions.append((order_size, price, 'Buy'))
-                trades.append((date, price, 'Buy'))
+            # Update last_price for the next iteration
+            last_price = price
 
             # Position closure processing
             for pos in positions[:]:
@@ -55,23 +65,33 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
     elif strategy == 'short_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
+        last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
             date = data.index[i]
             price = data.iloc[i]
 
-            match_counts = np.zeros(num_traps)
+            if last_price is not None:
+                # Check if price has crossed any grid between last_price and price
+                if price < last_price:
+                    for grid in grids:
+                        if last_price >= grid > price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * price
+                                positions.append((order_size, price, 'Sell'))
+                                trades.append((date, price, 'Sell'))
+                                break  # Exit loop once position is taken
+                elif price > last_price:
+                    for grid in grids:
+                        if last_price <= grid < price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * price
+                                positions.append((order_size, price, 'Sell'))
+                                trades.append((date, price, 'Sell'))
+                                break  # Exit loop once position is taken
 
-            for j, grid in enumerate(grids):
-                if price <= grid and effective_margin >= order_size * price:
-                    match_counts[j] += 1
-
-            best_match_index = np.argmax(match_counts)
-
-            if match_counts[best_match_index] > 0:
-                effective_margin -= order_size * price
-                positions.append((order_size, price, 'Sell'))
-                trades.append((date, price, 'Sell'))
+            # Update last_price for the next iteration
+            last_price = price
 
             # Position closure processing
             for pos in positions[:]:
@@ -88,40 +108,35 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
         half_point = (grid_start + grid_end) / 2
         grids_bottom = np.linspace(grid_start, half_point, num=int(num_traps / 2))
         grids_top = np.linspace(half_point, grid_end, num=int(num_traps / 2))
+        last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
             date = data.index[i]
             price = data.iloc[i]
 
-            # Bottom half area trap setting (enter from buy)
-            if price <= half_point and effective_margin >= order_size * price:
-                match_counts_bottom = np.zeros(int(num_traps / 2))
+            if last_price is not None:
+                # Check bottom half area
+                if price <= half_point:
+                    for grid in grids_bottom:
+                        if last_price > grid >= price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * price
+                                positions.append((order_size, price, 'Buy'))
+                                trades.append((date, price, 'Buy'))
+                                break
 
-                for j, grid in enumerate(grids_bottom):
-                    if price >= grid and effective_margin >= order_size * price:
-                        match_counts_bottom[j] += 1
+                # Check top half area
+                if price > half_point:
+                    for grid in grids_top:
+                        if last_price < grid <= price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * price
+                                positions.append((order_size, price, 'Sell'))
+                                trades.append((date, price, 'Sell'))
+                                break
 
-                best_match_index_bottom = np.argmax(match_counts_bottom)
-
-                if match_counts_bottom[best_match_index_bottom] > 0:
-                    effective_margin -= order_size * price
-                    positions.append((order_size, price, 'Buy'))
-                    trades.append((date, price, 'Buy'))
-
-            # Top half area trap setting (enter from sell)
-            if price >= half_point and effective_margin >= order_size * price:
-                match_counts_top = np.zeros(int(num_traps / 2))
-
-                for j, grid in enumerate(grids_top):
-                    if price <= grid and effective_margin >= order_size * price:
-                        match_counts_top[j] += 1
-
-                best_match_index_top = np.argmax(match_counts_top)
-
-                if match_counts_top[best_match_index_top] > 0:
-                    effective_margin -= order_size * price
-                    positions.append((order_size, price, 'Sell'))
-                    trades.append((date, price, 'Sell'))
+            # Update last_price for the next iteration
+            last_price = price
 
             # Position closure processing
             for pos in positions[:]:
@@ -152,28 +167,35 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
         grids_lower_center = np.linspace(quarter_point, half_point, num=int(num_traps * density))
         grids_upper_center = np.linspace(half_point, three_quarter_point, num=int(num_traps * density))
         grids_top = np.linspace(three_quarter_point, grid_end, num=int(num_traps / 2))
+        last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
             date = data.index[i]
             price = data.iloc[i]
 
-            # Bottom two areas trap setting (enter from buy)
-            if price <= half_point and effective_margin >= order_size * price:
-                for grid in np.concatenate([grids_bottom, grids_lower_center]):
-                    if price >= grid and effective_margin >= order_size * price:
-                        effective_margin -= order_size * price
-                        positions.append((order_size, price, 'Buy'))
-                        trades.append((date, price, 'Buy'))
-                        break
+            if last_price is not None:
+                # Check bottom two areas
+                if price <= half_point:
+                    for grid in np.concatenate([grids_bottom, grids_lower_center]):
+                        if last_price > grid >= price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * price
+                                positions.append((order_size, price, 'Buy'))
+                                trades.append((date, price, 'Buy'))
+                                break
 
-            # Top two areas trap setting (enter from sell)
-            if price >= half_point and effective_margin >= order_size * price:
-                for grid in np.concatenate([grids_top, grids_upper_center]):
-                    if price <= grid and effective_margin >= order_size * price:
-                        effective_margin -= order_size * price
-                        positions.append((order_size, price, 'Sell'))
-                        trades.append((date, price, 'Sell'))
-                        break
+                # Check top two areas
+                if price >= half_point:
+                    for grid in np.concatenate([grids_top, grids_upper_center]):
+                        if last_price < grid <= price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * price
+                                positions.append((order_size, price, 'Sell'))
+                                trades.append((date, price, 'Sell'))
+                                break
+
+            # Update last_price for the next iteration
+            last_price = price
 
             # Position closure processing
             for pos in positions[:]:
@@ -200,25 +222,25 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
     else:
         position_value = 0
 
-    total_value = effective_margin + realized_profit
+    # Calculate margin deposit
+    margin_deposit = initial_funds + realized_profit
 
-    return effective_margin, total_value, realized_profit, position_value, trades
+    return effective_margin, margin_deposit, realized_profit, position_value, trades
 
-# Parameter setup
+# パラメータ設定
 pair = "USDJPY=X"
 start_date = "2020-01-01"
 end_date = "2023-01-01"
 initial_funds = 1000000
 grid_start = 100
 grid_end = 150
-order_sizes = [1000,2000]
-num_traps_options = [50,100]
-profit_widths = [1,2]
-#strategies = ['half_and_half','long_only','short_only','diamond']
-strategies = ['long_only','short_only']
-densities = [1,2]
+order_sizes = [1000, 2000]
+num_traps_options = [50, 100]
+profit_widths = [1, 2]
+strategies = ['long_only', 'short_only']
+densities = [1, 2]
 
-# Fetch data
+# データの取得
 data = fetch_currency_data(pair, start=start_date, end=end_date)
 
 results = []
@@ -235,27 +257,41 @@ results_df = pd.DataFrame(results, columns=[
     'Effective Margin', 'Margin Deposit', 'Realized Profit', 'Position Value', 'Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density'
 ])
 
-# 有効証拠金でソートして上位と下位の結果を抽出
-sorted_results = results_df.sort_values(by='Effective Margin', ascending=False)
-top_results = sorted_results.head(5)
-worst_results = sorted_results.tail(3)
+# 結果の表示
+# ユニークな組み合わせを取得
+unique_results = results_df.drop_duplicates(subset=['Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density'])
 
-# トップ5の結果を表示
-print("Top 5 Results Based on Effective Margin:")
-for i, row in top_results.iterrows():
-    print(f"Rank {i+1}:")
+# Top 5 Results Based on Effective Margin
+print("上位5件の有効証拠金に基づく結果:")
+rank = 1
+seen_results = set()  # 重複を管理するためのセット
+for i, row in results_df.sort_values(by='Effective Margin', ascending=False).iterrows():
+    key = (row['Margin Deposit'], row['Effective Margin'], row['Position Value'], row['Realized Profit'])
+    if key in seen_results:
+        continue
+    seen_results.add(key)
+    print(f"Rank {rank}:")
     print(f"  預託証拠金: {row['Margin Deposit']}")
     print(f"  有効証拠金: {row['Effective Margin']}")
     print(f"  評価損益: {row['Position Value']}")
     print(f"  確定利益: {row['Realized Profit']}")
     print(f"  取引通貨量: {row['Order Size']}, トラップ本数: {row['Num Traps']}, 利益値幅: {row['Profit Width']}, 戦略: {row['Strategy']}, 密度: {row['Density']}")
+    rank += 1
+    if rank > 5:
+        break
 
-# ワースト3の結果を表示
-print("\nWorst 3 Results Based on Effective Margin:")
-for i, row in worst_results.iterrows():
-    print(f"Rank {len(sorted_results) - i}:")
+print("\n最悪の3件の有効証拠金に基づく結果:")
+rank = 1
+seen_results = set()  # 重複を管理するためのセット
+for i, row in results_df.sort_values(by='Effective Margin').head(3).iterrows():
+    key = (row['Margin Deposit'], row['Effective Margin'], row['Position Value'], row['Realized Profit'])
+    if key in seen_results:
+        continue
+    seen_results.add(key)
+    print(f"Rank {rank}:")
     print(f"  預託証拠金: {row['Margin Deposit']}")
     print(f"  有効証拠金: {row['Effective Margin']}")
     print(f"  評価損益: {row['Position Value']}")
     print(f"  確定利益: {row['Realized Profit']}")
     print(f"  取引通貨量: {row['Order Size']}, トラップ本数: {row['Num Traps']}, 利益値幅: {row['Profit Width']}, 戦略: {row['Strategy']}, 密度: {row['Density']}")
+    rank += 1
