@@ -32,7 +32,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             match_counts = np.zeros(num_traps)
 
             for j, grid in enumerate(grids):
-                if price <= grid and effective_margin >= order_size * price:
+                if price >= grid and effective_margin >= order_size * price:
                     match_counts[j] += 1
 
             best_match_index = np.argmax(match_counts)
@@ -63,7 +63,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             match_counts = np.zeros(num_traps)
 
             for j, grid in enumerate(grids):
-                if price >= grid and effective_margin >= order_size * price:
+                if price <= grid and effective_margin >= order_size * price:
                     match_counts[j] += 1
 
             best_match_index = np.argmax(match_counts)
@@ -160,7 +160,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             # Bottom two areas trap setting (enter from buy)
             if price <= half_point and effective_margin >= order_size * price:
                 for grid in np.concatenate([grids_bottom, grids_lower_center]):
-                    if price <= grid and effective_margin >= order_size * price:
+                    if price >= grid and effective_margin >= order_size * price:
                         effective_margin -= order_size * price
                         positions.append((order_size, price, 'Buy'))
                         trades.append((date, price, 'Buy'))
@@ -169,7 +169,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             # Top two areas trap setting (enter from sell)
             if price >= half_point and effective_margin >= order_size * price:
                 for grid in np.concatenate([grids_top, grids_upper_center]):
-                    if price >= grid and effective_margin >= order_size * price:
+                    if price <= grid and effective_margin >= order_size * price:
                         effective_margin -= order_size * price
                         positions.append((order_size, price, 'Sell'))
                         trades.append((date, price, 'Sell'))
