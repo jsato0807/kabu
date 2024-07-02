@@ -45,7 +45,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price >= grid > price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, price, 'Buy', grid))
+                                positions.append((order_size, grid, 'Buy', grid))
                                 trades.append((date, price, 'Buy'))
                                 break  # Exit loop once position is taken
 
@@ -78,7 +78,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price >= grid > price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, price, 'Sell', grid))
+                                positions.append((order_size, grid, 'Sell', grid))
                                 trades.append((date, price, 'Sell'))
                                 break  # Exit loop once position is taken
                 elif price > last_price:
@@ -86,7 +86,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price <= grid < price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, price, 'Sell', grid))
+                                positions.append((order_size, grid, 'Sell', grid))
                                 trades.append((date, price, 'Sell'))
                                 break  # Exit loop once position is taken
 
@@ -121,7 +121,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price > grid >= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, price, 'Buy', grid))
+                                positions.append((order_size, grid, 'Buy', grid))
                                 trades.append((date, price, 'Buy'))
                                 break
 
@@ -131,7 +131,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price < grid <= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, price, 'Sell', grid))
+                                positions.append((order_size, grid, 'Sell', grid))
                                 trades.append((date, price, 'Sell'))
                                 break
 
@@ -180,7 +180,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price > grid >= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, price, 'Buy', grid))
+                                positions.append((order_size, grid, 'Buy', grid))
                                 trades.append((date, price, 'Buy'))
                                 break
 
@@ -190,7 +190,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price < grid <= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, price, 'Sell', grid))
+                                positions.append((order_size, grid, 'Sell', grid))
                                 trades.append((date, price, 'Sell'))
                                 break
 
