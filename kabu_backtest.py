@@ -37,16 +37,18 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price <= grid < price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, price, 'Buy', grid))
+                                positions.append([order_size, grid, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
+                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break  # Exit loop once position is taken
                 elif price < last_price:
                     for grid in grids:
                         if last_price >= grid > price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, grid, 'Buy', grid))
+                                positions.append([order_size, grid, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
+                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break  # Exit loop once position is taken
 
             # Update last_price for the next iteration
@@ -60,8 +62,9 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         effective_margin += order_size * (pos[3] + profit_width)
                         profit = order_size * profit_width
                         realized_profit += profit
-                        positions.remove(pos)
+                        pos[2] = 'Sell-Closed'
                         trades.append((date, future_price, 'Sell'))
+                        print(f"Closed Sell position at {future_price} with profit {profit} ,grid {grid}, Effective Margin: {effective_margin}")
 
     elif strategy == 'short_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
@@ -78,16 +81,18 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price >= grid > price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, grid, 'Sell', grid))
+                                positions.append([order_size, grid, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
+                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break  # Exit loop once position is taken
                 elif price > last_price:
                     for grid in grids:
                         if last_price <= grid < price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, grid, 'Sell', grid))
+                                positions.append([order_size, grid, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
+                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break  # Exit loop once position is taken
 
             # Update last_price for the next iteration
@@ -101,8 +106,9 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         effective_margin += order_size * (pos[3] + profit_width)
                         profit = order_size * profit_width
                         realized_profit += profit
-                        positions.remove(pos)
+                        pos[2] = 'Buy-Closed'
                         trades.append((date, future_price, 'Buy'))
+                        print(f"Closed Buy position at {future_price} with profit {profit} ,grid {grid}, Effective Margin: {effective_margin}")
 
     elif strategy == 'half_and_half':
         half_point = (grid_start + grid_end) / 2
@@ -121,8 +127,9 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price > grid >= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, grid, 'Buy', grid))
+                                positions.append([order_size, grid, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
+                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break
 
                 # Check top half area
@@ -131,8 +138,9 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price < grid <= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, grid, 'Sell', grid))
+                                positions.append([order_size, grid, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
+                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break
 
             # Update last_price for the next iteration
@@ -146,16 +154,18 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         effective_margin += order_size * (pos[3] + profit_width)
                         profit = order_size * profit_width
                         realized_profit += profit
-                        positions.remove(pos)
+                        pos[2] = 'Sell-Closed'
                         trades.append((date, future_price, 'Sell'))
+                        print(f"Closed Sell position at {future_price} with profit {profit} ,grid {grid}, Effective Margin: {effective_margin}")
                 elif pos[2] == 'Sell' and i < len(data) - 1:
                     future_price = data.iloc[i + 1]
                     if future_price <= pos[1] - profit_width:
                         effective_margin += order_size * (pos[3] + profit_width)
                         profit = order_size * profit_width
                         realized_profit += profit
-                        positions.remove(pos)
+                        pos[2] = 'Buy-Closed'
                         trades.append((date, future_price, 'Buy'))
+                        print(f"Closed Buy position at {future_price} with profit {profit} ,grid {grid}, Effective Margin: {effective_margin}")
 
     elif strategy == 'diamond':
         quarter_point = (grid_start + grid_end) / 4
@@ -180,8 +190,9 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price > grid >= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, grid, 'Buy', grid))
+                                positions.append([order_size, grid, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
+                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break
 
                 # Check top two areas
@@ -190,8 +201,9 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price < grid <= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                positions.append((order_size, grid, 'Sell', grid))
+                                positions.append([order_size, grid, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
+                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break
 
             # Update last_price for the next iteration
@@ -205,20 +217,24 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         effective_margin += order_size * (pos[3] + profit_width)
                         profit = order_size * profit_width
                         realized_profit += profit
-                        positions.remove(pos)
+                        pos[2] = 'Sell-Closed'
                         trades.append((date, future_price, 'Sell'))
+                        print(f"Closed Sell position at {future_price} with profit {profit} ,grid {grid}, Effective Margin: {effective_margin}")
                 elif pos[2] == 'Sell' and i < len(data) - 1:
                     future_price = data.iloc[i + 1]
                     if future_price <= pos[1] - profit_width:
                         effective_margin += order_size * (pos[3] + profit_width)
                         profit = order_size * profit_width
                         realized_profit += profit
-                        positions.remove(pos)
+                        pos[2] = 'Buy-Closed'
                         trades.append((date, future_price, 'Buy'))
+                        print(f"Closed Buy position at {future_price} with profit {profit} ,grid {grid}, Effective Margin: {effective_margin}")
 
     # Calculate position value
     if positions:
-        position_value = sum(size * (data.iloc[-1] - price) for size, price, _, _ in positions)
+        position_value = sum(size * (data.iloc[-1] - price) if 'Buy' in status and not status.endswith('Closed') else
+                     -size * (data.iloc[-1] - price) if 'Sell'  in status and not status.endswith('Closed') else
+                     0 for size, price, status, _ in positions)
     else:
         position_value = 0
 
@@ -233,12 +249,12 @@ start_date = "2020-01-01"
 end_date = "2023-01-01"
 initial_funds = 1000000
 grid_start = 100
-grid_end = 150
-order_sizes = [1000, 2000]
-num_traps_options = [50, 100]
-profit_widths = [1, 2]
-strategies = ['long_only', 'short_only']
-densities = [1, 2]
+grid_end = 110
+order_sizes = [1000]
+num_traps_options = [11]
+profit_widths = [1]
+strategies = ['short_only']
+densities = [1]
 
 # データの取得
 data = fetch_currency_data(pair, start=start_date, end=end_date)
