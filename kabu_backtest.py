@@ -61,7 +61,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 current_price = data.iloc[pos[1]]
                 if future_price - current_price >=  profit_width:
                     effective_margin += order_size * (pos[3] + profit_width*(abs(future_price-current_price)//profit_width))
-                    profit = order_size * profit_width
+                    profit = order_size * profit_width*(abs(future_price-current_price)//profit_width)
                     realized_profit += profit
                     pos[2] = 'Sell-Closed'
                     trades.append((date, future_price, 'Sell'))
@@ -106,7 +106,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 current_price = data.iloc[pos[1]]
                 if future_price - current_price <=  - profit_width:
                     effective_margin += order_size * (pos[3] + profit_width*(abs(future_price-current_price)//profit_width))
-                    profit = order_size * profit_width
+                    profit = order_size * profit_width*(abs(future_price-current_price)//profit_width)
                     realized_profit += profit
                     pos[2] = 'Buy-Closed'
                     trades.append((date, future_price, 'Buy'))
@@ -155,7 +155,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 current_price = data.iloc[pos[1]]
                 if future_price - current_price >=  profit_width:
                     effective_margin += order_size * (pos[3] + profit_width*(abs(future_price-current_price)//profit_width))
-                    profit = order_size * profit_width
+                    profit = order_size * profit_width*(abs(future_price-current_price)//profit_width)
                     realized_profit += profit
                     pos[2] = 'Sell-Closed'
                     trades.append((date, future_price, 'Sell'))
@@ -165,7 +165,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 current_price = data.iloc[pos[1]]
                 if future_price - current_price <=  - profit_width:
                     effective_margin += order_size * (pos[3] + profit_width*(abs(future_price-current_price)//profit_width))
-                    profit = order_size * profit_width
+                    profit = order_size * profit_width*(abs(future_price-current_price)//profit_width)
                     realized_profit += profit
                     pos[2] = 'Buy-Closed'
                     trades.append((date, future_price, 'Buy'))
@@ -220,7 +220,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 current_price = data.iloc[pos[1]]
                 if future_price - current_price >=  profit_width:
                     effective_margin += order_size * (pos[3] + profit_width*(abs(future_price-current_price)//profit_width))
-                    profit = order_size * profit_width
+                    profit = order_size * profit_width*(abs(future_price-current_price)//profit_width)
                     realized_profit += profit
                     pos[2] = 'Sell-Closed'
                     trades.append((date, future_price, 'Sell'))
@@ -230,7 +230,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 current_price = data.iloc[pos[1]]
                 if future_price - current_price <=  - profit_width:
                     effective_margin += order_size * (pos[3] + profit_width*(abs(future_price-current_price)//profit_width))
-                    profit = order_size * profit_width
+                    profit = order_size * profit_width*(abs(future_price-current_price)//profit_width)
                     realized_profit += profit
                     pos[2] = 'Buy-Closed'
                     trades.append((date, future_price, 'Buy'))
