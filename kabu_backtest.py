@@ -201,7 +201,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             for pos in positions[:]:
                 if pos[2] == 'Buy' and i < len(data) - 1:
                     future_price = data.iloc[i + 1]
-                    if future_price >= pos[1] + profit_widths
+                    if future_price >= pos[1] + profit_width:
                         effective_margin += order_size * (pos[3] + profit_width)
                         profit = order_size * profit_width
                         realized_profit += profit
