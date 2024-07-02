@@ -39,7 +39,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 effective_margin -= order_size * grid
                                 positions.append([order_size, i, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
-                                print(f"Opened Buy position at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break  # Exit loop once position is taken
                 elif price < last_price:
                     for grid in grids:
@@ -48,7 +48,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 effective_margin -= order_size * grid
                                 positions.append([order_size, i, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
-                                print(f"Opened Buy position at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break  # Exit loop once position is taken
 
             # Update last_price for the next iteration
@@ -259,7 +259,7 @@ grid_end = 110
 order_sizes = [1000]
 num_traps_options = [11]
 profit_widths = [1]
-strategies = ['short_only']
+strategies = ['long_only']
 densities = [1]
 
 # データの取得
