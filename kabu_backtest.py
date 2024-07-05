@@ -31,9 +31,10 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             price = data.iloc[i]
 
             # Update effective margin for currently held positions based on current price
-            if positions and not pos[2].endswith('Closed'):
+            if positions:
                 for pos in positions:
-                    effective_margin -= pos[0] *(price - pos[3]) - (last_price - pos[3]) # Adjust effective margin for unrealized P/L
+                    if not pos[2].endswith('Closed'):
+                        effective_margin += pos[0] *(price - last_price ) # Adjust effective margin for unrealized P/L
             
             if last_price is not None:
                 # Check if price has crossed any grid between last_price and price
@@ -82,9 +83,11 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             price = data.iloc[i]
 
             # Update effective margin for currently held positions based on current price
-            if positions and not pos[2].endswith('Closed'):
+            if positions:
                 for pos in positions:
-                    effective_margin -= pos[0] * ((price) - pos[3]) - (last_price - pos[3])   # Adjust effective margin for unrealized P/L
+                    if not pos[2].endswith('Closed'):
+                        effective_margin -= pos[0] * (price - last_price)   # Adjust effective margin for unrealized P/L
+                        print(f"updated effective margin at grid{pos[3]} , Effective Margin: {effective_margin}")
 
             if last_price is not None:
                 # Check if price has crossed any grid between last_price and price
@@ -95,7 +98,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 effective_margin -= order_size * grid
                                 positions.append([order_size, i, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
-                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                print(f"Opened Sell position at price {price}, last_price {last_price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break  # Exit loop once position is taken
                 elif price > last_price:
                     for grid in grids:
@@ -104,7 +107,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 effective_margin -= order_size * grid
                                 positions.append([order_size, i, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
-                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                print(f"Opened Sell position at price {price}, last_price {last_price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break  # Exit loop once position is taken
 
             # Update last_price for the next iteration
@@ -135,9 +138,13 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             price = data.iloc[i]
 
             # Update effective margin for currently held positions based on current price
-            if positions and not pos[2].endswith('Closed'):
+            if positions:
                 for pos in positions:
-                    effective_margin -= pos[0] *(price - pos[3]) - (last_price - pos[3]) # Adjust effective margin for unrealized P/L
+                    if not pos[2].endswith('Closed'):
+                        if pos[2] == 'Buy':
+                            effective_margin += pos[0] *(price - last_price ) # Adjust effective margin for unrealized P/L
+                        elif pos[2] == 'Sell':
+                            effective_margin -= pos[0] *(price - last_price ) # Adjust effective margin for unrealized P/L
 
             if last_price is not None:
                 # Check bottom half area
@@ -207,9 +214,13 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             price = data.iloc[i]
 
             # Update effective margin for currently held positions based on current price
-            if positions and not pos[2].endswith('Closed'):
+            if positions:
                 for pos in positions:
-                    effective_margin -= pos[0] * (price - pos[3]) - (last_price - pos[3])  # Adjust effective margin for unrealized P/L
+                    if not pos[2].endswith('Closed'):
+                        if pos[2] == 'Buy':
+                            effective_margin += pos[0] * (price - last_price)  # Adjust effective margin for unrealized P/L
+                        if pos[2] == 'Sell':
+                            effective_margin -= pos[0] * (price - last_price)  # Adjust effective margin for unrealized P/L
 
             if last_price is not None:
                 # Check bottom two areas
