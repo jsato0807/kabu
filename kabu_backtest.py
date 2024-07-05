@@ -43,8 +43,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price <= grid < price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                if price - grid < profit_width:
-                                    effective_margin -= order_size * (price - grid)
                                 positions.append([order_size, i, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
@@ -54,26 +52,33 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price >= grid > price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                effective_margin -= order_size * (grid - price)
                                 positions.append([order_size, i, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break  # Exit loop once position is taken
 
-            # Update last_price for the next iteration
-            last_price = price
 
           # Position closure processing
             for pos in positions[:]:
                 if pos[2] == 'Buy' and pos[1] < len(data) - 1:
+                    if price - pos[3] < profit_width:
+                        if price == data.iloc[pos[1]]:
+                            effective_margin -= order_size * (pos[3]-price)
+                            print(f"updated effective margin against grid {pos[3]} , Effective Margin: {effective_margin}")
+                        else:
+                            effective_margin -= order_size * (last_price-price)
+                            print(f"updated effective margin against last_price {last_price} , Effective Margin: {effective_margin}")
                     if price - pos[3] >=  profit_width:
                         effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
                         profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
                         realized_profit += profit
                         pos[2] = 'Sell-Closed'
-                        trades.append((date, future_price, 'Sell'))
+                        trades.append((date, price, 'Sell'))
                         print(f"Closed Sell position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         break
+
+            # Update last_price for the next iteration
+            last_price = price
 
     elif strategy == 'short_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
@@ -88,7 +93,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 for pos in positions:
                     if not pos[2].endswith('Closed'):
                         effective_margin -= pos[0] * (price - last_price)   # Adjust effective margin for unrealized P/L
-                        print(f"updated effective margin at grid{pos[3]} , Effective Margin: {effective_margin}")
 
             if last_price is not None:
                 # Check if price has crossed any grid between last_price and price
@@ -97,8 +101,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price >= grid > price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                if grid - price < profit_width:
-                                    effective_margin += order_size * (grid-price)
                                 positions.append([order_size, i, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at price {price}, last_price {last_price} with grid {grid}, Effective Margin: {effective_margin}")
@@ -108,18 +110,22 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price <= grid < price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                effective_margin -= order_size * (price - grid)
                                 positions.append([order_size, i, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at price {price}, last_price {last_price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break  # Exit loop once position is taken
 
-            # Update last_price for the next iteration
-            last_price = price
 
             # Position closure processing
             for pos in positions[:]:
                 if pos[2] == 'Sell' and pos[1] < len(data) - 1:
+                    if price - pos[3] > -profit_width:
+                        if price == data.iloc[pos[1]]:
+                            effective_margin -= order_size * (price - pos[3])
+                            print(f"updated effective margin against grid {pos[3]} , Effective Margin: {effective_margin}")
+                        else:
+                            effective_margin -= order_size * (price - last_price)
+                            print(f"updated effective margin against last_price {last_price} , Effective Margin: {effective_margin}")
                     if price - pos[3] <=  - profit_width:
                         effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
                         profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
@@ -128,6 +134,9 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         trades.append((date, price, 'Buy'))
                         print(f"Closed Buy position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         break
+
+            # Update last_price for the next iteration
+            last_price = price
 
     elif strategy == 'half_and_half':
         half_point = (grid_start + grid_end) / 2
@@ -155,7 +164,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price > grid >= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                effective_margin -= order_size * (grid - price)
                                 positions.append([order_size, i, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
@@ -164,8 +172,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price < grid <= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                if price - grid < profit_width:
-                                    effective_margin += order_size * (price - grid)
                                 positions.append([order_size, i, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
@@ -177,7 +183,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price < grid <= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                effective_margin -= order_size *(price - grid)
                                 positions.append([order_size, i, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
@@ -186,19 +191,22 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price > grid >= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                if grid - price < profit_width:
-                                    effective_margin += order_size *(grid - price)
                                 positions.append([order_size, i, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break
 
-            # Update last_price for the next iteration
-            last_price = price
 
             # Position closure processing
             for pos in positions[:]:
                 if pos[2] == 'Buy' and pos[1] < len(data) - 1:
+                    if price - pos[3] < profit_width:
+                        if price == data.iloc[pos[1]]:
+                            effective_margin -= order_size * (pos[3] - price)
+                            print(f"updated effective margin against grid {pos[3]} , Effective Margin: {effective_margin}")
+                        else:
+                            effective_margin -= order_size * (last_price - price)
+                            print(f"updated effective margin against last_price {last_price} , Effective Margin: {effective_margin}")
                     if price - pos[3] >=  profit_width:
                         effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
                         profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
@@ -208,6 +216,13 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         print(f"Closed Sell position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         break
                 elif pos[2] == 'Sell' and pos[1] < len(data) - 1:
+                    if price - pos[3] > -profit_width:
+                        if price == data.iloc[pos[1]]:
+                            effective_margin -= order_size * (pos[3] - price)
+                            print(f"updated effective margin against grid {pos[3]} , Effective Margin: {effective_margin}")
+                        else:
+                            effective_margin -= order_size * (last_price - price)
+                            print(f"updated effective margin against last_price {last_price} , Effective Margin: {effective_margin}")
                     if price - pos[3] <=  - profit_width:
                         effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
                         profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
@@ -216,6 +231,10 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         trades.append((date, price, 'Buy'))
                         print(f"Closed Buy position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         break
+
+            # Update last_price for the next iteration
+            last_price = price
+
 
     elif strategy == 'diamond':
         quarter_point = (grid_start + grid_end) / 4
@@ -249,7 +268,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price > grid >= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                effective_margin -= order_size * (grid - price)
                                 positions.append([order_size, i, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
@@ -258,8 +276,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price < grid <= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                if price - grid < profit_width:
-                                    effective_margin += order_size * (price - grid)
                                 positions.append([order_size, i, 'Buy', grid])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
@@ -271,7 +287,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price < grid <= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                effective_margin -= order_size * (price - grid)
                                 positions.append([order_size, i, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
@@ -280,19 +295,22 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         if last_price > grid >= price:
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
-                                if grid - price < profit_width:
-                                   effective_margin += order_size * (grid - price)
                                 positions.append([order_size, i, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break
 
-            # Update last_price for the next iteration
-            last_price = price
 
             # Position closure processing
             for pos in positions[:]:
                 if pos[2] == 'Buy' and pos[1] < len(data) - 1:
+                    if price - pos[3] < profit_width:
+                        if price == data.iloc[pos[1]]:
+                            effective_margin -= order_size * (pos[3] - price)
+                            print(f"updated effective margin against grid {pos[3]} , Effective Margin: {effective_margin}")
+                        else:
+                            effective_margin -= order_size * (last_price - price)
+                            print(f"updated effective margin against last_price {last_price} , Effective Margin: {effective_margin}")
                     if price - pos[3] >=  profit_width:
                         effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
                         profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
@@ -302,6 +320,13 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         print(f"Closed Sell position at {price} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         break
                 elif pos[2] == 'Sell' and pos[1] < len(data) - 1:
+                        if price - pos[3] > -profit_width:
+                            if price == data.iloc[pos[1]]:
+                                effective_margin -= order_size * (pos[3] - price)
+                                print(f"updated effective margin against grid {pos[3]} , Effective Margin: {effective_margin}")
+                            else:
+                                effective_margin -= order_size * (last_price - price)
+                                print(f"updated effective margin against last_price {last_price} , Effective Margin: {effective_margin}")
                         if price - pos[3] <=  - profit_width:
                             effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
                             profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
@@ -310,6 +335,9 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             trades.append((date, price, 'Buy'))
                             print(f"Closed Buy position at {price} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                             break
+
+            # Update last_price for the next iteration
+            last_price = price
 
     # Calculate position value
     if positions:
