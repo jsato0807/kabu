@@ -165,6 +165,16 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break
 
+                        if last_price < grid <= price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * grid
+                                if price - grid < profit_width:
+                                    effective_margin += order_size * (price - grid)
+                                positions.append([order_size, i, 'Buy', grid])
+                                trades.append((date, price, 'Buy'))
+                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                break
+
                 # Check top half area
                 if price > half_point:
                     for grid in grids_top:
@@ -172,6 +182,16 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
                                 effective_margin -= order_size *(price - grid)
+                                positions.append([order_size, i, 'Sell', grid])
+                                trades.append((date, price, 'Sell'))
+                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                break
+
+                        if last_price > grid >= price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * grid
+                                if grid - price < profit_width:
+                                    effective_margin += order_size *(grid - price)
                                 positions.append([order_size, i, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
@@ -243,6 +263,16 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 break
 
+                        if last_price < grid <= price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * grid
+                                if price - grid < profit_width:
+                                    effective_margin += order_size * (price - grid)
+                                positions.append([order_size, i, 'Buy', grid])
+                                trades.append((date, price, 'Buy'))
+                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                break
+
                 # Check top two areas
                 if price >= half_point:
                     for grid in np.concatenate([grids_top, grids_upper_center]):
@@ -250,6 +280,16 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             if effective_margin >= order_size * price:
                                 effective_margin -= order_size * grid
                                 effective_margin -= order_size * (price - grid)
+                                positions.append([order_size, i, 'Sell', grid])
+                                trades.append((date, price, 'Sell'))
+                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                break
+
+                        if last_price > grid >= price:
+                            if effective_margin >= order_size * price:
+                                effective_margin -= order_size * grid
+                                if grid - price < profit_width:
+                                   effective_margin += order_size * (grid - price)
                                 positions.append([order_size, i, 'Sell', grid])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
