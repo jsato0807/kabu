@@ -30,11 +30,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             date = data.index[i]
             price = data.iloc[i]
 
-            # Update effective margin for currently held positions based on current price
-            if positions:
-                for pos in positions:
-                    if not pos[2].endswith('Closed'):
-                        effective_margin += pos[0] *(price - last_price ) # Adjust effective margin for unrealized P/L
             
             if last_price is not None:
                 # Check if price has crossed any grid between last_price and price
@@ -148,14 +143,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             date = data.index[i]
             price = data.iloc[i]
 
-            # Update effective margin for currently held positions based on current price
-            if positions:
-                for pos in positions:
-                    if not pos[2].endswith('Closed'):
-                        if pos[2] == 'Buy':
-                            effective_margin += pos[0] *(price - last_price ) # Adjust effective margin for unrealized P/L
-                        elif pos[2] == 'Sell':
-                            effective_margin -= pos[0] *(price - last_price ) # Adjust effective margin for unrealized P/L
 
             if last_price is not None:
                 # Check bottom half area
@@ -252,14 +239,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
             date = data.index[i]
             price = data.iloc[i]
 
-            # Update effective margin for currently held positions based on current price
-            if positions:
-                for pos in positions:
-                    if not pos[2].endswith('Closed'):
-                        if pos[2] == 'Buy':
-                            effective_margin += pos[0] * (price - last_price)  # Adjust effective margin for unrealized P/L
-                        if pos[2] == 'Sell':
-                            effective_margin -= pos[0] * (price - last_price)  # Adjust effective margin for unrealized P/L
 
             if last_price is not None:
                 # Check bottom two areas
