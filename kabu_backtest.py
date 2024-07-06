@@ -61,10 +61,10 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         unrealized_profit = order_size * (price - pos[3])
                         effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
                         pos[4] = unrealized_profit  # Store current unrealized profit in the position
-                        print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+                        #print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
                     if price - pos[3] >=  profit_width:
-                        effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
-                        profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
+                        effective_margin += order_size * (pos[3] + profit_width)
+                        profit = order_size * profit_width
                         realized_profit += profit
                         pos[2] = 'Sell-Closed'
                         trades.append((date, price, 'Sell'))
@@ -114,8 +114,8 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         pos[4] = unrealized_profit  # Store current unrealized profit in the position
                         print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
                     if price - pos[3] <=  - profit_width:
-                        effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
-                        profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
+                        effective_margin += order_size * (pos[3] + profit_width)
+                        profit = order_size * profit_width
                         realized_profit += profit
                         pos[2] = 'Buy-Closed'
                         trades.append((date, price, 'Buy'))
@@ -186,8 +186,8 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         pos[4] = unrealized_profit  # Store current unrealized profit in the position
                         print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
                     if price - pos[3] >=  profit_width:
-                        effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
-                        profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
+                        effective_margin += order_size * (pos[3] + profit_width)
+                        profit = order_size * profit_width
                         realized_profit += profit
                         pos[2] = 'Sell-Closed'
                         trades.append((date, price, 'Sell'))
@@ -201,8 +201,8 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         pos[4] = unrealized_profit  # Store current unrealized profit in the position
                         print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
                     if price - pos[3] <=  - profit_width:
-                        effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
-                        profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
+                        effective_margin += order_size * (pos[3] + profit_width)
+                        profit = order_size * profit_width
                         realized_profit += profit
                         pos[2] = 'Buy-Closed'
                         trades.append((date, price, 'Buy'))
@@ -280,8 +280,8 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         pos[4] = unrealized_profit  # Store current unrealized profit in the position
                         print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
                     if price - pos[3] >=  profit_width:
-                        effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
-                        profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
+                        effective_margin += order_size * (pos[3] + profit_width)
+                        profit = order_size * profit_width
                         realized_profit += profit
                         pos[2] = 'Sell-Closed'
                         trades.append((date, price, 'Sell'))
@@ -295,8 +295,8 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             pos[4] = unrealized_profit  # Store current unrealized profit in the position
                             print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
                         if price - pos[3] <=  - profit_width:
-                            effective_margin += order_size * (pos[3] + profit_width*(abs(price-pos[3])//profit_width))
-                            profit = order_size * profit_width*(abs(price-pos[3])//profit_width)
+                            effective_margin += order_size * (pos[3] + profit_width)
+                            profit = order_size * profit_width
                             realized_profit += profit
                             pos[2] = 'Buy-Closed'
                             trades.append((date, price, 'Buy'))
