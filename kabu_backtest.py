@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import yfinance as yf
 from itertools import product
+from kabu_backtest_debug import traripi_backtest_debug
 
 def fetch_currency_data(pair, start, end, interval='1d'):
     """
@@ -331,11 +332,11 @@ start_date = "2020-01-01"
 end_date = "2023-01-01"
 initial_funds = 1000000
 grid_start = 100
-grid_end = 110
+grid_end = 150
 order_sizes = [1000]
 num_traps_options = [2]
 profit_widths = [5]
-strategies = ['short_only']
+strategies = ['long_only']
 densities = [1]
 
 # データの取得
@@ -343,12 +344,23 @@ data = fetch_currency_data(pair, start=start_date, end=end_date)
 
 results = []
 
+""""
 # バックテストの実行
 for order_size, num_traps, profit_width, strategy, density in product(order_sizes, num_traps_options, profit_widths, strategies, densities):
     effective_margin, margin_deposit, realized_profit, position_value, trades = traripi_backtest(
         data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, strategy=strategy, density=density
     )
     results.append((effective_margin, margin_deposit, realized_profit, position_value, order_size, num_traps, profit_width, strategy, density))
+"""
+    
+    
+# バックテストの実行
+for order_size, num_traps, profit_width, strategy, density in product(order_sizes, num_traps_options, profit_widths, strategies, densities):
+    effective_margin, margin_deposit, realized_profit, position_value, trades = traripi_backtest_debug(
+        data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, strategy=strategy, density=density
+    )
+    results.append((effective_margin, margin_deposit, realized_profit, position_value, order_size, num_traps, profit_width, strategy, density))
+
 
 # 結果の表示
 results_df = pd.DataFrame(results, columns=[
@@ -393,3 +405,17 @@ for i, row in results_df.sort_values(by='Effective Margin').head(3).iterrows():
     print(f"  確定利益: {row['Realized Profit']}")
     print(f"  取引通貨量: {row['Order Size']}, トラップ本数: {row['Num Traps']}, 利益値幅: {row['Profit Width']}, 戦略: {row['Strategy']}, 密度: {row['Density']}")
     rank += 1
+
+""""
+if trades:
+    dates = [trade[0] for trade in trades]
+    prices = [trade[1] for trade in trades]
+    actions = [trade[2] for trade in trades]
+
+    plt.figure(figsize=(14, 7))
+    plt.plot(data.index, data.values, label=pair)
+    plt.scatter(dates, prices, marker='o', c='r' if actions[0] == 'Buy' else 'g', label='Buy' if actions[0] == 'Buy' else 'Sell')
+    plt.title(f"{pair} Price and Trades")
+    plt.legend()
+    plt.show()
+"""
