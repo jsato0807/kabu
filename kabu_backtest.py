@@ -21,16 +21,19 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
     effective_margin = margin_deposit
     realized_profit = 0
     required_margin = 0		# current_rate*order_size*required_margin_rate
-    margin_maintenance_rate = 0		# effective_margin/required_margin*100
+    margin_maintenance_rate = float('inf')		# effective_margin/required_margin*100
     required_margin_rate = 0.04
     positions = []
     trades = []
+    stop_flag = False
 
     if strategy == 'long_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
         last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
+            if stop_flag:
+                break
             date = data.index[i]
             price = data.iloc[i]
 
@@ -40,7 +43,10 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 if price > last_price:
                     for grid in grids:
                         if last_price <= grid < price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -48,10 +54,20 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break  # Exit loop once position is taken
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut")
+                                        stop_flag = True
+                                        break
+
                 elif price < last_price:
                     for grid in grids:
                         if last_price >= grid > price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -60,11 +76,12 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break  # Exit loop once position is taken
 
-                if required_margin != 0:
-                    margin_maintenance_rate = effective_margin / required_margin * 100
-                    if margin_maintenance_rate <= 100:
-                        print("executed loss cut")
-                        break
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut")
+                                        stop_flag = True
+                                        break
                                 
 
           # Position closure processing
@@ -77,6 +94,14 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         required_margin += (unrealized_profit - pos[4]) * required_margin_rate
                         pos[4] = unrealized_profit  # Store current unrealized profit in the position
                         #print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+
+                        if required_margin != 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut")
+                                stop_flag = True
+                                continue
+
                     if price - pos[3] >=  profit_width:
                         effective_margin += order_size * profit_width - pos[4]
                         margin_deposit += order_size * profit_width 
@@ -88,16 +113,45 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         print(f"Closed Sell position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         #break
 
-            if required_margin != 0:
-                margin_maintenance_rate = effective_margin / required_margin * 100
+                        if required_margin != 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut")
+                                stop_flag = True
+                                continue
+
             # Update last_price for the next iteration
             last_price = price
+
+
+           # 強制ロスカットのチェック
+            while positions and stop_flag:
+                pos = positions.pop(0)
+                if pos[2] == 'Sell':
+                    profit = - (price - pos[3]) * order_size  # 現在の損失計算
+                    effective_margin += profit - pos[4] # 損失分を証拠金に反映
+                    margin_deposit += profit
+                    realized_profit += profit
+                    required_margin -= (profit - pos[4]) * required_margin_rate
+                    trades.append((date, price, 'Forced Sell'))
+                    print(f"Forced Sell at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                    if required_margin > 0:
+                        margin_maintenance_rate = effective_margin / required_margin * 100
+                    else:
+                        margin_maintenance_rate = float('inf')
+
+
+
+
+
 
     elif strategy == 'short_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
         last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
+            if stop_flag:
+                break
             date = data.index[i]
             price = data.iloc[i]
 
@@ -106,7 +160,10 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 if price < last_price:
                     for grid in grids:
                         if last_price >= grid > price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -114,10 +171,20 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at price {price}, last_price {last_price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break  # Exit loop once position is taken
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    print(f"Updated Margin Maintenance Rate in if last_price >= grid > price: {margin_maintenance_rate}")
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut in if last_price >= grid > price")
+                                        stop_flag = True
+                                        break
                 elif price > last_price:
                     for grid in grids:
                         if last_price <= grid < price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -126,11 +193,13 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 print(f"Opened Sell position at price {price}, last_price {last_price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break  # Exit loop once position is taken
 
-                if required_margin != 0:
-                    margin_maintenance_rate = effective_margin / required_margin * 100
-                    if margin_maintenance_rate <= 100:
-                        print("executed loss cut")
-                        break
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    print(f"Updated Margin Maintenance Rate in if last_price <= grid < price: {margin_maintenance_rate}")
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut in if last_price <= grid < price")
+                                        stop_flag = True
+                                        break
 
 
             # Position closure processing
@@ -140,8 +209,18 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         # Update unrealized profit for open positions
                         unrealized_profit = order_size * (pos[3] - price)
                         effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
+                        required_margin += (unrealized_profit - pos[4]) * required_margin_rate
                         pos[4] = unrealized_profit  # Store current unrealized profit in the position
                         print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+
+                        if required_margin != 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            print(f"Updated Margin Maintenance Rate in if price - pos[3] > -profit_width: {margin_maintenance_rate}")
+                            if margin_maintenance_rate <= 100:
+                                print(f"executed loss cut in 'if price - pos[3] > -profit_width' pos: {pos}, last postions: {positions[-1]}")
+                                stop_flag = True
+                                continue
+
                     if price - pos[3] <=  - profit_width:
                         effective_margin += order_size * profit_width - pos[4]
                         margin_deposit += order_size * profit_width
@@ -153,10 +232,38 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         print(f"Closed Buy position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         #break
 
-            if required_margin != 0:
-                margin_maintenance_rate = effective_margin / required_margin * 100
+                        if required_margin != 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            print(f"Updated Margin Maintenance Rate if price - pos[3] > -profit_width: {margin_maintenance_rate}")
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut in price - pos[3] <= -profit_width")
+                                stop_flag = True
+                                continue
+
             # Update last_price for the next iteration
             last_price = price
+
+
+           # 強制ロスカットのチェック
+            while positions and stop_flag:
+                pos = positions.pop(0)
+                if pos[2] == 'Sell':
+                    profit = - (price - pos[3]) * order_size  # 現在の損失計算
+                    effective_margin += profit - pos[4] # 損失分を証拠金に反映
+                    margin_deposit += profit
+                    realized_profit += profit
+                    required_margin -= (profit - pos[4]) * required_margin_rate
+                    trades.append((date, price, 'Forced Sell'))
+                    print(f"Forced Sell at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                    if required_margin > 0:
+                        margin_maintenance_rate = effective_margin / required_margin * 100
+                    else:
+                        margin_maintenance_rate = float('inf')
+
+
+
+
+
 
     elif strategy == 'half_and_half':
         half_point = (grid_start + grid_end) / 2
@@ -165,6 +272,8 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
         last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
+            if stop_flag:
+                break
             date = data.index[i]
             price = data.iloc[i]
 
@@ -174,7 +283,10 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 if price <= half_point:
                     for grid in grids_bottom:
                         if last_price > grid >= price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -182,9 +294,19 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut")
+                                        stop_flag = True
+                                        break
+
 
                         if last_price < grid <= price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -192,12 +314,22 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut")
+                                        stop_flag = True
+                                        break
+
 
                 # Check top half area
                 if price > half_point:
                     for grid in grids_top:
                         if last_price < grid <= price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -205,9 +337,18 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut")
+                                        stop_flag = True
+                                        break
 
                         if last_price > grid >= price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -216,11 +357,12 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
 
-                if required_margin != 0:
-                    margin_maintenance_rate = effective_margin / required_margin * 100
-                    if margin_maintenance_rate <= 100:
-                        print("executed loss cut")
-                        break
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut")
+                                        stop_flag = True
+                                        break
 
             # Position closure processing
             for pos in positions[:]:
@@ -232,6 +374,13 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         required_margin += (unrealized_profit - pos[4]) * required_margin_rate
                         pos[4] = unrealized_profit  # Store current unrealized profit in the position
                         print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+                        if required_margin != 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut")
+                                stop_flag = True
+                                continue
+
                     if price - pos[3] >=  profit_width:
                         effective_margin += order_size * profit_width -pos[4]
                         margin_deposit += order_size * profit_width
@@ -242,13 +391,29 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         trades.append((date, price, 'Sell'))
                         print(f"Closed Sell position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         #break
+                        if required_margin != 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut")
+                                stop_flag = True
+                                continue
+
                 elif pos[2] == 'Sell' and pos[1] < len(data) - 1:
                     if price - pos[3] > -profit_width:
                         # Update unrealized profit for open positions
                         unrealized_profit = order_size * (pos[3] - price)
                         effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
+                        required_margin += (unrealized_profit - pos[4]) * required_margin_rate
                         pos[4] = unrealized_profit  # Store current unrealized profit in the position
                         print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+
+                        if required_margin != 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut")
+                                stop_flag = True
+                                continue
+
                     if price - pos[3] <=  - profit_width:
                         effective_margin += order_size * profit_width - pos[4]
                         margin_deposit += order_size * profit_width
@@ -260,11 +425,38 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         print(f"Closed Buy position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         #break
 
-            if required_margin != 0:
-                margin_maintenance_rate = effective_margin / required_margin * 100
+                        if required_margin != 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut")
+                                stop_flag = True
+                                continue
 
             # Update last_price for the next iteration
             last_price = price
+
+
+
+           # 強制ロスカットのチェック
+            while positions and stop_flag:
+                pos = positions.pop(0)
+                if pos[2] == 'Sell':
+                    profit = - (price - pos[3]) * order_size  # 現在の損失計算
+                    effective_margin += profit - pos[4] # 損失分を証拠金に反映
+                    margin_deposit += profit
+                    realized_profit += profit
+                    required_margin -= (profit - pos[4]) * required_margin_rate
+                    trades.append((date, price, 'Forced Sell'))
+                    print(f"Forced Sell at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                    if required_margin > 0:
+                        margin_maintenance_rate = effective_margin / required_margin * 100
+                    else:
+                        margin_maintenance_rate = float('inf')
+
+
+
+
+
 
 
     elif strategy == 'diamond':
@@ -280,6 +472,8 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
         last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
+            if stop_flag:
+                break
             date = data.index[i]
             price = data.iloc[i]
 
@@ -289,7 +483,10 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 if price <= half_point:
                     for grid in np.concatenate([grids_bottom, grids_lower_center]):
                         if last_price > grid >= price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -297,9 +494,19 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut")
+                                        stop_flag = True
+                                        break
+
 
                         if last_price < grid <= price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -307,12 +514,22 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut")
+                                        stop_flag = True
+                                        break
+
 
                 # Check top two areas
                 if price >= half_point:
                     for grid in np.concatenate([grids_top, grids_upper_center]):
                         if last_price < grid <= price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -320,9 +537,19 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
+
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut")
+                                        stop_flag = True
+                                        break
 
                         if last_price > grid >= price:
-                            if effective_margin >= order_size * price:
+                            if margin_maintenance_rate <= 100:
+                                stop_flag = True
+                                break
+                            if margin_maintenance_rate > 100:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
                                 required_margin += grid * order_size * required_margin_rate
@@ -331,11 +558,12 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
 
-                if required_margin != 0:
-                    margin_maintenance_rate = effective_margin / required_margin * 100
-                    if margin_maintenance_rate <= 100:
-                        print("executed loss cut")
-                        break
+                                if required_margin != 0:
+                                    margin_maintenance_rate = effective_margin / required_margin * 100
+                                    if margin_maintenance_rate <= 100:
+                                        print("executed loss cut")
+                                        stop_flag = True
+                                        break
 
             # Position closure processing
             for pos in positions[:]:
@@ -347,6 +575,13 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         required_margin += (unrealized_profit - pos[4]) * required_margin_rate
                         pos[4] = unrealized_profit  # Store current unrealized profit in the position
                         print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+                        if required_margin != 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut")
+                                stop_flag = True
+                                continue
+
                     if price - pos[3] >=  profit_width:
                         effective_margin += order_size * profit_width - pos[4]
                         margin_deposit += order_size * profit_width
@@ -357,13 +592,29 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         trades.append((date, price, 'Sell'))
                         print(f"Closed Sell position at {price} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         #break
+                        if required_margin != 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut")
+                                stop_flag = True
+                                continue
+
                 elif pos[2] == 'Sell' and pos[1] < len(data) - 1:
                         if price - pos[3] > -profit_width:
                             # Update unrealized profit for open positions
                             unrealized_profit = order_size * (pos[3] - price)
                             effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
+                            required_margin += (unrealized_profit - pos[4]) * required_margin_rate
                             pos[4] = unrealized_profit  # Store current unrealized profit in the                         position_value += 
                             print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+
+                            if required_margin != 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                                if margin_maintenance_rate <= 100:
+                                    print("executed loss cut")
+                                    stop_flag = True
+                                    continue
+
                         if price - pos[3] <=  - profit_width:
                             effective_margin += order_size * profit_width - pos[4]
                             margin_deposit += order_size * profit_width
@@ -375,11 +626,39 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             print(f"Closed Buy position at {price} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                             #break
 
-            if required_margin != 0:
-                margin_maintenance_rate = effective_margin / required_margin * 100
+                            if required_margin != 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                                if margin_maintenance_rate <= 100:
+                                    print("executed loss cut")
+                                    stop_flag = True
+                                    continue
 
             # Update last_price for the next iteration
             last_price = price
+
+
+
+           # 強制ロスカットのチェック
+            while positions and stop_flag:
+                pos = positions.pop(0)
+                if pos[2] == 'Sell':
+                    profit = - (price - pos[3]) * order_size  # 現在の損失計算
+                    effective_margin += profit - pos[4] # 損失分を証拠金に反映
+                    margin_deposit += profit
+                    realized_profit += profit
+                    required_margin -= (profit - pos[4]) * required_margin_rate
+                    trades.append((date, price, 'Forced Sell'))
+                    print(f"Forced Sell at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                    if required_margin > 0:
+                        margin_maintenance_rate = effective_margin / required_margin * 100
+                    else:
+                        margin_maintenance_rate = float('inf')
+
+
+
+
+
+
 
     # Calculate position value
     if positions:
@@ -402,9 +681,9 @@ initial_funds = 1000000
 grid_start = 100
 grid_end = 110
 order_sizes = [1000]
-num_traps_options = [11]
+num_traps_options = [55]
 profit_widths = [2]
-strategies = ['short_only']
+strategies = ['diamond']
 densities = [2]
 
 # データの取得
