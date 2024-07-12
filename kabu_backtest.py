@@ -25,14 +25,21 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
     required_margin_rate = 0.04
     positions = []
     trades = []
-    stop_flag = False
+    margin_maintenance_flag = False
+    order_capacity_flag = False
 
     if strategy == 'long_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
+        order_margin = sum(order_size * grid * required_margin_rate for grid in grids)
+        order_capacity = effective_margin - (required_margin + order_margin)
+        if order_capacity <= 0:
+            print(f'cannot order because of lack of order_capacity')
+            order_capacity_flag = True
+            
         last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
-            if stop_flag:
+            if margin_maintenance_flag or order_capacity_flag:
                 break
             date = data.index[i]
             price = data.iloc[i]
@@ -44,11 +51,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                     for grid in grids:
                         if last_price <= grid < price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:		#you dont need to confirm that order_capacity is more than 0 or not because order_margin and required_margin is equal so order_capacity is more than 0 absolutely
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Buy', grid, 0, add_required_margin])
@@ -59,7 +72,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut in last_price <= grid < price")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('inf')
@@ -69,11 +82,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                     for grid in grids:
                         if last_price >= grid > price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Buy', grid, 0, add_required_margin])
@@ -85,7 +104,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut in last_price >= grid > price")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('inf')
@@ -108,7 +127,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = effective_margin / required_margin * 100
                             if margin_maintenance_rate <= 100:
                                 print("executed loss cut in price - pos[3] < profit_width")
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 continue
                         else:
                             margin_maintenance_rate = float('inf')
@@ -129,7 +148,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = effective_margin / required_margin * 100
                             if margin_maintenance_rate <= 100:
                                 print("executed loss cut in price - pos[3] >=  profit_width")
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 continue
                         else:
                             margin_maintenance_rate = float('inf')
@@ -139,7 +158,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
 
            # 強制ロスカットのチェック
-            while positions and stop_flag:
+            while positions and margin_maintenance_flag:
                 pos = positions.pop(0)
                 if pos[2] == 'Buy':
                     profit = (price - pos[3]) * order_size  # 現在の損失計算
@@ -162,10 +181,16 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
     elif strategy == 'short_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
+        order_margin = sum(order_size * grid * required_margin_rate for grid in grids)
+        order_capacity = effective_margin - (required_margin + order_margin)
+        if order_capacity <= 0:
+            print(f'cannot order because of lack of order_capacity')
+            order_capacity_flag = True
+            
         last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
-            if stop_flag:
+            if margin_maintenance_flag:
                 break
             date = data.index[i]
             price = data.iloc[i]
@@ -176,11 +201,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                     for grid in grids:
                         if last_price >= grid > price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Sell', grid, 0, add_required_margin])
@@ -192,7 +223,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     #print(f"Updated Margin Maintenance Rate in if last_price >= grid > price: {margin_maintenance_rate}")
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut in if last_price >= grid > price")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('inf')
@@ -201,11 +232,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                     for grid in grids:
                         if last_price <= grid < price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Sell', grid, 0, add_required_margin])
@@ -218,7 +255,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     #print(f"Updated Margin Maintenance Rate in if last_price <= grid < price: {margin_maintenance_rate}")
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut in if last_price <= grid < price")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('inf')
@@ -242,7 +279,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             #print(f"Updated Margin Maintenance Rate in if price - pos[3] > -profit_width: {margin_maintenance_rate}")
                             if margin_maintenance_rate <= 100:
                                 print(f"executed loss cut in 'if price - pos[3] > -profit_width' pos: {pos}, last postions: {positions[-1]}")
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 continue
                         else:
                             margin_maintenance_rate = float('inf')
@@ -264,7 +301,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             print(f"Updated Margin Maintenance Rate if price - pos[3] > -profit_width: {margin_maintenance_rate}")
                             if margin_maintenance_rate <= 100:
                                 print("executed loss cut in price - pos[3] <= -profit_width")
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 continue
                         else:
                             margin_maintenance_rate = float('inf')
@@ -274,7 +311,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
 
            # 強制ロスカットのチェック
-            while positions and stop_flag:
+            while positions and margin_maintenance_flag:
                 pos = positions.pop(0)
                 if pos[2] == 'Sell':
                     profit = - (price - pos[3]) * order_size  # 現在の損失計算
@@ -300,10 +337,16 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
         half_point = (grid_start + grid_end) / 2
         grids_bottom = np.linspace(grid_start, half_point, num=int(num_traps / 2))
         grids_top = np.linspace(half_point, grid_end, num=int(num_traps / 2))
+        
+        order_margin = sum(order_size * grid * required_margin_rate for grid in np.concatenate((grids_bottom, grids_top)))
+        order_capacity = effective_margin - (required_margin + order_margin)
+        if order_capacity <= 0:
+            print(f'cannot order because of lack of order_capacity')
+            order_capacity_flag = True
         last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
-            if stop_flag:
+            if margin_maintenance_flag:
                 break
             date = data.index[i]
             price = data.iloc[i]
@@ -315,11 +358,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                     for grid in grids_bottom:
                         if last_price > grid >= price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Buy', grid, 0, add_required_margin])
@@ -330,7 +379,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('inf')
@@ -338,11 +387,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
                         if last_price < grid <= price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Buy', grid, 0, add_required_margin])
@@ -353,7 +408,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('inf')
@@ -364,11 +419,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                     for grid in grids_top:
                         if last_price < grid <= price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Sell', grid, 0, add_required_margin])
@@ -379,18 +440,24 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('inf')
                     
                         if last_price > grid >= price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Sell', grid, 0, add_required_margin])
@@ -402,7 +469,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('inf')
@@ -423,7 +490,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = effective_margin / required_margin * 100
                             if margin_maintenance_rate <= 100:
                                 print("executed loss cut")
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 continue
                         else:
                             margin_maintenance_rate = float('inf')
@@ -443,7 +510,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = effective_margin / required_margin * 100
                             if margin_maintenance_rate <= 100:
                                 print("executed loss cut")
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 continue
                         else:
                             margin_maintenance_rate = float('inf')
@@ -463,7 +530,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = effective_margin / required_margin * 100
                             if margin_maintenance_rate <= 100:
                                 print("executed loss cut")
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 continue
                         else:
                             margin_maintenance_rate = float('inf')
@@ -484,7 +551,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = effective_margin / required_margin * 100
                             if margin_maintenance_rate <= 100:
                                 print("executed loss cut")
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 continue
                         else:
                             margin_maintenance_rate = float('inf')
@@ -495,7 +562,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
 
            # 強制ロスカットのチェック
-            while positions and stop_flag:
+            while positions and margin_maintenance_flag:
                 pos = positions.pop(0)
                 if pos[2] == 'Sell' or pos[2] == 'Buy':
                     if pos[2] == 'Sell':
@@ -530,11 +597,18 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
         grids_lower_center = np.linspace(quarter_point, half_point, num=int(num_traps /4 * density))
         grids_upper_center = np.linspace(half_point, three_quarter_point, num=int(num_traps / 4 * density))
         grids_top = np.linspace(three_quarter_point, grid_end, num=int(num_traps / 4))
+        
+        order_margin = sum(order_size * grid * required_margin_rate for grid in np.concatenate((grids_bottom, grids_lower_center, grids_upper_center, grids_top)))
+        order_capacity = effective_margin - (required_margin + order_margin)
+        if order_capacity <= 0:
+            print(f'cannot order because of lack of order_capacity')
+            order_capacity_flag = True
+            
         last_price = None  # Variable to store the last processed price
 
 
         for i in range(len(data)):
-            if stop_flag:
+            if margin_maintenance_flag:
                 break
             date = data.index[i]
             price = data.iloc[i]
@@ -546,11 +620,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                     for grid in np.concatenate([grids_bottom, grids_lower_center]):
                         if last_price > grid >= price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Buy', grid, 0, add_required_margin])
@@ -561,7 +641,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('Inf')
@@ -569,11 +649,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
                         if last_price < grid <= price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Buy', grid, 0, add_required_margin])
@@ -584,7 +670,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('inf')
@@ -595,11 +681,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                     for grid in np.concatenate([grids_top, grids_upper_center]):
                         if last_price < grid <= price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Sell', grid, 0, add_required_margin])
@@ -611,18 +703,24 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut last_price < grid <= price")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     margin_maintenance_rate = float('inf')
 
                         if last_price > grid >= price:
                             if margin_maintenance_rate <= 100:
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 break
-                            if margin_maintenance_rate > 100:
+                            order_capacity = effective_margin - (required_margin + order_margin)
+                            if order_capacity < 0:
+                                order_capacity_flag = True
+                                print(f'cannot order because of lack of order capacity')
+                                break
+                            if margin_maintenance_rate > 100 and order_capacity > 0:
                                 #margin_deposit -= order_size * grid
                                 #effective_margin -= order_size * grid
+                                order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
                                 positions.append([order_size, i, 'Sell', grid, 0, add_required_margin])
@@ -634,7 +732,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut in last_price > grid >= price")
-                                        stop_flag = True
+                                        margin_maintenance_flag = True
                                         break
                                 else:
                                     float('inf')
@@ -655,7 +753,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = effective_margin / required_margin * 100
                             if margin_maintenance_rate <= 100:
                                 print("executed loss cut price - pos[3] < profit_width")
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 continue
                         else:
                             margin_maintenance_rate = float('inf')
@@ -675,7 +773,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = effective_margin / required_margin * 100
                             if margin_maintenance_rate <= 100:
                                 print("executed loss cut in price - pos[3] >= profit_width")
-                                stop_flag = True
+                                margin_maintenance_flag = True
                                 continue
                         else:
                             margin_maintenance_rate = float('inf')
@@ -695,7 +793,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 margin_maintenance_rate = effective_margin / required_margin * 100
                                 if margin_maintenance_rate <= 100:
                                     print("executed loss cut in price - pos[3] > -profit_width")
-                                    stop_flag = True
+                                    margin_maintenance_flag = True
                                     continue
                             else:
                                 margin_maintenance_rate = float('inf')
@@ -716,7 +814,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 margin_maintenance_rate = effective_margin / required_margin * 100
                                 if margin_maintenance_rate <= 100:
                                     print("executed loss cut in price - pos[3] <= -profit_width")
-                                    stop_flag = True
+                                    margin_maintenance_flag = True
                                     continue
                             else:
                                 margin_maintenance_rate = float('inf')
@@ -727,7 +825,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
             
            # 強制ロスカットのチェック
-            while positions and stop_flag:
+            while positions and margin_maintenance_flag:
                 pos = positions.pop(0)
                 if pos[2] == 'Sell' or pos[2] == 'Buy':
                     if pos[2] == 'Sell':
@@ -773,9 +871,9 @@ initial_funds = 1000000
 grid_start = 100
 grid_end = 110
 order_sizes = [1000]
-num_traps_options = [11]
+num_traps_options = [1100]
 profit_widths = [2]
-strategies = ['diamond']
+strategies = ['long_only']
 densities = [2]
 
 # データの取得
