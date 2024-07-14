@@ -13,7 +13,7 @@ def fetch_currency_data(pair, start, end, interval='1d'):
     print(f"Fetched data length: {len(data)}")
     return data
 
-def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, strategy='standard', density=1):
+def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_intervals, total_thresholds,strategy='standard', density=1):
     """
     Perform Trailing Stop strategy backtest on given data.
     """
@@ -848,8 +848,150 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
 
 
+    elif strategy == 'milagroman':
+        last_price = None  # Variable to store the last processed price
+        
+        for i in range(len(data)):
+            if margin_maintenance_flag:
+                break
+            date = data.index[i]
+            price = data.iloc[i]
+
+            if last_price is not None:
+                # 買いと売りの同時エントリー
+                add_required_margin = price * order_size * required_margin_rate
+                required_margin += add_required_margin
+                positions.append([order_size, i, 'Buy', price, 0, add_required_margin])
+                add_required_margin = price * order_size * required_margin_rate
+                required_margin += add_required_margin        
+                positions.append([order_size, i, 'Sell', price, 0, add_required_margin])
 
 
+                    # 売りポジションの決済
+                for pos in positions:
+                    if pos[2] == "Sell":
+                        if pos[3] - price >= profit_width:
+                            effective_margin += order_size * (pos[3] - price) - pos[4]
+                            margin_deposit += order_size * (pos[3] - price)
+                            profit =  (pos[3] - price) * order_size
+                            realized_profit += profit
+                            required_margin -= pos[5]
+                            pos[2] = "Sell-Closed"
+                            
+                            if abs(required_margin) > 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                                if margin_maintenance_rate <= 100:
+                                    print("executed loss cut in last_price <= grid < price")
+                                    margin_maintenance_flag = True
+                                    break
+                            else:
+                                margin_maintenance_rate = float('inf')
+                
+                # 買いポジションのナンピン
+                if price - last_price < - entry_interval:
+                    add_required_margin = price * order_size * required_margin_rate
+                    required_margin += add_required_margin
+                    positions.append([order_size, i, 'Buy', price, 0, add_required_margin])
+
+                    if abs(required_margin) > 0:
+                        margin_maintenance_rate = effective_margin / required_margin * 100
+                        if margin_maintenance_rate <= 100:
+                            print("executed loss cut in last_price <= grid < price")
+                            margin_maintenance_flag = True
+                            break
+                    else:
+                        margin_maintenance_rate = float('inf')
+                
+                
+                for pos in positions:
+                    
+                    if margin_deposit - effective_margin < total_threshold:	#margin_deposit - effective_margin = unrealized_profit
+                        if pos[2] == 'Buy' and pos[1] < len(data) - 1:
+                            # Update unrealized profit for open positions
+                            unrealized_profit = order_size * (price - pos[3])
+                            effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
+                            add_required_margin = -pos[5] + price * order_size * required_margin_rate
+                            required_margin += add_required_margin
+                            pos[4] = unrealized_profit  # Store current unrealized profit in the position
+                            pos[5] += add_required_margin
+                            print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+                            if abs(required_margin) > 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                                if margin_maintenance_rate <= 100:
+                                    print("executed loss cut")
+                                    margin_maintenance_flag = True
+                                    continue
+                            else:
+                                margin_maintenance_rate = float('inf')
+    
+    
+                    elif pos[2] == 'Sell' and pos[1] < len(data) - 1:
+                        # Update unrealized profit for open positions
+                        unrealized_profit = order_size * (pos[3] - price)
+                        effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
+                        add_required_margin = -pos[5] + price * order_size * required_margin_rate
+                        required_margin += add_required_margin
+                        pos[4] = unrealized_profit  # Store current unrealized profit in the position
+                        pos[5] += add_required_margin
+                        print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+    
+                        if abs(required_margin) > 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut")
+                                margin_maintenance_flag = True
+                                continue
+                        else:
+                            margin_maintenance_rate = float('inf')
+
+                    if margin_deposit - effective_margin >= total_threshold:# 全ポジションの決済条件
+                        if pos[2] == 'Sell' or pos[2] == 'Buy':
+    
+                            if pos[2] == 'Sell':
+                                profit = - (price - pos[3]) * order_size  # 現在の損失計算
+                            if pos[2] == 'Buy':
+                                profit = (price - pos[3]) * order_size
+                            effective_margin += profit - pos[4] # 損失分を証拠金に反映
+                            margin_deposit += profit
+                            realized_profit += profit
+                            required_margin -= pos[5]
+                            pos[5] = 0
+                            trades.append((date, price, 'Forced Closed'))
+                            print(f"Forced Closed at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                            positions.remove(pos)
+                            if abs(required_margin) > 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                                if margin_maintenance_rate < 100:
+                                    margin_maintenance_flag = True
+                                    continue
+                            else:
+                                margin_maintenance_rate = float('inf')
+                # Update last_price for the next iteration
+            last_price = price
+    
+    
+               # 強制ロスカットのチェック
+            while positions and margin_maintenance_flag:
+
+                pos = positions.pop(0)
+                if pos[2] == 'Sell' or pos[2] == 'Buy':
+                    if pos[2] == 'Sell':
+                        profit = - (price - pos[3]) * order_size  # 現在の損失計算
+                    if pos[2] == 'Buy':
+                        profit = (price - pos[3]) * order_size
+                    effective_margin += profit - pos[4] # 損失分を証拠金に反映
+                    margin_deposit += profit
+                    realized_profit += profit
+                    required_margin -= pos[5]
+                    pos[5] = 0
+                    trades.append((date, price, 'Forced Closed'))
+                    print(f"Forced Closed at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                    if abs(required_margin) > 0:
+                        margin_maintenance_rate = effective_margin / required_margin * 100
+                    else:
+                        margin_maintenance_rate = float('inf')
+
+	
     # Calculate position value
     if positions:
         position_value = sum(size * (data.iloc[-1] - grid) if 'Buy' in status and not status.endswith('Closed') else
@@ -861,7 +1003,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
     ## Calculate margin deposit
     #margin_deposit = initial_funds + realized_profit
 
-    return effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, trades
+    return effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades
 
 # パラメータ設定
 pair = "USDJPY=X"
@@ -872,9 +1014,11 @@ grid_start = 100
 grid_end = 110
 order_sizes = [1000]
 num_traps_options = [1100]
-profit_widths = [2]
-strategies = ['long_only']
+profit_widths = [i for i in range(100)]
+strategies = ['milagroman']
 densities = [2]
+entry_intervals = [0.5 * i for i in range(100)]  # エントリー間隔
+total_thresholds = [5.0 * i for i in range(100)]  # 全ポジション決済の閾値
 
 # データの取得
 data = fetch_currency_data(pair, start=start_date, end=end_date)
@@ -883,22 +1027,50 @@ results = []
 
 
 # バックテストの実行
-for order_size, num_traps, profit_width, strategy, density in product(order_sizes, num_traps_options, profit_widths, strategies, densities):
-    effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, trades = traripi_backtest(
-        data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, strategy=strategy, density=density
-    )
-    results.append((effective_margin, margin_deposit, realized_profit, position_value, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate))
+if "diamond" in strategies and "milagroman" in strategies:
+    for order_size, num_traps, profit_width, strategy, density, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, densities, entry_intervals, total_thresholds):
+        effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
+            data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=density
+        )
+  
+        results.append((effective_margin, margin_deposit, realized_profit, position_value, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate, entry_interval, total_threshold))
+        
+elif "diamond" in strategies and not "milagroman" in strategies:
+    for order_size, num_traps, profit_width, strategy, density in product(order_sizes, num_traps_options, profit_widths, strategies, densities):
+        effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, _, _, trades = traripi_backtest(
+            data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, None, None, strategy=strategy, density=density
+        )
+  
+        results.append((effective_margin, margin_deposit, realized_profit, position_value, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate, entry_interval, total_threshold))
+
+
+elif not "diamond" in strategies and "milagroman" in strategies:
+    for order_size, num_traps, profit_width, strategy, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, entry_intervals, total_thresholds):
+        effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
+            data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=None
+        )
+  
+        results.append((effective_margin, margin_deposit, realized_profit, position_value, order_size, num_traps, profit_width, strategy, None, required_margin, margin_maintenance_rate, entry_interval, total_threshold))
+
+
+elif not "diamond" in strategies and not "milagroman" in strategies:
+    for order_size, num_traps, profit_width, strategy in product(order_sizes, num_traps_options, profit_widths, strategies):
+        effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
+            data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, None, None, strategy=strategy, density=None
+        )
+  
+        results.append((effective_margin, margin_deposit, realized_profit, position_value, order_size, num_traps, profit_width, strategy, None, required_margin, margin_maintenance_rate, None, None))
 
     
 
 # 結果の表示
 results_df = pd.DataFrame(results, columns=[
-    'Effective Margin', 'Margin Deposit', 'Realized Profit', 'Position Value', 'Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density','Required Margin', 'Margin Maintenance Rate'
+    'Effective Margin', 'Margin Deposit', 'Realized Profit', 'Position Value', 'Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density','Required Margin', 'Margin Maintenance Rate', 'Entry Interval', 'Total Threshold'
 ])
 
 # 結果の表示
 # ユニークな組み合わせを取得
-unique_results = results_df.drop_duplicates(subset=['Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density'])
+unique_results = results_df.drop_duplicates(subset=['Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density', 'Entry Interval', 'Total Threshold'])
 
 # Top 5 Results Based on Effective Margin
 print("上位5件の有効証拠金に基づく結果:")
@@ -916,7 +1088,7 @@ for i, row in results_df.sort_values(by='Effective Margin', ascending=False).ite
     print(f"  確定利益: {row['Realized Profit']}")
     print(f" 必要証拠金: {row['Required Margin']}")
     print(f"証拠金維持率: {row['Margin Maintenance Rate']}")
-    print(f"  取引通貨量: {row['Order Size']}, トラップ本数: {row['Num Traps']}, 利益値幅: {row['Profit Width']}, 戦略: {row['Strategy']}, 密度: {row['Density']}")
+    print(f"  取引通貨量: {row['Order Size']}, トラップ本数: {row['Num Traps']}, 利益値幅: {row['Profit Width']}, 戦略: {row['Strategy']}, 密度: {row['Density']}, エントリー間隔: {row['Entry Interval']}, 全ポジション決済の閾値: {row['Total Threshold']}")
     rank += 1
     if rank > 5:
         break
@@ -936,7 +1108,7 @@ for i, row in results_df.sort_values(by='Effective Margin').head(3).iterrows():
     print(f"  確定利益: {row['Realized Profit']}")
     print(f" 必要証拠金: {row['Required Margin']}")
     print(f"証拠金維持率: {row['Margin Maintenance Rate']}")
-    print(f"  取引通貨量: {row['Order Size']}, トラップ本数: {row['Num Traps']}, 利益値幅: {row['Profit Width']}, 戦略: {row['Strategy']}, 密度: {row['Density']}")
+    print(f"  取引通貨量: {row['Order Size']}, トラップ本数: {row['Num Traps']}, 利益値幅: {row['Profit Width']}, 戦略: {row['Strategy']}, 密度: {row['Density']}, エントリー間隔: {row['Entry Interval']}, 全ポジション決済の閾値: {row['Total Threshold']}")
     rank += 1
 
 """"
