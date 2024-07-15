@@ -870,7 +870,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                     # 売りポジションの決済
                 for pos in positions:
                     if pos[2] == "Sell":
-                        if (pos[3] - price >= profit_width and strategy == "milagroman") or (price - last_price >= profit_width and strategy == "milagroman2"):
+                        if (pos[3] - price >= profit_width and strategy == "milagroman") or (last_price - price >= profit_width and strategy == "milagroman2"):
                             effective_margin += order_size * (pos[3] - price) - pos[4]
                             margin_deposit += order_size * (pos[3] - price)
                             profit =  (pos[3] - price) * order_size
@@ -992,6 +992,185 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         margin_maintenance_rate = float('inf')
 
 	
+    elif strategy == 'milagroman3':
+        last_price = None  # Variable to store the last processed price
+        data['SMA_200'] = data['Close'].rolling(window=200).mean()
+        Gradient = np.gradient(data['SMA_200'])
+        for i in range(len(data)):
+            if margin_maintenance_flag:
+                break
+            date = data.index[i]
+            price = data.iloc[i]
+
+            if last_price is not None:
+                # 買い子ポジションと売り子ポジションの同時エントリー
+                add_required_margin = price * order_size * required_margin_rate
+                required_margin += add_required_margin
+                positions.append([order_size, i, 'Buy-child', price, 0, add_required_margin])
+                add_required_margin = price * order_size * required_margin_rate
+                required_margin += add_required_margin        
+                positions.append([order_size, i, 'Sell-child', price, 0, add_required_margin])
+
+
+
+                    # 売り子ポジション、買い子ポジションの決済
+                for pos in positions:
+                    if pos[2] == "Sell-child":
+                        if last_price - price >= profit_width:
+                            effective_margin += order_size * (pos[3] - price) - pos[4]
+                            margin_deposit += order_size * (pos[3] - price)
+                            profit =  (pos[3] - price) * order_size
+                            realized_profit += profit
+                            required_margin -= pos[5]
+                            pos[2] = "Sell-child-Closed"
+                            
+                            if abs(required_margin) > 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                                if margin_maintenance_rate <= 100:
+                                    print("executed loss cut in last_price <= grid < price")
+                                    margin_maintenance_flag = True
+                                    break
+                            else:
+                                margin_maintenance_rate = float('inf')
+                        
+                    if pos[2] == "Buy-child":
+                        if price - last_price >= profit_width:
+                            effective_margin += order_size * (price - pos[3] ) - pos[4]
+                            margin_deposit += order_size * (price - pos[3])
+                            profit =  (price - pos[3]) * order_size
+                            realized_profit += profit
+                            required_margin -= pos[5]
+                            pos[2] = "Sell-child-Closed"
+                            
+                            if abs(required_margin) > 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                                if margin_maintenance_rate <= 100:
+                                    print("executed loss cut in last_price <= grid < price")
+                                    margin_maintenance_flag = True
+                                    break
+                            else:
+                                margin_maintenance_rate = float('inf')
+
+                # 買いメインポジション、売りヘッジポジションのナンピン
+                gradient = Gradient[i]
+                if price - last_price < - entry_interval and gradient > 0:
+                    add_required_margin = price * order_size * required_margin_rate
+                    required_margin += add_required_margin
+                    positions.append([order_size, i, 'Buy-main', price, 0, add_required_margin])
+
+                    if abs(required_margin) > 0:
+                        margin_maintenance_rate = effective_margin / required_margin * 100
+                        if margin_maintenance_rate <= 100:
+                            print("executed loss cut in last_price <= grid < price")
+                            margin_maintenance_flag = True
+                            break
+                    else:
+                        margin_maintenance_rate = float('inf')
+                        
+                if price - last_price > entry_interval and gradient < 0:
+                    add_required_margin = price * order_size * required_margin_rate
+                    required_margin += add_required_margin
+                    positions.append([order_size, i, 'Sell-hedge', price, 0, add_required_margin])
+
+                    if abs(required_margin) > 0:
+                        margin_maintenance_rate = effective_margin / required_margin * 100
+                        if margin_maintenance_rate <= 100:
+                            print("executed loss cut in last_price <= grid < price")
+                            margin_maintenance_flag = True
+                            break
+                    else:
+                        margin_maintenance_rate = float('inf')
+
+
+
+                for pos in positions:
+                    
+                    if margin_deposit - effective_margin < total_threshold:	#margin_deposit - effective_margin = unrealized_profit
+                        if (pos[2] == 'Buy-child' or pos[2] == 'Buy-main') and pos[1] < len(data) - 1:
+                            # Update unrealized profit for open positions
+                            unrealized_profit = order_size * (price - pos[3])
+                            effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
+                            add_required_margin = -pos[5] + price * order_size * required_margin_rate
+                            required_margin += add_required_margin
+                            pos[4] = unrealized_profit  # Store current unrealized profit in the position
+                            pos[5] += add_required_margin
+                            print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+                            if abs(required_margin) > 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                                if margin_maintenance_rate <= 100:
+                                    print("executed loss cut")
+                                    margin_maintenance_flag = True
+                                    continue
+                            else:
+                                margin_maintenance_rate = float('inf')
+    
+    
+                    elif (pos[2] == 'Sell-child' or pos[2] == 'Sell-hedge') and pos[1] < len(data) - 1:
+                        # Update unrealized profit for open positions
+                        unrealized_profit = order_size * (pos[3] - price)
+                        effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
+                        add_required_margin = -pos[5] + price * order_size * required_margin_rate
+                        required_margin += add_required_margin
+                        pos[4] = unrealized_profit  # Store current unrealized profit in the position
+                        pos[5] += add_required_margin
+                        print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+    
+                        if abs(required_margin) > 0:
+                            margin_maintenance_rate = effective_margin / required_margin * 100
+                            if margin_maintenance_rate <= 100:
+                                print("executed loss cut")
+                                margin_maintenance_flag = True
+                                continue
+                        else:
+                            margin_maintenance_rate = float('inf')
+
+                    if margin_deposit - effective_margin >= total_threshold:# 全ポジションの決済条件
+                        if pos[2] == 'Sell-child' or pos[2] == 'Sell-hedge' or pos[2] == 'Buy-child' or pos[2] == 'Buy-main':
+    
+                            if pos[2] == 'Sell-child' or pos[2] == 'Sell-hedge':
+                                profit = - (price - pos[3]) * order_size  # 現在の損失計算
+                            if pos[2] == 'Buy-child' or 'Buy-main':
+                                profit = (price - pos[3]) * order_size
+                            effective_margin += profit - pos[4] # 損失分を証拠金に反映
+                            margin_deposit += profit
+                            realized_profit += profit
+                            required_margin -= pos[5]
+                            pos[5] = 0
+                            trades.append((date, price, 'Forced Closed'))
+                            print(f"Forced Closed at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                            positions.remove(pos)
+                            if abs(required_margin) > 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                                if margin_maintenance_rate < 100:
+                                    margin_maintenance_flag = True
+                                    continue
+                            else:
+                                margin_maintenance_rate = float('inf')
+                # Update last_price for the next iteration
+            last_price = price
+    
+    
+               # 強制ロスカットのチェック
+            while positions and margin_maintenance_flag:
+
+                pos = positions.pop(0)
+                if pos[2] == 'Sell-child' pos[2] == 'Sell-hedge' or pos[2] == 'Buy-child' or pos[2] == 'Buy-main':
+                    if pos[2] == 'Sell-child' or pos[2] == 'Sell-hedge':
+                        profit = - (price - pos[3]) * order_size  # 現在の損失計算
+                    if pos[2] == 'Buy-child' or 'Buy-main':
+                        profit = (price - pos[3]) * order_size
+                    effective_margin += profit - pos[4] # 損失分を証拠金に反映
+                    margin_deposit += profit
+                    realized_profit += profit
+                    required_margin -= pos[5]
+                    pos[5] = 0
+                    trades.append((date, price, 'Forced Closed'))
+                    print(f"Forced Closed at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                    if abs(required_margin) > 0:
+                        margin_maintenance_rate = effective_margin / required_margin * 100
+                    else:
+                        margin_maintenance_rate = float('inf')
+
     # Calculate position value
     if positions:
         position_value = sum(size * (data.iloc[-1] - grid) if 'Buy' in status and not status.endswith('Closed') else
