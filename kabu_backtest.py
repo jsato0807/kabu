@@ -994,15 +994,17 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 	
     elif strategy == 'milagroman3':
         last_price = None  # Variable to store the last processed price
-        data['SMA_200'] = data['Close'].rolling(window=200).mean()
-        Gradient = np.gradient(data['SMA_200'])
+        last_gradient = None
+        SMA_200 = data.rolling(window=200).mean()
+        Gradient = np.gradient(SMA_200)
         for i in range(len(data)):
             if margin_maintenance_flag:
                 break
             date = data.index[i]
             price = data.iloc[i]
+            gradient = Gradient[i]
 
-            if last_price is not None:
+            if last_price is not None and last_gradient is not None:
                 # 買い子ポジションと売り子ポジションの同時エントリー
                 add_required_margin = price * order_size * required_margin_rate
                 required_margin += add_required_margin
@@ -1052,7 +1054,6 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 margin_maintenance_rate = float('inf')
 
                 # 買いメインポジション、売りヘッジポジションのナンピン
-                gradient = Gradient[i]
                 if price - last_price < - entry_interval and gradient > 0:
                     add_required_margin = price * order_size * required_margin_rate
                     required_margin += add_required_margin
@@ -1146,9 +1147,32 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                     continue
                             else:
                                 margin_maintenance_rate = float('inf')
+
+                #売りヘッジポジションのトレンド判定による決済
+                if gradient >0 and last_gradient < 0:
+                    for pos in positions:
+                        if pos[2] == 'Sell-hedge':
+                            profit = - (price - pos[3]) * order_size  # 現在の損失計算
+                            effective_margin += profit - pos[4] # 損失分を証拠金に反映
+                            margin_deposit += profit
+                            realized_profit += profit
+                            required_margin -= pos[5]
+                            pos[5] = 0
+                            print(f"Closed sell positions at price: {price}, gradient: {gradient} last_gradient: {last_gradient}, Effective Margin: {effective_margin}")
+                            positions.remove(pos)
+                            if abs(required_margin) > 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                            else:
+                                margin_maintenance_rate = float('inf')
+
+
+
                 # Update last_price for the next iteration
             last_price = price
     
+
+                # Update last_gradient for the next iteration
+            last_gradient = gradient
     
                # 強制ロスカットのチェック
             while positions and margin_maintenance_flag:
@@ -1194,7 +1218,7 @@ grid_end = 110
 order_sizes = [1000]
 num_traps_options = [1100]
 profit_widths = [1]
-strategies = ['long_only']
+strategies = ['milagroman3']
 densities = [2]
 entry_intervals = [0.5]  # エントリー間隔
 total_thresholds = [5.0]  # 全ポジション決済の閾値
@@ -1206,8 +1230,9 @@ results = []
 
 
 # バックテストの実行
-if "diamond" in strategies and ("milagroman" in strategies or "milagroman2"in strategies):
-    print("hello diamond and milagroman or milagroman2 both")
+milagroman_list = [m for m in strategies if "milagroman" in m]
+if "diamond" in strategies and milagroman_list:
+    print("hello diamond and {} both".format(milagroman_list))
     for order_size, num_traps, profit_width, strategy, density, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, densities, entry_intervals, total_thresholds):
         effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
             data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=density
@@ -1215,7 +1240,7 @@ if "diamond" in strategies and ("milagroman" in strategies or "milagroman2"in st
   
         results.append((effective_margin, margin_deposit, realized_profit, position_value, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate, entry_interval, total_threshold))
         
-elif "diamond" in strategies and (not "milagroman" in strategies or not "milagroman2" in strategies):
+elif "diamond" in strategies and not milagroman_list:
     print("hello diamond only")
     for order_size, num_traps, profit_width, strategy, density in product(order_sizes, num_traps_options, profit_widths, strategies, densities):
         effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, _, _, trades = traripi_backtest(
@@ -1226,8 +1251,8 @@ elif "diamond" in strategies and (not "milagroman" in strategies or not "milagro
                         ))
 
 
-elif not "diamond" in strategies and ("milagroman" in strategies or "milagroman2" in strategies):
-    print("milagroman or milagroman2 only")
+elif not "diamond" in strategies and milagroman_list:
+    print("{} only".format(milagroman_list))
     for order_size, num_traps, profit_width, strategy, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, entry_intervals, total_thresholds):
         effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
             data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=None
@@ -1236,7 +1261,7 @@ elif not "diamond" in strategies and ("milagroman" in strategies or "milagroman2
         results.append((effective_margin, margin_deposit, realized_profit, position_value, order_size, num_traps, profit_width, strategy, None, required_margin, margin_maintenance_rate, entry_interval, total_threshold))
 
 
-elif not "diamond" in strategies and (not "milagroman" in strategies or not "milagroman2" in strategies):
+elif not "diamond" in strategies and not milagroman_list:
     print("nothing")
     for order_size, num_traps, profit_width, strategy in product(order_sizes, num_traps_options, profit_widths, strategies):
         effective_margin, margin_deposit, realized_profit, position_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
