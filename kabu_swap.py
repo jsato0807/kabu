@@ -75,7 +75,7 @@ def parse_swap_points(html):
     #print(f"Debug: Swap points found - {swap_points}")  # デバッグ出力
     return swap_points
 
-def get_total_swap_points(pair,position,open_date, current_date):
+def get_total_swap_points(pair,position,open_date, current_date, order_size):
     url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
     html = get_html(url)
     #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
@@ -90,7 +90,7 @@ def get_total_swap_points(pair,position,open_date, current_date):
     # 各要素の通貨名を変換する
     for item in swap_points:
         item['通貨名'] = convert_currency_name(item['通貨名'])
-    print(swap_points)     
+    #print(swap_points)     
     for point in swap_points:
         if pair in point.values():
 
@@ -107,7 +107,7 @@ def get_total_swap_points(pair,position,open_date, current_date):
                 #print(f"Debug: Skipping invalid swap point value - {point.get('買スワップ')}")
                 continue
             
-    total_swap_points *= rollover_days
+    total_swap_points *= rollover_days * order_size/1000 # divided 1000 because this data is counted per 1000 Transaction currency amount
     
     return total_swap_points
 
@@ -133,7 +133,7 @@ def convert_currency_name(currency_name):
     return currency_name  # 変換できない場合はそのまま返す
 
 
-if __name__ == "__main__":
-
-    total_swap_points =  get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,9),datetime(2024,5,10))
-    print(total_swap_points)
+#if __name__ == "__main__":
+#
+#    total_swap_points =  get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,9),datetime(2024,5,10))
+#    print(total_swap_points)
