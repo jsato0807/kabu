@@ -118,7 +118,7 @@ def get_total_swap_points(pair,position,open_date, current_date, order_size):
                 print(f"Debug: Skipping invalid swap point value - {point.get('買スワップ')}")
                 continue
             
-    total_swap_points *= rollover_days * order_size/1000 # divided 1000 because this data is counted per 1000 Transaction currency amount
+    total_swap_points *= rollover_days * order_size/10000 # divided 1000 because this data is counted per 1000 Transaction currency amount
     
     return total_swap_points
 
