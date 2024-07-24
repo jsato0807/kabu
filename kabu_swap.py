@@ -10,23 +10,31 @@ def is_holiday(date):
 
 # 2営業日後の日付を計算する関数
 def add_business_days(start_date, num_days):
-    current_date = start_date
+    business_day = start_date
     added_days = 0
     while added_days < num_days:
-        current_date += timedelta(days=1)
-        if current_date.weekday() < 5 and not is_holiday(current_date):
+        business_day += timedelta(days=1)
+        if business_day.weekday() < 5 and not is_holiday(business_day):
             added_days += 1
-    return current_date
+    return business_day
 
 # ロールオーバーの日数を計算する関数（修正版）
-def calculate_rollover_days(open_date,current_date):
+def calculate_rollover_days(open_date, current_date):
 
-    if current_date + timedelta(days=2) == add_business_days(current_date,2) :
-        rollover_days = current_date - open_date + timedelta(days=1)
-    if current_date + timedelta(days=2) < add_business_days(current_date,2):
-        rollover_days = add_business_days(current_date,2) - (current_date+timedelta(days=1))
+    rollover_days = 0  # デフォルト値として0を設定
+
+    # 2つの日付が一致するかどうかの条件
+    if open_date + timedelta(days=2) == add_business_days(open_date, 2):
+        if current_date >= add_business_days(open_date, 2):
+            rollover_days = (current_date - add_business_days(open_date, 2)).days
+
+    if open_date + timedelta(days=2) < add_business_days(open_date, 2):
+
+        if current_date - timedelta(days=1) >= open_date:
+            rollover_days = (current_date - open_date - timedelta(days=1)).days
     
-    return rollover_days.days
+    return rollover_days
+
 
 
 
@@ -82,29 +90,32 @@ def get_total_swap_points(pair,position,open_date, current_date, order_size):
     swap_points = parse_swap_points(html)
     
     rollover_days = calculate_rollover_days(open_date, current_date)
+    #rollover_days = 0
+    #print("rollover_days: {}".format(rollover_days))
   
     # 例として、全てのスワップポイントの合計を計算する（必要に応じて修正）
     total_swap_points = 0
- 
+
 
     # 各要素の通貨名を変換する
     for item in swap_points:
+        
         item['通貨名'] = convert_currency_name(item['通貨名'])
-    #print(swap_points)     
+
     for point in swap_points:
         if pair in point.values():
 
             try:
-                if position == "Buy":
+                if position == "Buy" or position == "Sell-Closed":
                     buy_swap = float(point.get('買スワップ', 0))
-                    if buy_swap != 0:  # 0以外の数値の場合にのみ加算する
+                    if abs(buy_swap) > 0:  # 0以外の数値の場合にのみ加算する
                         total_swap_points += buy_swap
-                if position == "Sell":
+                if position == "Sell" or position == "Buy-Closed":
                     sell_swap = float(point.get('売スワップ', 0))
-                    if sell_swap != 0:  # 0以外の数値の場合にのみ加算する
+                    if abs(sell_swap) > 0:  # 0以外の数値の場合にのみ加算する
                         total_swap_points += sell_swap
             except ValueError:
-                #print(f"Debug: Skipping invalid swap point value - {point.get('買スワップ')}")
+                print(f"Debug: Skipping invalid swap point value - {point.get('買スワップ')}")
                 continue
             
     total_swap_points *= rollover_days * order_size/1000 # divided 1000 because this data is counted per 1000 Transaction currency amount
@@ -115,25 +126,35 @@ def get_total_swap_points(pair,position,open_date, current_date, order_size):
 # 通貨名を変換する関数
 def convert_currency_name(currency_name):
     currency_mappings = {
-        '米ドル/': 'USDJPY=X',
-        'ユーロ/': 'EURJPY=X',
-        '英ポンド/': 'GBPJPY=X',
-        '豪ドル/': 'AUDJPY=X',
-        'NZドル/': 'NZDJPY=X',
-        'カナダドル/': 'CADJPY=X',
-        '南アフリカランド/': 'ZARJPY=X',
-        'トルコリラ/': 'TRYJPY=X',
-        'メキシコペソ/': 'MXNJPY=X',
-        '米ドル/カナダドル': 'USDCAD=X',
-        '豪ドル/NZドル': 'AUDNZD=X'
-    }
+    '米ドル/カナダドル': 'USDCAD=X',
+    'ユーロ/米ドル': 'EURUSD=X',
+    '英ポンド/米ドル': 'GBPUSD=X',
+    '豪ドル/米ドル': 'AUDUSD=X',
+    'NZドル/米ドル': 'NZDUSD=X',
+    'ユーロ/英ポンド': 'EURGBP=X',
+    '豪ドル/NZドル': 'AUDNZD=X',
+    '米ドル/': 'USDJPY=X',
+    'ユーロ/': 'EURJPY=X',
+    '英ポンド/': 'GBPJPY=X',
+    '豪ドル/': 'AUDJPY=X',
+    'NZドル/': 'NZDJPY=X',
+    'カナダドル/': 'CADJPY=X',
+    '南アフリカランド/': 'ZARJPY=X',
+    'トルコリラ/': 'TRYJPY=X',
+    'メキシコペソ/': 'MXNJPY=X'
+}
     for key, value in currency_mappings.items():
         if key in currency_name:
             return value
     return currency_name  # 変換できない場合はそのまま返す
 
 
-#if __name__ == "__main__":
-#
-#    total_swap_points =  get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,9),datetime(2024,5,10))
-#    print(total_swap_points)
+if __name__ == "__main__":
+    order_size = 1000
+    total_swap_points =  get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,13),datetime(2024,5,17),order_size)
+    print(total_swap_points)
+    
+    a = get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,13),datetime(2024,5,15),order_size)
+    b = get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,13),datetime(2024,5,17),order_size)
+    
+    print(f"a,b,a+b:{a,b,a+b}")
