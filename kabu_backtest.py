@@ -66,7 +66,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break  # Exit loop once position is taken
@@ -97,7 +97,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin, date])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break  # Exit loop once position is taken
@@ -155,32 +155,31 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         else:
                             margin_maintenance_rate = float('inf')
 
-                                
-                    #check swap
-                    if i > pos[1]:
-                        if i - pos[1] == 1:
-                            first_date = data.index[pos[1]]
-                            second_date = date
-                        if i - pos[1] >= 2:
-                            first_date = pos[6]
-                            second_date = date
+                #""" 
+                #check swap
+                if i > pos[1]:
 
-                        if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and pos[6] + timedelta(days=1) == date):
-                            effective_margin += get_total_swap_points(pair,pos[2],first_date,second_date,order_size)
+                    if pos[2] == "Buy" or (pos[2] == "Sell-Closed" and pos[6] == date):
 
-                        if pos[2] == "Buy":
-                            pos[6] = second_date
+                        effective_margin += get_total_swap_points(pair,pos[2],data.index[pos[1]],date,order_size) - get_total_swap_points(pair,pos[2],data.index[pos[1]],pos[6],order_size)
+                        print(f'added swap to effective_margin: {effective_margin}')
+
+                        if pos[2] != "Sell-Closed":
+                            pos[6] = date
+                        
 
 
-                        if abs(required_margin) > 0:
-                            margin_maintenance_rate = effective_margin / required_margin * 100
-                            if margin_maintenance_rate <= 100:
-                                print("executed loss cut in price - pos[3] >=  profit_width")
-                                margin_maintenance_flag = True
-                                continue
-                        else:
-                            margin_maintenance_rate = float('inf')
 
+
+                    if abs(required_margin) > 0:
+                        margin_maintenance_rate = effective_margin / required_margin * 100
+                        if margin_maintenance_rate <= 100:
+                            print("executed loss cut in check swap")
+                            margin_maintenance_flag = True
+                            continue
+                    else:
+                        margin_maintenance_rate = float('inf')
+                    #"""
 
 
 
@@ -245,7 +244,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at price {price}, last_price {last_price} with grid {grid}, Effective Margin: {effective_margin}, Required Margin:{required_margin}")
                                 #break  # Exit loop once position is taken
@@ -276,7 +275,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at price {price}, last_price {last_price} with grid {grid}, Effective Margin: {effective_margin}, Required Margin:{required_margin}")
                                 #break  # Exit loop once position is taken
@@ -402,7 +401,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
@@ -431,7 +430,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
@@ -463,7 +462,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
@@ -491,7 +490,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
@@ -664,7 +663,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
@@ -693,7 +692,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
@@ -725,7 +724,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}, Required Margin: {required_margin}")
                                 #break
@@ -754,7 +753,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,0])
+                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break
@@ -892,10 +891,10 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 # 買いと売りの同時エントリー
                 add_required_margin = price * order_size * required_margin_rate
                 required_margin += add_required_margin
-                positions.append([order_size, i, 'Buy', price, 0, add_required_margin,0])
+                positions.append([order_size, i, 'Buy', price, 0, add_required_margin,date])
                 add_required_margin = price * order_size * required_margin_rate
                 required_margin += add_required_margin        
-                positions.append([order_size, i, 'Sell', price, 0, add_required_margin,0])
+                positions.append([order_size, i, 'Sell', price, 0, add_required_margin,date])
 
 
                     # 売りポジションの決済
@@ -922,7 +921,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 if price - last_price < - entry_interval:
                     add_required_margin = price * order_size * required_margin_rate
                     required_margin += add_required_margin
-                    positions.append([order_size, i, 'Buy', price, 0, add_required_margin,0])
+                    positions.append([order_size, i, 'Buy', price, 0, add_required_margin,date])
 
                     if abs(required_margin) > 0:
                         margin_maintenance_rate = effective_margin / required_margin * 100
@@ -1039,10 +1038,10 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 # 買い子ポジションと売り子ポジションの同時エントリー
                 add_required_margin = price * order_size * required_margin_rate
                 required_margin += add_required_margin
-                positions.append([order_size, i, 'Buy-child', price, 0, add_required_margin,0])
+                positions.append([order_size, i, 'Buy-child', price, 0, add_required_margin,date])
                 add_required_margin = price * order_size * required_margin_rate
                 required_margin += add_required_margin        
-                positions.append([order_size, i, 'Sell-child', price, 0, add_required_margin,0])
+                positions.append([order_size, i, 'Sell-child', price, 0, add_required_margin,date])
 
 
 
@@ -1088,7 +1087,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 if price - last_price < - entry_interval and gradient > 0:
                     add_required_margin = price * order_size * required_margin_rate
                     required_margin += add_required_margin
-                    positions.append([order_size, i, 'Buy-main', price, 0, add_required_margin,0])
+                    positions.append([order_size, i, 'Buy-main', price, 0, add_required_margin,date])
 
                     if abs(required_margin) > 0:
                         margin_maintenance_rate = effective_margin / required_margin * 100
@@ -1102,7 +1101,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 if price - last_price > entry_interval and gradient < 0:
                     add_required_margin = price * order_size * required_margin_rate
                     required_margin += add_required_margin
-                    positions.append([order_size, i, 'Sell-hedge', price, 0, add_required_margin,0])
+                    positions.append([order_size, i, 'Sell-hedge', price, 0, add_required_margin,date])
 
                     if abs(required_margin) > 0:
                         margin_maintenance_rate = effective_margin / required_margin * 100
@@ -1226,6 +1225,8 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                     else:
                         margin_maintenance_rate = float('inf')
 
+
+
     # Calculate position value
     if positions:
         position_value = sum(size * (data.iloc[-1] - grid) if 'Buy' in status and not status.endswith('Closed') else
@@ -1235,37 +1236,40 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
         position_value = 0
 
     # Calculate swap values  
+    #"""
     if positions:
-        swap_value = sum(get_total_swap_points(pair,pos,data.index[pos[1]],date,order_size) if 'Buy'or 'Sell' in status and not status.endswith('Closed') else
-                     0 for size, _, status, _, _, _, _ in positions) + sum(get_total_swap_points(pair,pos,data.index[pos[1]],pos[6]+timedelta(days=1),order_size) if 'Buy-Closed' or 'Sell-Closed' in status else 0 for size, _, status, _, _, _, _ in positions)
+        swap_value = sum(get_total_swap_points(pair,status,data.index[index],date,size) if ('Buy'or 'Sell') in status and not status.endswith('Closed') else
+                     0 for size, index, status, _, _, _, _ in positions) + sum(get_total_swap_points(pair,status,data.index[index],swap_day,size) if 'Buy-Closed' or 'Sell-Closed' in status else 0 for size, index, status, _, _, _, swap_day in positions)
     else:
         swap_value = 0
 
-    ## Calculate margin deposit
+    # Calculate margin deposit
     #margin_deposit = initial_funds + realized_profit
 
     return effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades
 
 
+
+pair = "USDJPY=X"
+interval="1d"
+end_date = datetime.strptime("2023-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+start_date = datetime.strptime("2021-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+initial_funds = 1000000
+grid_start = 100
+grid_end = 110
+entry_interval = [0.5]  # エントリー間隔
+total_threshold = [5.0]  # 全ポジション決済の閾値
+# データの取得
+data = fetch_currency_data(pair, start_date, end_date,interval)
+
 if __name__ == "__main__":
     # パラメータ設定
-    pair = "USDJPY=X"
-    interval="1d"
-    end_date = datetime.strptime("2023-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
-    start_date = datetime.strptime("2021-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-    initial_funds = 1000000
-    grid_start = 100
-    grid_end = 110
     order_sizes = [1000]
     num_traps_options = [2]
     profit_widths = [2]
     strategies = ['long_only']
     densities = [2]
-    entry_intervals = [0.5]  # エントリー間隔
-    total_thresholds = [5.0]  # 全ポジション決済の閾値
     
-    # データの取得
-    data = fetch_currency_data(pair, start_date, end_date,interval)
     
     results = []
     
