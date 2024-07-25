@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import yfinance as yf
 from itertools import product
-from kabu_swap import get_total_swap_points, add_business_days
+from kabu_swap import get_total_swap_points, get_html, parse_swap_points
 from datetime import datetime, timedelta
 
 def fetch_currency_data(pair, start, end, interval):
@@ -29,6 +29,12 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
     trades = []
     margin_maintenance_flag = False
     order_capacity_flag = False
+
+    url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
+    html = get_html(url)
+    #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
+    swap_points = parse_swap_points(html)
+
 
     if strategy == 'long_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
@@ -141,7 +147,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         realized_profit += profit
                         required_margin -= pos[5]
                         pos[5] = 0
-                        pos[2] = 'Sell-Closed'
+                        pos[2] = 'Buy-Closed'
                         trades.append((date, price, 'Sell'))
                         print(f"Closed Sell position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}, Required Margin: {required_margin}")
                         #break
@@ -159,12 +165,12 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                 #check swap
                 if i > pos[1]:
 
-                    if pos[2] == "Buy" or (pos[2] == "Sell-Closed" and pos[6] == date):
+                    if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and pos[6] == date):
 
-                        effective_margin += get_total_swap_points(pair,pos[2],data.index[pos[1]],date,order_size) - get_total_swap_points(pair,pos[2],data.index[pos[1]],pos[6],order_size)
+                        effective_margin += get_total_swap_points(swap_points,pair,pos[2],data.index[pos[1]],date,order_size) - get_total_swap_points(swap_points,pair,pos[2],data.index[pos[1]],pos[6],order_size)
                         print(f'added swap to effective_margin: {effective_margin}')
 
-                        if pos[2] != "Sell-Closed":
+                        if pos[2] != "Buy-Closed":
                             pos[6] = date
                         
 
@@ -321,7 +327,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         realized_profit += profit
                         required_margin -= pos[5]
                         pos[5] = 0
-                        pos[2] = 'Buy-Closed'
+                        pos[2] = 'Sell-Closed'
                         trades.append((date, price, 'Buy'))
                         print(f"Closed Buy position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         #break
@@ -532,7 +538,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         realized_profit += profit
                         required_margin -= pos[5]
                         pos[5] = 0
-                        pos[2] = 'Sell-Closed'
+                        pos[2] = 'Buy-Closed'
                         trades.append((date, price, 'Sell'))
                         print(f"Closed Sell position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         #break
@@ -572,7 +578,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         realized_profit += profit
                         required_margin -= pos[5]
                         pos[5] = 0
-                        pos[2] = 'Buy-Closed'
+                        pos[2] = 'Sell-Closed'
                         trades.append((date, price, 'Buy'))
                         print(f"Closed Buy position at {pos[3]+profit_width} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         #break
@@ -795,7 +801,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         realized_profit += profit
                         required_margin -= pos[5]
                         pos[5] = 0
-                        pos[2] = 'Sell-Closed'
+                        pos[2] = 'Buy-Closed'
                         trades.append((date, price, 'Sell'))
                         print(f"Closed Sell position at {price} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                         #break
@@ -835,7 +841,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             realized_profit += profit
                             required_margin -= pos[5]
                             pos[5] = 0
-                            pos[2] = 'Buy-Closed'
+                            pos[2] = 'Sell-Closed'
                             trades.append((date, price, 'Buy'))
                             print(f"Closed Buy position at {price} with profit {profit} ,grid {pos[3]}, Effective Margin: {effective_margin}")
                             #break
@@ -1072,7 +1078,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             profit =  (price - pos[3]) * order_size
                             realized_profit += profit
                             required_margin -= pos[5]
-                            pos[2] = "Sell-child-Closed"
+                            pos[2] = "Buy-child-Closed"
                             
                             if abs(required_margin) > 0:
                                 margin_maintenance_rate = effective_margin / required_margin * 100
@@ -1238,8 +1244,8 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
     # Calculate swap values  
     #"""
     if positions:
-        swap_value = sum(get_total_swap_points(pair,status,data.index[index],date,size) if ('Buy'or 'Sell') in status and not status.endswith('Closed') else
-                     0 for size, index, status, _, _, _, _ in positions) + sum(get_total_swap_points(pair,status,data.index[index],swap_day,size) if 'Buy-Closed' or 'Sell-Closed' in status else 0 for size, index, status, _, _, _, swap_day in positions)
+        swap_value = sum(get_total_swap_points(swap_points,pair,status,data.index[index],date,size) if ('Buy'or 'Sell') in status and not status.endswith('Closed') else
+                     0 for size, index, status, _, _, _, _ in positions) + sum(get_total_swap_points(swap_points,pair,status,data.index[index],swap_day,size) if 'Buy-Closed' or 'Sell-Closed' in status else 0 for size, index, status, _, _, _, swap_day in positions)
     else:
         swap_value = 0
 
