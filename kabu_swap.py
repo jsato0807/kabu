@@ -83,11 +83,7 @@ def parse_swap_points(html):
     #print(f"Debug: Swap points found - {swap_points}")  # デバッグ出力
     return swap_points
 
-def get_total_swap_points(pair,position,open_date, current_date, order_size):
-    url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
-    html = get_html(url)
-    #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
-    swap_points = parse_swap_points(html)
+def get_total_swap_points(swap_points,pair,position,open_date, current_date, order_size):
     
     rollover_days = calculate_rollover_days(open_date, current_date)
     #rollover_days = 0
@@ -106,11 +102,11 @@ def get_total_swap_points(pair,position,open_date, current_date, order_size):
         if pair in point.values():
 
             try:
-                if position == "Buy" or position == "Sell-Closed":
+                if position == "Buy" or position == "Buy-Closed":
                     buy_swap = float(point.get('買スワップ', 0))
                     if abs(buy_swap) > 0:  # 0以外の数値の場合にのみ加算する
                         total_swap_points += buy_swap
-                if position == "Sell" or position == "Buy-Closed":
+                if position == "Sell" or position == "Sell-Closed":
                     sell_swap = float(point.get('売スワップ', 0))
                     if abs(sell_swap) > 0:  # 0以外の数値の場合にのみ加算する
                         total_swap_points += sell_swap
@@ -151,10 +147,14 @@ def convert_currency_name(currency_name):
 
 if __name__ == "__main__":
     order_size = 1000
-    total_swap_points =  get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,13),datetime(2024,5,17),order_size)
+    url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
+    html = get_html(url)
+    #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
+    swap_points = parse_swap_points(html)
+    total_swap_points =  get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,5,13,0),datetime(2024,5,16,5),order_size)
     print(total_swap_points)
     
-    a = get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,13),datetime(2024,5,15),order_size)
-    b = get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,13),datetime(2024,5,17),order_size)
+    a = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,5,13),datetime(2024,5,15),order_size)
+    b = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,5,13),datetime(2024,5,17),order_size)
     
     print(f"a,b,a+b:{a,b,a+b}")
