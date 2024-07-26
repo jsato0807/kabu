@@ -20,19 +20,7 @@ def add_business_days(start_date, num_days):
 
 # ロールオーバーの日数を計算する関数（修正版）
 def calculate_rollover_days(open_date, current_date):
-
-    rollover_days = 0  # デフォルト値として0を設定
-
-    # 2つの日付が一致するかどうかの条件
-    if open_date + timedelta(days=2) == add_business_days(open_date, 2):
-        if current_date >= add_business_days(open_date, 2):
-            rollover_days = (current_date - add_business_days(open_date, 2)).days
-
-    if open_date + timedelta(days=2) < add_business_days(open_date, 2):
-
-        if current_date - timedelta(days=1) >= open_date:
-            rollover_days = (current_date - open_date - timedelta(days=1)).days
-    
+    rollover_days = (add_business_days(current_date, 2) - add_business_days(open_date, 2)).days
     return rollover_days
 
 
@@ -151,10 +139,10 @@ if __name__ == "__main__":
     html = get_html(url)
     #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
     swap_points = parse_swap_points(html)
-    total_swap_points =  get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,5,13,0),datetime(2024,5,16,5),order_size)
+    total_swap_points =  get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,5),datetime(2024,6,12),order_size)
     print(total_swap_points)
     
-    a = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,5,13),datetime(2024,5,15),order_size)
-    b = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,5,13),datetime(2024,5,17),order_size)
-    
-    print(f"a,b,a+b:{a,b,a+b}")
+    #a = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,7),datetime(2024,6,10),order_size)
+    #b = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,10),datetime(2024,6,17),order_size)
+    ###
+    #print(f"a,b,a+b:{a,b,a+b}")
