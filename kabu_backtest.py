@@ -984,6 +984,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             profit =  (pos[3] - price) * order_size
                             realized_profit += profit
                             required_margin -= pos[5]
+                            pos[5] = 0
                             pos[2] = "Sell-Closed"
                             
                             if abs(required_margin) > 0:
@@ -1033,24 +1034,24 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                                 margin_maintenance_rate = float('inf')
     
     
-                    elif pos[2] == 'Sell' and pos[1] < len(data) - 1:
-                        # Update unrealized profit for open positions
-                        unrealized_profit = order_size * (pos[3] - price)
-                        effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
-                        add_required_margin = -pos[5] + price * order_size * required_margin_rate
-                        required_margin += add_required_margin
-                        pos[4] = unrealized_profit  # Store current unrealized profit in the position
-                        pos[5] += add_required_margin
-                        print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
-    
-                        if abs(required_margin) > 0:
-                            margin_maintenance_rate = effective_margin / required_margin * 100
-                            if margin_maintenance_rate <= 100:
-                                print("executed loss cut")
-                                margin_maintenance_flag = True
-                                continue
-                        else:
-                            margin_maintenance_rate = float('inf')
+                        elif pos[2] == 'Sell' and pos[1] < len(data) - 1:
+                            # Update unrealized profit for open positions
+                            unrealized_profit = order_size * (pos[3] - price)
+                            effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
+                            add_required_margin = -pos[5] + price * order_size * required_margin_rate
+                            required_margin += add_required_margin
+                            pos[4] = unrealized_profit  # Store current unrealized profit in the position
+                            pos[5] += add_required_margin
+                            print(f"updated effective margin against price {price} , Effective Margin: {effective_margin}")
+        
+                            if abs(required_margin) > 0:
+                                margin_maintenance_rate = effective_margin / required_margin * 100
+                                if margin_maintenance_rate <= 100:
+                                    print("executed loss cut")
+                                    margin_maintenance_flag = True
+                                    continue
+                            else:
+                                margin_maintenance_rate = float('inf')
 
                     if margin_deposit - effective_margin >= total_threshold:# 全ポジションの決済条件
                         if pos[2] == 'Sell' or pos[2] == 'Buy':
@@ -1102,8 +1103,8 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = float('inf')
 
 
-                #""" 
-                #check swap
+            """ 
+            #check swap
             for pos in positions:
                 if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1) == date) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and add_business_days(pos[6],1) == date):
 
@@ -1122,7 +1123,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         continue
                 else:
                     margin_maintenance_rate = float('inf')
-                    #"""
+                    """
 
 
 	
