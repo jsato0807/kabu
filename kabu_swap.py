@@ -90,11 +90,11 @@ def get_total_swap_points(swap_points,pair,position,open_date, current_date, ord
         if pair in point.values():
 
             try:
-                if position == "Buy" or position == "Buy-Closed":
+                if "Buy" in position:
                     buy_swap = float(point.get('買スワップ', 0))
                     if abs(buy_swap) > 0:  # 0以外の数値の場合にのみ加算する
                         total_swap_points += buy_swap
-                if position == "Sell" or position == "Sell-Closed":
+                if "Sell" in position:
                     sell_swap = float(point.get('売スワップ', 0))
                     if abs(sell_swap) > 0:  # 0以外の数値の場合にのみ加算する
                         total_swap_points += sell_swap
@@ -139,10 +139,14 @@ if __name__ == "__main__":
     html = get_html(url)
     #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
     swap_points = parse_swap_points(html)
-    total_swap_points =  get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,5),datetime(2024,6,12),order_size)
+    total_swap_points =  get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,5,31),datetime(2024,6,12),order_size)
     print(total_swap_points)
     
-    #a = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,7),datetime(2024,6,10),order_size)
-    #b = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,10),datetime(2024,6,17),order_size)
+
+
+
+    a = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,4),datetime(2024,6,10),order_size)
+    b = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,11),datetime(2024,6,11),order_size)
+    c = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,12),datetime(2024,6,12),order_size)
     ###
-    #print(f"a,b,a+b:{a,b,a+b}")
+    print(f"a,b,a+b+c:{a,b,c,a+b+c}")
