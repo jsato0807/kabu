@@ -71,6 +71,14 @@ def parse_swap_points(html):
     #print(f"Debug: Swap points found - {swap_points}")  # デバッグ出力
     return swap_points
 
+
+def rename_swap_points(swap_points):
+    # 各要素の通貨名を変換する
+    for item in swap_points:
+        
+        item['通貨名'] = convert_currency_name(item['通貨名'])
+    return swap_points
+
 def get_total_swap_points(swap_points,pair,position,open_date, current_date, order_size):
     
     rollover_days = calculate_rollover_days(open_date, current_date)
@@ -80,12 +88,6 @@ def get_total_swap_points(swap_points,pair,position,open_date, current_date, ord
     # 例として、全てのスワップポイントの合計を計算する（必要に応じて修正）
     total_swap_points = 0
 
-
-    # 各要素の通貨名を変換する
-    for item in swap_points:
-        
-        item['通貨名'] = convert_currency_name(item['通貨名'])
-
     for point in swap_points:
         if pair in point.values():
 
@@ -94,10 +96,12 @@ def get_total_swap_points(swap_points,pair,position,open_date, current_date, ord
                     buy_swap = float(point.get('買スワップ', 0))
                     if abs(buy_swap) > 0:  # 0以外の数値の場合にのみ加算する
                         total_swap_points += buy_swap
+                        break
                 if "Sell" in position:
                     sell_swap = float(point.get('売スワップ', 0))
                     if abs(sell_swap) > 0:  # 0以外の数値の場合にのみ加算する
                         total_swap_points += sell_swap
+                        break
             except ValueError:
                 print(f"Debug: Skipping invalid swap point value - {point.get('買スワップ')}")
                 continue

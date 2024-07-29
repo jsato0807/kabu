@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import yfinance as yf
 from itertools import product
-from kabu_swap import get_total_swap_points, get_html, parse_swap_points, add_business_days
+from kabu_swap import get_total_swap_points, get_html, parse_swap_points, add_business_days, rename_swap_points
 from datetime import datetime, timedelta
 
 def fetch_currency_data(pair, start, end, interval):
@@ -34,6 +34,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
     html = get_html(url)
     #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
     swap_points = parse_swap_points(html)
+    swap_points = rename_swap_points(swap_points)
 
 
     if strategy == 'long_only':
@@ -1103,7 +1104,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = float('inf')
 
 
-            """ 
+            #""" 
             #check swap
             for pos in positions:
                 if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1) == date) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and add_business_days(pos[6],1) == date):
@@ -1123,7 +1124,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                         continue
                 else:
                     margin_maintenance_rate = float('inf')
-                    """
+                    #"""
 
 
 	
