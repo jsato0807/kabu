@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import yfinance as yf
 from itertools import product
-from kabu_swap import get_total_swap_points, get_html, parse_swap_points, add_business_days, subtract_business_days
+from kabu_swap import get_total_swap_points, get_html, parse_swap_points, add_business_days
 from datetime import datetime, timedelta
 
 def fetch_currency_data(pair, start, end, interval):
@@ -1264,7 +1264,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
     
                             if pos[2] == 'Sell-child' or pos[2] == 'Sell-hedge':
                                 profit = - (price - pos[3]) * order_size  # 現在の損失計算
-                            if pos[2] == 'Buy-child' or 'Buy-main':
+                            if pos[2] == 'Buy-child' or pos[2] == 'Buy-main':
                                 profit = (price - pos[3]) * order_size
                             effective_margin += profit - pos[4] # 損失分を証拠金に反映
                             margin_deposit += profit
@@ -1329,12 +1329,12 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             margin_maintenance_rate = float('inf')
 
 
-                """
+                #"""
                 for pos in positions:
                     #check swap
                     if pos[2] == "Buy-child" or pos[2] == "Sell-child" or pos[2] == "Buy-main" or pos[2] == "Sell-hedge" or (pos[2] == "Buy-child-Closed" and add_business_days(pos[6],1) == date)or (pos[2] == "Sell-child-Closed" and add_business_days(pos[6],1) == date) or (pos[2] == "Buy-main-Closed" and add_business_days(pos[6],1) == date) or (pos[2] == "Sell-hedge-Closed" and add_business_days(pos[6],1) == date):
 
-                        effective_margin += get_total_swap_points(swap_points,pair,pos[2],data.index[pos[1]],date,order_size) - get_total_swap_points(swap_points,pair,pos[2],data.index[pos[1]],pos[6],order_size)
+                        effective_margin += get_total_swap_points(swap_points,pair,pos[2],pos[6],date,order_size)
                         print(f'added swap to effective_margin: {effective_margin}')
 
                         if not "Closed" in pos[2]:
@@ -1349,12 +1349,12 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             continue
                     else:
                         margin_maintenance_rate = float('inf')
-                    """
+                    #"""
 
 
 
     if positions:
-      print(positions)
+      #print(positions)
       buy_count = sum(1 if 'Buy' in status and not status.endswith('Closed') else 0 for size, index, status, _, _, _, _ in positions)
       sell_count = sum(1 if 'Sell' in status and not status.endswith('Closed') else 0 for size, index, status, _, _, _, _ in positions)
       buy_closed_count = sum(1 if "Buy" in status and 'Closed' in status  else 0 for size, index, status, _, _, _, _ in positions)
@@ -1396,6 +1396,7 @@ start_date = datetime.strptime("2021-09-01","%Y-%m-%d")#datetime.now() - timedel
 initial_funds = 100000000
 grid_start = 100
 grid_end = 150
+strategies = ['milagroman']
 entry_intervals = [-15]  # エントリー間隔
 total_thresholds = [100]  # 全ポジション決済の閾値
 # データの取得
@@ -1406,7 +1407,6 @@ if __name__ == "__main__":
     order_sizes = [1000]
     num_traps_options = [2]
     profit_widths = [10]
-    strategies = ['milagroman3']
     densities = [2]
     
     
