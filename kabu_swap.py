@@ -79,36 +79,47 @@ def rename_swap_points(swap_points):
         item['通貨名'] = convert_currency_name(item['通貨名'])
     return swap_points
 
-def get_total_swap_points(swap_points,pair,position,open_date, current_date, order_size):
-    
-    rollover_days = calculate_rollover_days(open_date, current_date)
-    #rollover_days = 0
-    #print("rollover_days: {}".format(rollover_days))
-  
-    # 例として、全てのスワップポイントの合計を計算する（必要に応じて修正）
-    total_swap_points = 0
+class SwapCalculator:
+    def __init__(self, swap_points):
+        self.swap_points_dict = self._create_swap_dict(swap_points)
 
-    for point in swap_points:
-        if pair in point.values():
+    def _create_swap_dict(self, swap_points):
+        swap_dict = {}
+        for point in swap_points:
+            buy_swap = self._safe_float(point.get('買スワップ', 0))
+            sell_swap = self._safe_float(point.get('売スワップ', 0))
+            swap_dict[pair] = {'buy': buy_swap, 'sell': sell_swap}
+        return swap_dict
 
-            try:
-                if "Buy" in position:
-                    buy_swap = float(point.get('買スワップ', 0))
-                    if abs(buy_swap) > 0:  # 0以外の数値の場合にのみ加算する
-                        total_swap_points += buy_swap
-                        break
-                if "Sell" in position:
-                    sell_swap = float(point.get('売スワップ', 0))
-                    if abs(sell_swap) > 0:  # 0以外の数値の場合にのみ加算する
-                        total_swap_points += sell_swap
-                        break
-            except ValueError:
-                print(f"Debug: Skipping invalid swap point value - {point.get('買スワップ')}")
-                continue
-            
-    total_swap_points *= rollover_days * order_size/10000 # divided 1000 because this data is counted per 1000 Transaction currency amount
-    
-    return total_swap_points
+    def _safe_float(self, value):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            print(f"Debug: Invalid swap point value encountered: {value}")
+            return 0.0
+
+    def get_total_swap_points(self, pair, position, open_date, current_date, order_size):
+        rollover_days = calculate_rollover_days(open_date, current_date)
+        total_swap_points = 0
+        if pair not in self.swap_points_dict:
+            print(f"Debug: Pair {pair} not found in swap points data.")
+            return total_swap_points
+
+        try:
+            if "Buy" in position:
+                buy_swap = self.swap_points_dict[pair]['buy']
+                if abs(buy_swap) > 0:
+                    total_swap_points += buy_swap
+            if "Sell" in position:
+                sell_swap = self.swap_points_dict[pair]['sell']
+                if abs(sell_swap) > 0:
+                    total_swap_points += sell_swap
+        except ValueError:
+            print(f"Debug: Skipping invalid swap point value for pair {pair}.")
+        
+        total_swap_points *= rollover_days * order_size / 10000
+        
+        return total_swap_points
 
 
 # 通貨名を変換する関数
