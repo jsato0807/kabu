@@ -1273,9 +1273,9 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
                             realized_profit += profit
                             required_margin -= pos[5]
                             pos[5] = 0
+                            pos[2] += pos[2] + "-Closed"
                             trades.append((date, price, 'Forced Closed'))
                             print(f"All Closed at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
-                            positions.remove(pos)
                             if abs(required_margin) > 0:
                                 margin_maintenance_rate = effective_margin / required_margin * 100
                                 if margin_maintenance_rate < 100:
@@ -1332,26 +1332,26 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
 
                 #"""
-                for pos in positions:
-                    #check swap
-                    if pos[2] == "Buy-child" or pos[2] == "Sell-child" or pos[2] == "Buy-main" or pos[2] == "Sell-hedge" or (pos[2] == "Buy-child-Closed" and add_business_days(pos[6],1) == date)or (pos[2] == "Sell-child-Closed" and add_business_days(pos[6],1) == date) or (pos[2] == "Buy-main-Closed" and add_business_days(pos[6],1) == date) or (pos[2] == "Sell-hedge-Closed" and add_business_days(pos[6],1) == date):
+            for pos in positions:
+                #check swap
+                if ("Buy" in pos[2] and not pos[2].endswith('Closed')) or ("Sell" in pos[2] and not pos[2].endswith('Closed')) or ("Closed" in pos[2] and add_business_days(pos[6],1) == date):
 
-                        effective_margin += get_total_swap_points(swap_points,pair,pos[2],pos[6],date,order_size)
-                        print(f'added swap to effective_margin: {effective_margin}')
+                    effective_margin += get_total_swap_points(swap_points,pair,pos[2],pos[6],date,order_size)
+                    print(f'added swap to effective_margin: {effective_margin}')
 
-                        if not "Closed" in pos[2]:
-                            pos[6] = date
-                        
+                    if not "Closed" in pos[2]:
+                        pos[6] = date
+                    
 
-                    if abs(required_margin) > 0:
-                        margin_maintenance_rate = effective_margin / required_margin * 100
-                        if margin_maintenance_rate <= 100:
-                            print("executed loss cut in check swap")
-                            margin_maintenance_flag = True
-                            continue
-                    else:
-                        margin_maintenance_rate = float('inf')
-                    #"""
+                if abs(required_margin) > 0:
+                    margin_maintenance_rate = effective_margin / required_margin * 100
+                    if margin_maintenance_rate <= 100:
+                        print("executed loss cut in check swap")
+                        margin_maintenance_flag = True
+                        continue
+                else:
+                    margin_maintenance_rate = float('inf')
+                #"""
 
 
 
@@ -1398,7 +1398,7 @@ start_date = datetime.strptime("2021-09-01","%Y-%m-%d")#datetime.now() - timedel
 initial_funds = 100000000
 grid_start = 100
 grid_end = 150
-strategies = ['milagroman']
+strategies = ['milagroman3']
 entry_intervals = [-15]  # エントリー間隔
 total_thresholds = [100]  # 全ポジション決済の閾値
 # データの取得
