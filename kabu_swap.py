@@ -86,6 +86,7 @@ class SwapCalculator:
     def _create_swap_dict(self, swap_points):
         swap_dict = {}
         for point in swap_points:
+            pair = point.get('通貨名')
             buy_swap = self._safe_float(point.get('買スワップ', 0))
             sell_swap = self._safe_float(point.get('売スワップ', 0))
             swap_dict[pair] = {'buy': buy_swap, 'sell': sell_swap}
