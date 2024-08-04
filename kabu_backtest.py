@@ -15,7 +15,7 @@ def fetch_currency_data(pair, start, end, interval):
     print(f"Fetched data length: {len(data)}")
     return data
 
-def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None,strategy='standard', density=1):
+def traripi_backtest(swap_points, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None,strategy='standard', density=1):
     """
     Perform Trailing Stop strategy backtest on given data.
     """
@@ -30,12 +30,7 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
     margin_maintenance_flag = False
     order_capacity_flag = False
 
-    url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
-    html = get_html(url)
-    #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
-    swap_points = parse_swap_points(html)
-    swap_points = rename_swap_points(swap_points)
-    print(swap_points)
+    #print(swap_points)
     calculator = SwapCalculator(swap_points)
 
 
@@ -1395,12 +1390,12 @@ def traripi_backtest(data, initial_funds, grid_start, grid_end, num_traps, profi
 
 pair = 'USDJPY=X'
 interval="1d"
-end_date = datetime.strptime("2023-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
-start_date = datetime.strptime("2021-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-initial_funds = 100000000
+end_date = datetime.strptime("2022-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+start_date = datetime.strptime("2010-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+initial_funds = 2000000
 grid_start = 100
 grid_end = 150
-strategies = ['long_only']
+strategies = ['long_only','short_only','half_and_half', 'diamond']
 entry_intervals = [-15]  # エントリー間隔
 total_thresholds = [100]  # 全ポジション決済の閾値
 # データの取得
@@ -1412,7 +1407,11 @@ if __name__ == "__main__":
     num_traps_options = [2]
     profit_widths = [10]
     densities = [2]
-    
+    url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
+    html = get_html(url)
+    #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
+    swap_points = parse_swap_points(html)
+    swap_points = rename_swap_points(swap_points)
     
     results = []
     
@@ -1423,16 +1422,16 @@ if __name__ == "__main__":
         print("hello diamond and {} both".format(milagroman_list))
         for order_size, num_traps, profit_width, strategy, density, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, densities, entry_intervals, total_thresholds):
             effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
-                data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=density
+               swap_points ,data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=density
             )
       
-            results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_valie, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate, entry_interval, total_threshold))
+            results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate, entry_interval, total_threshold))
             
     elif "diamond" in strategies and not milagroman_list:
         print("hello diamond only")
         for order_size, num_traps, profit_width, strategy, density in product(order_sizes, num_traps_options, profit_widths, strategies, densities):
             effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, _, _, trades = traripi_backtest(
-                data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None, strategy=strategy, density=density
+                swap_points, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None, strategy=strategy, density=density
             )
       
             results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate, None, None
@@ -1443,7 +1442,7 @@ if __name__ == "__main__":
         print("{} only".format(milagroman_list))
         for order_size, num_traps, profit_width, strategy, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, entry_intervals, total_thresholds):
             effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
-                data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=None
+                swap_points, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=None
             )
       
             results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, None, required_margin, margin_maintenance_rate, entry_interval, total_threshold))
@@ -1453,7 +1452,7 @@ if __name__ == "__main__":
         print("nothing")
         for order_size, num_traps, profit_width, strategy in product(order_sizes, num_traps_options, profit_widths, strategies):
             effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
-                data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, None, None, strategy=strategy, density=None
+                swap_points, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, None, None, strategy=strategy, density=None
             )
       
             results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, None, required_margin, margin_maintenance_rate, None, None))
