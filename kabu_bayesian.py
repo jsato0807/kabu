@@ -7,13 +7,15 @@ from skopt.utils import use_named_args
 from sklearn.model_selection import KFold
 from kabu_backtest import traripi_backtest, data, initial_funds, grid_start, grid_end, entry_intervals, total_thresholds, strategies
 import numpy as np
-from kabu_swap import get_html, parse_swap_points, rename_swap_points
+from kabu_swap import get_html, parse_swap_points, rename_swap_points, SwapCalculator
 
 url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
 html = get_html(url)
 #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
 swap_points = parse_swap_points(html)
 swap_points = rename_swap_points(swap_points)
+#print(swap_points)
+calculator = SwapCalculator(swap_points)
 
 
 # パラメータ空間の定義
@@ -54,7 +56,7 @@ def cross_validate_and_optimize(params, space):
             num_trap, profit_width, order_size, strategy = params[:4]
             density = params[4] if len(params) > 4 else default_density
             effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
-                swap_points, X_train, initial_funds, grid_start, grid_end, num_trap, profit_width, order_size,
+                calculator, X_train, initial_funds, grid_start, grid_end, num_trap, profit_width, order_size,
                 entry_interval, total_threshold, strategy, density
             )
             return -effective_margin
@@ -75,7 +77,7 @@ def cross_validate_and_optimize(params, space):
         best_density = best_params[4] if len(best_params) > 4 else default_density
 
         effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
-            X_test, initial_funds, grid_start, grid_end, best_num_trap, best_profit_width, best_order_size,
+            calculator, X_test, initial_funds, grid_start, grid_end, best_num_trap, best_profit_width, best_order_size,
             entry_interval, total_threshold, best_strategy, best_density
         )
         margins.append(effective_margin)

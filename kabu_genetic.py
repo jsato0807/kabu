@@ -3,13 +3,15 @@ import numpy as np
 from sklearn.model_selection import KFold
 from deap import base, creator, tools, algorithms
 from kabu_backtest import traripi_backtest, data, initial_funds, grid_start, grid_end, strategies, entry_intervals, total_thresholds
-from kabu_swap import get_html, parse_swap_points, rename_swap_points
+from kabu_swap import get_html, parse_swap_points, rename_swap_points, SwapCalculator
 
 url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
 html = get_html(url)
 #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
 swap_points = parse_swap_points(html)
 swap_points = rename_swap_points(swap_points)
+#print(swap_points)
+calculator = SwapCalculator(swap_points)
 
 
 # 適応度クラスと個体クラスを定義
@@ -54,7 +56,7 @@ def evaluate(individual, data_subset):
     if strategy != 'diamond':
         density = 1.0  # diamond以外の戦略ではdensityを固定値とする
     effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
-        swap_points, data_subset, initial_funds, grid_start, grid_end, num_trap, profit_width, order_size, entry_interval, total_threshold, strategy, density
+        calculator, data_subset, initial_funds, grid_start, grid_end, num_trap, profit_width, order_size, entry_interval, total_threshold, strategy, density
     )
     
     return effective_margin,
@@ -137,7 +139,7 @@ def cross_validate_and_optimize(individual):
         best_strategy = strategies[best_strategy_idx]
 
         effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
-            swap_points, X_test, initial_funds, grid_start, grid_end, best_num_trap, best_profit_width, best_order_size,
+            calculator, X_test, initial_funds, grid_start, grid_end, best_num_trap, best_profit_width, best_order_size,
             entry_interval, total_threshold, best_strategy, best_density
         )
         margins.append(effective_margin)
