@@ -22,7 +22,7 @@ calculator = SwapCalculator(swap_points)
 space_diamond = [
     Integer(1, 101, name='num_trap'),
     Real(0.1, 100, name='profit_width'),
-    Integer(1000, 10000, name='order_size'),
+    Categorical(1000,2000,3000,4000,5000,6000,7000,8000,9000, 10000, name='order_size'),
     Categorical(['diamond'], name='strategy'),
     Real(0.1, 10, name='density')
 ]
@@ -30,7 +30,7 @@ space_diamond = [
 space_non_diamond = [
     Integer(1, 101, name='num_trap'),
     Real(0.1, 100, name='profit_width'),
-    Integer(1000, 10000, name='order_size'),
+    Categorical(1000,2000,3000,4000,5000,6000,7000,8000,9000, 10000, name='order_size'),
     Categorical(['long_only', 'short_only', 'half_and_half'], name='strategy'),
 ]
 
