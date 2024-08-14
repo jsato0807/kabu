@@ -82,7 +82,7 @@ def cross_validate_and_optimize(params, space):
         )
         margins.append(effective_margin)
 
-    return np.mean(margins)
+    return -np.mean(margins)
 
 # ベイズ最適化の実行
 result_diamond = gp_minimize(
