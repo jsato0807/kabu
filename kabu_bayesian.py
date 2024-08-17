@@ -19,19 +19,12 @@ calculator = SwapCalculator(swap_points)
 
 
 # パラメータ空間の定義
-space_diamond = [
+space = [
     Integer(1, 101, name='num_trap'),
     Real(0.1, 100, name='profit_width'),
     Categorical([1000,2000,3000,4000,5000,6000,7000,8000,9000, 10000], name='order_size'),
-    Categorical(['diamond'], name='strategy'),
-    Real(0.1, 10, name='density')
-]
-
-space_non_diamond = [
-    Integer(1, 101, name='num_trap'),
-    Real(0.1, 100, name='profit_width'),
-    Categorical([1000,2000,3000,4000,5000,6000,7000,8000,9000, 10000], name='order_size'),
-    Categorical(['long_only', 'short_only', 'half_and_half'], name='strategy'),
+    Categorical(['long_only', 'short_only', 'half_and_half','diamond'], name='strategy'),
+    Real(1.0,10, name='density')
 ]
 
 # 固定値
@@ -85,35 +78,19 @@ def cross_validate_and_optimize(params, space):
     return -np.mean(margins)
 
 # ベイズ最適化の実行
-result_diamond = gp_minimize(
-    func=lambda params: cross_validate_and_optimize(params, space_diamond),  # 最適化する関数
-    dimensions=space_diamond,  # 検索空間
-    acq_func='EI',  # 獲得関数 (Expected Improvement)
-    n_calls=30,  # 試行回数
-    random_state=42  # 再現性のための乱数シード
-)
-
-result_non_diamond = gp_minimize(
-    func=lambda params: cross_validate_and_optimize(params, space_non_diamond),  # 最適化する関数
-    dimensions=space_non_diamond,  # 検索空間
+result = gp_minimize(
+    func=lambda params: cross_validate_and_optimize(params, space),  # 最適化する関数
+    dimensions=space,  # 検索空間
     acq_func='EI',  # 獲得関数 (Expected Improvement)
     n_calls=30,  # 試行回数
     random_state=42  # 再現性のための乱数シード
 )
 
 # 結果の表示
-print("Best parameters found for diamond strategy:")
-print("num_trap:", result_diamond.x[0])
-print("profit_width:", result_diamond.x[1])
-print("order_size:", result_diamond.x[2])
-print("strategy:", result_diamond.x[3])
-print("density:", default_density)
-print("Best score:", -result_diamond.fun)
-
-print("\nBest parameters found for non-diamond strategies:")
-print("num_trap:", result_non_diamond.x[0])
-print("profit_width:", result_non_diamond.x[1])
-print("order_size:", result_non_diamond.x[2])
-print("strategy:", result_non_diamond.x[3])
-print("density:", result_non_diamond.x[4])
-print("Best score:", -result_non_diamond.fun)
+print("Best parameters:")
+print("num_trap:", result.x[0])
+print("profit_width:", result.x[1])
+print("order_size:", result.x[2])
+print("strategy:", result.x[3])
+print("density:", result.x[4])
+print("Best score:", -result.fun)
