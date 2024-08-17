@@ -7,6 +7,9 @@ from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import KFold
 import random
 
+# シード値を固定
+random.seed(42)
+
 default_density = 1.0
 entry_interval = entry_intervals[0]
 total_threshold = total_thresholds[0]
@@ -61,11 +64,11 @@ def generate_samples_from_gmm(samples, n_samples=100):
         return new_samples.tolist()
     return []
 
-def adaptive_gamma(iteration, n_iterations):
-    return 0.25 + 0.5 * (iteration / n_iterations)
+#def adaptive_gamma(iteration, n_iterations):
+#    return 0.25 + 0.5 * (iteration / n_iterations)
 
-def adaptive_startup_trials(iteration):
-    return max(5, int(10 * np.log(iteration + 1)))
+#def adaptive_startup_trials(iteration):
+#    return max(5, int(10 * np.log(iteration + 1)))
 
 def tpe_optimization(train_data, n_iterations, gamma, n_startup_trials):
     samples = [[random.randint(1, 101), random.uniform(0.001, 100), random.randint(1, 10) * 1000, random.choice(strategies), random.uniform(1.0, 10)] for _ in range(n_startup_trials)]
@@ -86,6 +89,9 @@ def tpe_optimization(train_data, n_iterations, gamma, n_startup_trials):
 
         threshold = np.percentile(scores, gamma * 100)
         mask = np.array(scores) < threshold
+
+        if not True in mask:
+            continue
 
         encoded_good_samples = [s for s, m in zip(encoded_samples, mask) if m]
         encoded_bad_samples = [s for s, m in zip(encoded_samples, mask) if not m]
@@ -234,8 +240,6 @@ def nested_cross_validation(X, param_grid):
     # 最良パラメータの選定
     overall_best_params = max(set(tuple(params.items()) for params in outer_best_params), key=outer_best_params.count)
     overall_best_params = dict(overall_best_params)
-
-    return np.mean(outer_scores), np.std(outer_scores), overall_best_params
 
     return np.mean(outer_scores), np.std(outer_scores), overall_best_params
 
