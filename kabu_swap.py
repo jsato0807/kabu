@@ -155,14 +155,16 @@ if __name__ == "__main__":
     html = get_html(url)
     #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
     swap_points = parse_swap_points(html)
-    total_swap_points =  get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,5,31),datetime(2024,6,12),order_size)
+    swap_points = rename_swap_points(swap_points)
+    calculator = SwapCalculator(swap_points)
+    total_swap_points =  calculator.get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,31),datetime(2024,6,12),order_size)
     print(total_swap_points)
     
 
 
 
-    a = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,4),datetime(2024,6,10),order_size)
-    b = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,11),datetime(2024,6,11),order_size)
-    c = get_total_swap_points(swap_points,'USDJPY=X',"Buy",datetime(2024,6,12),datetime(2024,6,12),order_size)
+    a = calculator.get_total_swap_points('USDJPY=X',"Buy",datetime(2024,6,4),datetime(2024,6,10),order_size)
+    b = calculator.get_total_swap_points('USDJPY=X',"Buy",datetime(2024,6,11),datetime(2024,6,11),order_size)
+    c = calculator.get_total_swap_points('USDJPY=X',"Buy",datetime(2024,6,12),datetime(2024,6,12),order_size)
     ###
     print(f"a,b,a+b+c:{a,b,c,a+b+c}")
