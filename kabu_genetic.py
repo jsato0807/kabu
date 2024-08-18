@@ -20,10 +20,10 @@ creator.create("Individual", list, fitness=creator.FitnessMax)
 
 # パラメータの範囲を定義
 PARAM_BOUNDS = {
-    'num_trap': (1, 100),      # 例として1から20の範囲
+    'num_trap': (4, 101),      # 例として1から20の範囲
     'profit_width': (0.1, 10),   # 例として1から10の範囲
     'order_size': (1000, 100000),     # 例として1から10の範囲
-    'density': (0.1, 10)         # 例として1から10の範囲
+    'density': (1.0, 10)         # 例として1から10の範囲
 }
 
 STRATEGIES = strategies
@@ -35,7 +35,7 @@ total_threshold = total_thresholds[0]
 def create_individual():
     num_trap = random.randint(*PARAM_BOUNDS['num_trap'])
     profit_width = random.uniform(*PARAM_BOUNDS['profit_width'])
-    order_size = random.uniform(*PARAM_BOUNDS['order_size'])
+    order_size = random.randint(PARAM_BOUNDS['order_size'][0] // 1000, PARAM_BOUNDS['order_size'][1] // 1000) * 1000
     density = random.uniform(*PARAM_BOUNDS['density'])
     strategy_idx = random.randint(0, len(STRATEGIES) - 1)  # 0から3の範囲で整数を選択
     if STRATEGIES[strategy_idx] == 'diamond':
@@ -88,15 +88,15 @@ def cross_validate_and_optimize(individual):
     
 
     # パラメータ設定
-    POPULATION_SIZE = 100
-    MUTATION_RATE = 0.2
-    CROSSOVER_RATE = 0.5
-    MAX_GENERATIONS = 500
-    INITIAL_THRESHOLD = 5  # 初期閾値
-    THRESHOLD_INCREMENT = 5  # 各世代で増加させる閾値の
+    CV_POPULATION_SIZE = 100
+    CV_MUTATION_RATE = 0.2
+    CV_CROSSOVER_RATE = 0.5
+    CV_MAX_GENERATIONS = 1
+    CV_INITIAL_THRESHOLD = 5  # 初期閾値
+    CV_THRESHOLD_INCREMENT = 5  # 各世代で増加させる閾値の
     
     # 初期集団を生成
-    population = toolbox.population(n=POPULATION_SIZE)
+    population = toolbox.population(n=CV_POPULATION_SIZE)
 
     kf = KFold(n_splits=10)
     margins = []
@@ -106,8 +106,8 @@ def cross_validate_and_optimize(individual):
         
         
         # 遺伝的アルゴリズムのメインループ
-        for gen in range(MAX_GENERATIONS):
-            offspring = algorithms.varAnd(population, toolbox, cxpb=CROSSOVER_RATE, mutpb=MUTATION_RATE)
+        for gen in range(CV_MAX_GENERATIONS):
+            offspring = algorithms.varAnd(population, toolbox, cxpb=CV_CROSSOVER_RATE, mutpb=CV_MUTATION_RATE)
             fits = [toolbox.evaluate(ind,X_train) for ind in offspring]
             for fit, ind in zip(fits, offspring):
                 ind.fitness.values = fit
@@ -124,7 +124,7 @@ def cross_validate_and_optimize(individual):
             print(f"Fitness Range: Min: {min(fitness_values)}, Max: {max(fitness_values)}")
         
             # 動的な閾値の設定
-            current_threshold = INITIAL_THRESHOLD + gen * THRESHOLD_INCREMENT 
+            current_threshold = CV_INITIAL_THRESHOLD + gen * CV_THRESHOLD_INCREMENT 
             print(f"Current Threshold: {current_threshold}")
             # 終了条件（適応度が一定の値に達したら終了）
             print(f'top_indivisual.fitness.values[0]:{top_individual.fitness.values[0]}, current_threshold:{current_threshold}')
@@ -136,8 +136,10 @@ def cross_validate_and_optimize(individual):
         
 
         best_num_trap, best_profit_width, best_order_size, best_density, best_strategy_idx = best_individual
+        print(best_strategy_idx)
         best_strategy = strategies[best_strategy_idx]
 
+        print(best_num_trap)
         effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
             calculator, X_test, initial_funds, grid_start, grid_end, best_num_trap, best_profit_width, best_order_size,
             entry_interval, total_threshold, best_strategy, best_density
@@ -162,7 +164,7 @@ toolbox.register("mate", mate)
 POPULATION_SIZE = 100
 MUTATION_RATE = 0.2
 CROSSOVER_RATE = 0.5
-MAX_GENERATIONS = 500
+MAX_GENERATIONS = 1
 INITIAL_THRESHOLD = 5  # 初期閾値
 THRESHOLD_INCREMENT = 5  # 各世代で増加させる閾値の
 
