@@ -6,6 +6,8 @@ from kabu_swap import get_html, parse_swap_points, rename_swap_points, SwapCalcu
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.model_selection import KFold
 import random
+from sklearn.decomposition import PCA
+from scipy import stats
 
 # シード値を固定
 random.seed(42)
@@ -64,6 +66,19 @@ def generate_samples_from_gmm(samples, n_samples=100):
         return new_samples.tolist()
     return []
 
+def estimate_kde(samples, bandwidth=1.0):
+    samples = np.array(samples)
+    
+    # PCAによる次元削減
+    if samples.shape[0] > samples.shape[1]:
+        pca = PCA(n_components=min(samples.shape[1], samples.shape[0] - 1))
+        reduced_samples = pca.fit_transform(samples.T).T
+        kde = stats.gaussian_kde(reduced_samples, bw_method=bandwidth)
+    else:
+        kde = stats.gaussian_kde(samples.T, bw_method=bandwidth)
+        
+    return kde
+
 #def adaptive_gamma(iteration, n_iterations):
 #    return 0.25 + 0.5 * (iteration / n_iterations)
 
@@ -105,8 +120,8 @@ def tpe_optimization(train_data, n_iterations, gamma, n_startup_trials):
                 augmented_bad_samples = generate_samples_from_gmm(encoded_bad_samples, n_samples=len(samples[0]) - len(encoded_bad_samples))
                 encoded_bad_samples.extend(augmented_bad_samples)
 
-        good_kde = stats.gaussian_kde(np.array(encoded_good_samples).T)
-        bad_kde = stats.gaussian_kde(np.array(encoded_bad_samples).T)
+        good_kde = estimate_kde(np.array(encoded_good_samples))
+        bad_kde = estimate_kde(np.array(encoded_bad_samples))
 
         new_sample = []
         for j in range(len(samples[0])):
@@ -182,7 +197,7 @@ outer_cv = KFold(n_splits=5, shuffle=True, random_state=1)
 param_grid = {
     'n_trials': [10, 20, 30],
     'gammas': [0.25, 0.30, 0.35, 0.40, 0.45, 0.50],
-    'n_startup_trials': [10,20,30]
+    'n_startup_trials': [100,200,300]
 
 }
 
