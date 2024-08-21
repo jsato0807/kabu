@@ -20,7 +20,7 @@ calculator = SwapCalculator(swap_points)
 
 # パラメータ空間の定義
 space = [
-    Integer(1, 101, name='num_trap'),
+    Integer(4, 101, name='num_trap'),
     Real(0.1, 100, name='profit_width'),
     Categorical([1000,2000,3000,4000,5000,6000,7000,8000,9000, 10000], name='order_size'),
     Categorical(['long_only', 'short_only', 'half_and_half','diamond'], name='strategy'),
@@ -33,64 +33,53 @@ default_density = 1.0
 entry_interval = entry_intervals[0]
 total_threshold = total_thresholds[0]
 
-# 評価関数の定義
-def cross_validate_and_optimize(params, space):
-    num_trap, profit_width, order_size, strategy = params[:4]
-    density = params[4] if len(params) > 4 else default_density
 
-    kf = KFold(n_splits=10)
-    margins = []
-
-    for train_index, test_index in kf.split(data):
-        X_train, X_test = data[train_index], data[test_index]
-
-        # 内部ベイズ最適化
-        def wrapped_objective_function(params):
-            num_trap, profit_width, order_size, strategy = params[:4]
-            density = params[4] if len(params) > 4 else default_density
-            effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
-                calculator, X_train, initial_funds, grid_start, grid_end, num_trap, profit_width, order_size,
-                entry_interval, total_threshold, strategy, density
-            )
-            return -effective_margin
-
-        res = gp_minimize(
-            wrapped_objective_function,  # 目的関数
-            space,  # 変数の範囲
-            n_calls=30,  # 評価の回数
-            random_state=0  # 再現性のための乱数シード
-        )
-
-        # 最適パラメータでX_testを評価
-        best_params = res.x
-        best_num_trap = best_params[0]
-        best_profit_width = best_params[1]
-        best_order_size = best_params[2]
-        best_strategy = best_params[3]
-        best_density = best_params[4] if len(best_params) > 4 else default_density
-
+# 交差検証を含む目的関数の定義
+def objective_function(X_train_cv):
+    @use_named_args(space)
+    def inner_objective_function(num_trap, profit_width, order_size, strategy, density):
+        # トレードバックテストの実行
         effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
-            calculator, X_test, initial_funds, grid_start, grid_end, best_num_trap, best_profit_width, best_order_size,
-            entry_interval, total_threshold, best_strategy, best_density
+            calculator, X_train_cv, initial_funds, grid_start, grid_end, num_trap, profit_width, order_size,
+            entry_interval, total_threshold, strategy, density
         )
-        margins.append(effective_margin)
+        return -effective_margin  # 最大化を最小化として処理する
 
-    return -np.mean(margins)
+    # ベイズ最適化の実行
+    result = gp_minimize(
+        func=inner_objective_function,
+        dimensions=space,
+        n_calls=50,  # 試行回数の設定
+        random_state=42  # 再現性のための乱数シード
+    )
+    
+    # 最適なパラメータでテスト
+    best_params = result.x
+    best_effective_margin = traripi_backtest(
+        calculator, X_test, initial_funds, grid_start, grid_end, *best_params
+    )[0]
+    
+    return best_effective_margin, best_params
 
-# ベイズ最適化の実行
-result = gp_minimize(
-    func=lambda params: cross_validate_and_optimize(params, space),  # 最適化する関数
-    dimensions=space,  # 検索空間
-    acq_func='EI',  # 獲得関数 (Expected Improvement)
-    n_calls=30,  # 試行回数
-    random_state=42  # 再現性のための乱数シード
-)
+# データの準備
+kf = KFold(n_splits=10)  # 5-fold クロスバリデーション
+results = []
+
+for fold, (train_index, test_index) in enumerate(kf.split(data)):
+    X_train_cv, X_test = data[train_index], data[test_index]
+    
+    # 交差検証内でベイズ最適化を実行
+    margin, params = objective_function(X_train_cv)
+    results.append({
+        'fold': fold + 1,
+        'margin': margin,
+        'params': params
+    })
 
 # 結果の表示
-print("Best parameters:")
-print("num_trap:", result.x[0])
-print("profit_width:", result.x[1])
-print("order_size:", result.x[2])
-print("strategy:", result.x[3])
-print("density:", result.x[4])
-print("Best score:", -result.fun)
+for result in results:
+    print(f"Fold {result['fold']}:")
+    print(f"  マージン: {result['margin']}")
+    print(f"  パラメータ:")
+    for param_name, param_value in zip(space, result['params']):
+        print(f"    {param_name}: {param_value}")
