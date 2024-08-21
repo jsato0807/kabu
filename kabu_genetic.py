@@ -17,7 +17,7 @@ calculator = SwapCalculator(swap_points)
 # パラメータの範囲を定義
 PARAM_BOUNDS = {
     'num_trap': (4, 101),
-    'profit_width': (0.1, 10),
+    'profit_width': (0.001, 100),
     'order_size': (1000, 10000),
     'strategy_idx': tuple(i for i in range(len(strategies))),
     'density': (1.0, 10.0)
