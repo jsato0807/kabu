@@ -66,6 +66,15 @@ toolbox.register("evaluate", evaluate)
 toolbox.register("mate", tools.cxBlend, alpha=0.5)
 toolbox.register("mutate", tools.mutPolynomialBounded, low=[PARAM_BOUNDS['num_trap'][0], PARAM_BOUNDS['profit_width'][0], PARAM_BOUNDS['order_size'][0], PARAM_BOUNDS['density'][0]],
                  up=[PARAM_BOUNDS['num_trap'][1], PARAM_BOUNDS['profit_width'][1], PARAM_BOUNDS['order_size'][1], PARAM_BOUNDS['density'][1]], eta=0.2, indpb=0.2)
+
+# `strategy_idx` の突然変異は別途処理
+def mutate_individual(individual):
+    if random.random() < 0.2:
+        individual[3] = random.choice(PARAM_BOUNDS['strategy_idx'])  # `strategy_idx` の突然変異
+    toolbox.mutate(individual)  # その他のパラメータの突然変異
+    return individual,
+
+toolbox.register("mutate", mutate_individual)
 toolbox.register("select", tools.selTournament, tournsize=3)
 
 def genetic_algorithm_with_cv(data, k_folds=10):
