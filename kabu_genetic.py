@@ -71,7 +71,8 @@ toolbox.register("mutate", tools.mutPolynomialBounded, low=[PARAM_BOUNDS['num_tr
 def mutate_individual(individual):
     if random.random() < 0.2:
         individual[3] = random.choice(PARAM_BOUNDS['strategy_idx'])  # `strategy_idx` の突然変異
-    toolbox.mutate(individual)  # その他のパラメータの突然変異
+    # その他のパラメータの突然変異を個別に処理
+    toolbox.mutate([individual[i] for i in range(len(individual)) if i != 3])
     return individual,
 
 toolbox.register("mutate", mutate_individual)
