@@ -1,5 +1,6 @@
 import yfinance as yf
 import pandas as pd
+from kabu_checkrange import calculate_range_period
 
 # 通貨ペアのリスト
 currency_pairs = [
@@ -15,31 +16,8 @@ currency_pairs = [
 start_date = "2019-05-01"
 end_date = "2024-01-01"
 
-def calculate_range_period(df, threshold=0.02):
-    df = df.copy()  # 明示的にコピーを作成
-    df.loc[:, 'mid'] = (df['High'] + df['Low']) / 2
-    df.loc[:, 'range'] = df['High'] - df['Low']
-    
-    longest_period = 0
-    best_range_width = None
-    
-    current_period = 0
-    start_idx = 0
-    
-    for i in range(1, len(df)):
-        if df['range'].iloc[i] <= df['mid'].iloc[i] * threshold:
-            if current_period == 0:
-                start_idx = i
-            current_period += 1
-        else:
-            if current_period > longest_period:
-                longest_period = current_period
-                best_range_width = df['range'].iloc[start_idx:i].max()
-            current_period = 0
-    
-    return longest_period, best_range_width
 
-def calculate_score(period, width, max_period, min_period, max_width, min_width, alpha=0.5, beta=0.5):
+def calculate_score(period, width, max_period, min_period, max_width, min_width, alpha=0.5, beta=-0.5):
     norm_period = (period - min_period) / (max_period - min_period)
     norm_width = (width - min_width) / (max_width - min_width)
     return alpha * norm_period + beta * norm_width
@@ -59,7 +37,7 @@ def pareto_frontier_with_scores(currency_pairs, start_date, end_date):
     for pair in currency_pairs:
         df = data.xs(pair, level=1, axis=1)
         longest_period, range_width = calculate_range_period(df)
-        
+
         periods.append(longest_period)
         widths.append(range_width)
         results.append((pair, longest_period, range_width))
