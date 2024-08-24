@@ -72,8 +72,10 @@ def pareto_frontier(currency_pairs, start_date, end_date):
     
     return pareto_set
 
-# Pareto最適解の通貨ペアを探す
-pareto_optimal_pairs = pareto_frontier(currency_pairs, start_date, end_date)
-print("Pareto Optimal Pairs:")
-for pair, period, width in pareto_optimal_pairs:
-    print(f"{pair}: Longest Period = {period}, Range Width = {width}")
+
+if __name__ == "__main__":
+    # Pareto最適解の通貨ペアを探す
+    pareto_optimal_pairs = pareto_frontier(currency_pairs, start_date, end_date)
+    print("Pareto Optimal Pairs:")
+    for pair, period, width in pareto_optimal_pairs:
+        print(f"{pair}: Longest Period = {period}, Range Width = {width}")
