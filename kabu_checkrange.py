@@ -18,14 +18,16 @@ currency_pairs = [
 start_date = "2019-01-01"
 end_date = "2024-01-01"
 
-def calculate_range_period(df, threshold=0.2):
+def calculate_range_period(df, threshold=0.1):
     max_high = df['High'].max()
     min_low = df['Low'].min()
     range_width = max_high - min_low
     
     longest_period = 0
     current_period = 0
-    start_idx = 0
+    start_idx = None
+    longest_start_date = None
+    longest_end_date = None
 
     for i in range(1, len(df)):
         if df['High'].iloc[i] - df['Low'].iloc[i] <= (max_high - min_low) * threshold:
@@ -35,12 +37,16 @@ def calculate_range_period(df, threshold=0.2):
         else:
             if current_period > longest_period:
                 longest_period = current_period
+                longest_start_date = df.index[start_idx]
+                longest_end_date = df.index[i-1]
             current_period = 0
 
     if current_period > longest_period:
         longest_period = current_period
+        longest_start_date = df.index[start_idx]
+        longest_end_date = df.index[-1]
 
-    return longest_period, range_width
+    return longest_period, range_width, longest_start_date, longest_end_date
 
 def pareto_frontier(currency_pairs, start_date, end_date, min_period=10, min_range_width=0.1):
     results = []
@@ -48,28 +54,28 @@ def pareto_frontier(currency_pairs, start_date, end_date, min_period=10, min_ran
 
     for pair in currency_pairs:
         df = data.xs(pair, level=1, axis=1)
-        longest_period, range_width = calculate_range_period(df)
+        longest_period, range_width, start_period, end_period = calculate_range_period(df)
         # 最低ラインの条件を満たすものだけを結果に追加
         if longest_period >= min_period and range_width >= min_range_width:
-            results.append((pair, longest_period, range_width))
+            results.append((pair, longest_period, range_width, start_period, end_period))
     
     pareto_set = []
-    for i, (pair_i, period_i, width_i) in enumerate(results):
+    for i, (pair_i, period_i, width_i, start_i, end_i) in enumerate(results):
         dominated = False
-        for j, (pair_j, period_j, width_j) in enumerate(results):
+        for j, (pair_j, period_j, width_j, start_j, end_j) in enumerate(results):
             if i != j:
                 if (period_j > period_i and width_j <= width_i) or (period_j >= period_i and width_j < width_i):
                     dominated = True
                     break
         if not dominated:
-            pareto_set.append((pair_i, period_i, width_i))
+            pareto_set.append((pair_i, period_i, width_i, start_i, end_i))
     
     return results, pareto_set
 
 def cluster_and_display(results, pareto_set, num_clusters=3):
     # パレート解とそれ以外のスコアを取得
-    pareto_scores = np.array([(period, width) for _, period, width in pareto_set])
-    non_pareto_scores = np.array([(period, width) for _, period, width in results if (period, width) not in [(p[1], p[2]) for p in pareto_set]])
+    pareto_scores = np.array([(period, width) for _, period, width, _, _ in pareto_set])
+    non_pareto_scores = np.array([(period, width) for _, period, width, _, _ in results if (period, width) not in [(p[1], p[2]) for p in pareto_set]])
 
     # スケーリング
     scaler = StandardScaler()
@@ -86,13 +92,13 @@ def cluster_and_display(results, pareto_set, num_clusters=3):
 
     # 結果を表示
     print("Pareto Optimal Pairs:")
-    for (pair, period, width), label in zip(pareto_set, pareto_labels):
-        print(f"{pair}: Longest Period = {period}, Range Width = {width} (Cluster {label})")
+    for (pair, period, width, start_date, end_date), label in zip(pareto_set, pareto_labels):
+        print(f"{pair}: Longest Period = {period}, Range Width = {width}, Period Range = {start_date} to {end_date} (Cluster {label})")
 
     print("\nNon-Pareto Pairs:")
-    for (pair, period, width), label in zip(results, non_pareto_labels):
+    for (pair, period, width, start_date, end_date), label in zip(results, non_pareto_labels):
         if (period, width) not in [(p[1], p[2]) for p in pareto_set]:
-            print(f"{pair}: Longest Period = {period}, Range Width = {width} (Cluster {label})")
+            print(f"{pair}: Longest Period = {period}, Range Width = {width}, Period Range = {start_date} to {end_date} (Cluster {label})")
 
 if __name__ == "__main__":
     results, pareto_optimal_pairs = pareto_frontier(currency_pairs, start_date, end_date, min_period=100, min_range_width=1)
