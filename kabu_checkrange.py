@@ -18,7 +18,7 @@ currency_pairs = [
 start_date = "2019-01-01"
 end_date = "2024-01-01"
 
-def calculate_range_period(df, threshold=0.02):
+def calculate_range_period(df, threshold=0.2):
     max_high = df['High'].max()
     min_low = df['Low'].min()
     range_width = max_high - min_low
@@ -42,14 +42,16 @@ def calculate_range_period(df, threshold=0.02):
 
     return longest_period, range_width
 
-def pareto_frontier(currency_pairs, start_date, end_date):
+def pareto_frontier(currency_pairs, start_date, end_date, min_period=10, min_range_width=0.1):
     results = []
     data = yf.download(currency_pairs, start=start_date, end=end_date)
 
     for pair in currency_pairs:
         df = data.xs(pair, level=1, axis=1)
         longest_period, range_width = calculate_range_period(df)
-        results.append((pair, longest_period, range_width))
+        # 最低ラインの条件を満たすものだけを結果に追加
+        if longest_period >= min_period and range_width >= min_range_width:
+            results.append((pair, longest_period, range_width))
     
     pareto_set = []
     for i, (pair_i, period_i, width_i) in enumerate(results):
@@ -93,5 +95,5 @@ def cluster_and_display(results, pareto_set, num_clusters=3):
             print(f"{pair}: Longest Period = {period}, Range Width = {width} (Cluster {label})")
 
 if __name__ == "__main__":
-    results, pareto_optimal_pairs = pareto_frontier(currency_pairs, start_date, end_date)
+    results, pareto_optimal_pairs = pareto_frontier(currency_pairs, start_date, end_date, min_period=100, min_range_width=1)
     cluster_and_display(results, pareto_optimal_pairs, num_clusters=3)

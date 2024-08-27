@@ -15,7 +15,7 @@ currency_pairs = [
 ]
 
 # データを取得する期間
-start_date = "2019-05-01"
+start_date = "2010-01-01"
 end_date = "2024-01-01"
 
 
@@ -24,9 +24,8 @@ def calculate_score(period, width, max_period, min_period, max_width, min_width,
     norm_width = (width - min_width) / (max_width - min_width)
     return alpha * norm_period + beta * norm_width
 
-def pareto_frontier_with_scores(currency_pairs, start_date, end_date):
+def pareto_frontier_with_scores(currency_pairs, start_date, end_date, min_period, min_width):
     pareto_set = []
-    
     results = []
 
     # データを取得
@@ -39,19 +38,24 @@ def pareto_frontier_with_scores(currency_pairs, start_date, end_date):
     for pair in currency_pairs:
         df = data.xs(pair, level=1, axis=1)
         longest_period, range_width = calculate_range_period(df)
+        
+        # 任意の最低ラインを考慮して篩い分け
+        if longest_period >= min_period and range_width >= min_width:
+            periods.append(longest_period)
+            widths.append(range_width)
+            results.append((pair, longest_period, range_width))
 
-        periods.append(longest_period)
-        widths.append(range_width)
-        results.append((pair, longest_period, range_width))
-    
+    if not periods or not widths:  # 篩い分け後にデータがない場合のチェック
+        return [], []
+
     max_period = max(periods)
-    min_period = min(periods)
+    min_period_actual = min(periods)
     max_width = max(widths)
-    min_width = min(widths)
+    min_width_actual = min(widths)
 
     # スコア計算
-    scored_results = [(pair, period, width, calculate_score(period, width, max_period, min_period, max_width, min_width)) for pair, period, width in results]
-    
+    scored_results = [(pair, period, width, calculate_score(period, width, max_period, min_period_actual, max_width, min_width_actual)) for pair, period, width in results]
+
     # スコアでソート
     scored_results.sort(key=lambda x: x[3], reverse=True)
 
@@ -69,9 +73,14 @@ def pareto_frontier_with_scores(currency_pairs, start_date, end_date):
     
     return pareto_set, scored_results
 
+
 def cluster_near_pareto(pareto_set, all_results, num_clusters=3):
     # パレート最適解のデータをnumpy配列に変換
     pareto_data = np.array([[period, width] for _, period, width in pareto_set])
+
+    if len(pareto_data) < num_clusters:
+        print(f"Warning: Not enough data points for clustering. Required: {num_clusters}, but got: {len(pareto_data)}.")
+        return {i: [] for i in range(num_clusters)}  # 空のクラスタを返す
 
     # クラスタリング
     kmeans = KMeans(n_clusters=num_clusters, random_state=0).fit(pareto_data)
@@ -88,6 +97,7 @@ def cluster_near_pareto(pareto_set, all_results, num_clusters=3):
 
     return clusters
 
+
 def print_results(pareto_set, clusters):
     print("Pareto Optimal Pairs:")
     for pair, period, width in pareto_set:
@@ -99,11 +109,13 @@ def print_results(pareto_set, clusters):
         for pair, period, width, distance in members:
             print(f"  {pair}: Longest Period = {period}, Range Width = {width}, Distance to Pareto = {distance:.2f}")
 
-# Pareto最適解の通貨ペアを探す
-pareto_optimal_pairs_scores, all_results = pareto_frontier_with_scores(currency_pairs, start_date, end_date)
 
-# パレート最適解に近い通貨ペアのクラスタリング
-clusters = cluster_near_pareto(pareto_optimal_pairs_scores, all_results, num_clusters=3)
+if __name__ == "__main__":
+    # Pareto最適解の通貨ペアを探す
+    pareto_optimal_pairs_scores, all_results = pareto_frontier_with_scores(currency_pairs, start_date, end_date, 1, 0.0001)
 
-# 結果の表示
-print_results(pareto_optimal_pairs_scores, clusters)
+    # パレート最適解に近い通貨ペアのクラスタリング
+    clusters = cluster_near_pareto(pareto_optimal_pairs_scores, all_results, num_clusters=3)
+
+    # 結果の表示
+    print_results(pareto_optimal_pairs_scores, clusters)
