@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import talib as ta
 import matplotlib.pyplot as plt
+import os
 
 # 為替データをダウンロードする関数
 def download_forex_data(ticker, period='1y'):
@@ -52,7 +53,7 @@ def calculate_support_resistance(data, window=20):
     return data
 
 # データの視覚化
-def visualize_data(data):
+def visualize_data(data, title, filename):
     plt.figure(figsize=(14, 7))
 
     # 終値のプロット
@@ -77,31 +78,41 @@ def visualize_data(data):
     # ラベルとタイトルの設定
     plt.xlabel('Date')
     plt.ylabel('Price')
-    plt.title('Price Chart with Indicators')
+    plt.title(title)
     plt.legend()
 
     # グリッドの追加
     plt.grid(True)
 
-    # プロットの表示
+    # プロットの保存
     plt.tight_layout()
-    plt.show()
+    plt.savefig(filename)
+    plt.close()
+
+# レンジ内の値動きが大きいかどうかを評価する関数
+def calculate_range_volatility(data):
+    data['Range_Volatility'] = data['Close'].rolling(window=20).std()
+    return data['Range_Volatility'].mean()
 
 # メインの実行部分
 def main():
     # 通貨ペアのリスト
     currency_pairs = [
-    "USDJPY=X", "EURUSD=X", "GBPUSD=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X",
-    "EURJPY=X", "EURGBP=X", "EURAUD=X", "EURCAD=X", "EURCHF=X", "EURNZD=X",
-    "GBPJPY=X", "GBPAUD=X", "GBPCAD=X", "GBPCHF=X", "GBPNZD=X",
-    "AUDJPY=X", "AUDCAD=X", "AUDCHF=X", "AUDNZD=X",
-    "CADJPY=X", "CADCHF=X", "CHFJPY=X",
-    "NZDJPY=X", "NZDCHF=X"
+        "USDJPY=X", "EURUSD=X", "GBPUSD=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X",
+        "EURJPY=X", "EURGBP=X", "EURAUD=X", "EURCAD=X", "EURCHF=X", "EURNZD=X",
+        "GBPJPY=X", "GBPAUD=X", "GBPCAD=X", "GBPCHF=X", "GBPNZD=X",
+        "AUDJPY=X", "AUDCAD=X", "AUDCHF=X", "AUDNZD=X",
+        "CADJPY=X", "CADCHF=X", "CHFJPY=X",
+        "NZDJPY=X", "NZDCHF=X"
     ]
 
-    # 各通貨ペアのデータを取得し、レンジ相場の期間を計算
-    range_periods = []
+    # 保存先ディレクトリ
+    output_dir = './png_dir'
+    os.makedirs(output_dir, exist_ok=True)
 
+    # 各通貨ペアのデータを取得し、レンジ相場の期間とレンジ内の値動きを計算
+    range_periods = []
+    range_volatilities = []
     for pair in currency_pairs:
         print(f"Processing {pair}...")
         data = yf.download(pair, start="2019-06-01", end="2024-08-01")
@@ -120,17 +131,63 @@ def main():
         # レンジ相場の期間を計算
         range_period = data['Range_Market'].sum()  # Trueの数をカウント
         range_periods.append((pair, range_period))
+        
+        # レンジ内の値動きを計算
+        range_volatility = calculate_range_volatility(data)
+        range_volatilities.append((pair, range_volatility))
 
-    # レンジ相場の期間が長いものから5つを表示
+    # レンジ相場の期間が長いものから20個を表示
     range_periods.sort(key=lambda x: x[1], reverse=True)
     top_n_range_pairs = range_periods[:20]
 
-    print("\nTop n currency pairs with the longest range market periods:")
+    print("\nTop 20 currency pairs with the longest range market periods:")
     for pair, period in top_n_range_pairs:
         print(f"{pair}: {period} days")
 
-    ## データの視覚化
-    #visualize_data(data)
+    # レンジ内の値動きが大きいものから20個を表示
+    range_volatilities.sort(key=lambda x: x[1], reverse=True)
+    top_n_volatility_pairs = range_volatilities[:]
+
+    print("\nTop n currency pairs with the highest volatility in range markets:")
+    for pair, volatility in top_n_volatility_pairs:
+        print(f"{pair}: {volatility:.4f}")
+
+    # 各通貨ペアのグラフを保存
+    for pair, _ in top_n_range_pairs:
+        data = yf.download(pair, start="2019-06-01", end="2024-08-01")
+
+        # 指標を計算
+        data = calculate_bollinger_bands(data)
+        data = calculate_rsi(data)
+        data = calculate_stochastic(data)
+        data = calculate_adx(data)
+        data = calculate_atr(data)
+        data = calculate_support_resistance(data)
+
+        # レンジ相場の判別
+        data = is_range_market(data)
+
+        # データの視覚化と保存
+        filename = os.path.join(output_dir, f'{pair}_range.png')
+        visualize_data(data, f'{pair} - Range Market', filename)
+    
+    for pair, _ in top_n_volatility_pairs:
+        data = yf.download(pair, start="2019-06-01", end="2024-08-01")
+
+        # 指標を計算
+        data = calculate_bollinger_bands(data)
+        data = calculate_rsi(data)
+        data = calculate_stochastic(data)
+        data = calculate_adx(data)
+        data = calculate_atr(data)
+        data = calculate_support_resistance(data)
+
+        # レンジ相場の判別
+        data = is_range_market(data)
+
+        # データの視覚化と保存
+        filename = os.path.join(output_dir, f'{pair}_volatility.png')
+        visualize_data(data, f'{pair} - Volatility in Range Market', filename)
 
 # メイン関数を実行
 if __name__ == "__main__":
