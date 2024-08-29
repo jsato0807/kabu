@@ -68,22 +68,6 @@ def calculate_individual_volatilities(df, pairs):
     """
     return sum(df[pair].std() for pair in pairs)
 
-def check_valid_combination(pairs):
-    """
-    通貨ペアの組み合わせが条件に合致しているか確認する関数。
-    """
-    currencies_set = set()
-    
-    for pair in pairs:
-        currencies_set.update({pair[:3], pair[3:6]})
-    
-    # 2つの通貨が共通しているか確認
-    currency_counts = {currency: sum([pair.count(currency) for pair in pairs]) for currency in currencies_set}
-    common_currencies = [currency for currency, count in currency_counts.items() if count > 1]
-    
-    # 共通する通貨の数が2つであること
-    return len(common_currencies) == 2
-
 def find_minimum_details(df, pairs):
     """
     指定された通貨ペアのデータフレームに基づいて、各通貨ペアの最小値とその日付を出力する関数。
@@ -99,6 +83,41 @@ def find_minimum_details(df, pairs):
     min_date = max(set(min_dates), key=min_dates.count)  # 最も頻繁に出現する日付を選択
     
     return min_date, min_details
+
+def check_valid_combination(pairs):
+    """
+    通貨ペアの組み合わせが条件に合致しているか確認する関数。
+    """
+    currencies_in_pairs = [pair[:3] + pair[3:6] for pair in pairs]
+    currencies_set = set()
+    
+    for pair in pairs:
+        currencies_set.update({pair[:3], pair[3:6]})
+    
+    # 2つの通貨が共通しているか確認
+    currency_counts = {currency: sum([pair.count(currency) for pair in pairs]) for currency in currencies_set}
+    common_currencies = [currency for currency, count in currency_counts.items() if count > 1]
+    
+    # 共通する通貨の数が2つであること
+    return len(common_currencies) == 2
+
+def display_combination_details(df, pairs):
+    """
+    任意の通貨ペア3つについて、総計ボラティリティ、個々の通貨ペアのボラティリティの合計、
+    最小値が発生した日付、各通貨ペアの最小値とその日付を出力する関数。
+    """
+    combined_volatility = calculate_volatility(df, pairs)
+    individual_volatility = calculate_individual_volatilities(df, pairs)
+    min_date, min_details = find_minimum_details(df, pairs)
+    
+    print("通貨ペアの組み合わせ:")
+    print(f"  組み合わせ: {pairs}")
+    print(f"  総計ボラティリティ: {combined_volatility:.4f} pips")
+    print(f"  個々の通貨ペアボラティリティの合計: {individual_volatility:.4f} pips")
+    print(f"  最小値が発生した日付: {min_date.strftime('%Y-%m-%d')}")
+    for pair, (min_value, date) in min_details.items():
+        print(f"    {pair} - 最小値: {min_value:.4f} pips - 日付: {date.strftime('%Y-%m-%d')}")
+    print()
 
 # 結果を格納するリスト
 results = []
@@ -128,3 +147,9 @@ for combo, combined_volatility, individual_volatility, min_date, min_details in 
     for pair, (min_value, date) in min_details.items():
         print(f"    {pair} - 最小値: {min_value:.4f} pips - 日付: {date.strftime('%Y-%m-%d')}")
     print()
+
+display_combination_details(data_pips, ['AUDNZD=X','NZDUSD=X','USDCHF=X'])
+display_combination_details(data_pips, ['AUDNZD=X','NZDCAD=X','USDCAD=X'])
+display_combination_details(data_pips, ['AUDNZD=X','NZDCAD=X','USDCAD=X'])
+display_combination_details(data_pips, ['AUDNZD=X','AUDUSD=X','USDCAD=X'])
+display_combination_details(data_pips, ['AUDNZD=X','AUDCAD=X','USDCAD=X'])
