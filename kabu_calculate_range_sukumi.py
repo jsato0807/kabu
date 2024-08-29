@@ -1,79 +1,117 @@
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import os
+import talib as ta
 from itertools import combinations
-from kabu_checkrange_sevenindicator import calculate_adx, calculate_atr, calculate_bollinger_bands, calculate_rsi, calculate_stochastic, calculate_support_resistance
 
-# 為替データをダウンロードする関数
-def download_forex_data(ticker, period='1y'):
-    data = yf.download(ticker, period=period)
-    return data
-
-# 各通貨ペアのデータをダウンロードし、レンジ相場の期間を計算
-def calculate_range_periods(currency_pairs):
-    range_periods = []
-    for pair in currency_pairs:
-        data = download_forex_data(pair)
-        data = calculate_bollinger_bands(data)
-        data = calculate_rsi(data)
-        data = calculate_stochastic(data)
-        data = calculate_adx(data)
-        data = calculate_atr(data)
-        data = calculate_support_resistance(data)
-        data = is_range_market(data)
-        range_period = data['Range_Market'].sum()  # Trueの数をカウント
-        range_periods.append((pair, range_period))
-    return range_periods
-
-# ボリンジャーバンド、RSI、ストキャスティクス、ADX、ATR、サポート・レジスタンスの計算（前のコードを利用）
-# 省略...
-
-# サポート・レジスタンスラインを追加
-def calculate_support_resistance(data, window=20):
-    data['Support'] = data['Low'].rolling(window=window).min()
-    data['Resistance'] = data['High'].rolling(window=window).max()
-    return data
-
-# レンジ相場の判別
-def is_range_market(data):
-    conditions = [
-        (data['Close'] > data['BB_Lower']) & (data['Close'] < data['BB_Upper']),
-        (data['RSI'] > 30) & (data['RSI'] < 70),
-        (data['Stoch_K'] > 20) & (data['Stoch_K'] < 80),
-        (data['ADX'] < 20)
-    ]
-    data['Range_Market'] = np.all(conditions, axis=0)
-    return data
-
-# 通貨ペアのリストを生成する関数
 def generate_currency_pairs(currencies):
     pairs = []
     for i in range(len(currencies)):
         for j in range(len(currencies)):
             if i != j:
-                pair1 = currencies[i] + currencies[j] + '=X'
-                pair2 = currencies[j] + currencies[i] + '=X'
-                if pair1 not in pairs and pair2 not in pairs:
-                    pairs.append(pair1)
+                pair = currencies[i] + currencies[j] + '=X'
+                if pair not in pairs:
+                    pairs.append(pair)
     return pairs
 
-# データをダウンロードする関数
-def download_data(pairs, start_date='2020-07-01', end_date='2024-8-01'):
+def download_data(pairs, start_date='2019-05-01', end_date='2024-08-01'):
     try:
-        data = yf.download(pairs, start=start_date, end=end_date)['Adj Close']
+        data = yf.download(pairs, start=start_date, end=end_date, group_by='ticker')
         return data
     except Exception as e:
         print(f"Error downloading data: {e}")
         return pd.DataFrame()
 
-# 通貨ペアの組み合わせを生成
-def generate_combinations(currency_pairs):
-    return list(combinations(currency_pairs, 3))
+def convert_all_to_pips(df):
+    pips_df = pd.DataFrame()
+    for pair in df.columns.levels[0]:
+        close_prices = df[pair]['Close']
+        if pair.endswith('JPY=X'):
+            pips_df[pair] = close_prices * 100
+        else:
+            pips_df[pair] = close_prices * 10000
+    return pips_df
+
+def calculate_bollinger_bands(data, window=20):
+    for pair in data.columns:
+        close_prices = data[pair]
+        bb_upper, bb_middle, bb_lower = ta.BBANDS(close_prices, timeperiod=window)
+        data[pair + '_BB_Upper'] = bb_upper
+        data[pair + '_BB_Middle'] = bb_middle
+        data[pair + '_BB_Lower'] = bb_lower
+    return data
+
+def calculate_rsi(data, window=14):
+    for pair in data.columns:
+        close_prices = data[pair]
+        data[pair + '_RSI'] = ta.RSI(close_prices, timeperiod=window)
+    return data
+
+def calculate_stochastic(data, window=14):
+    for pair in data.columns:
+        high_prices = data[pair]
+        low_prices = data[pair]
+        close_prices = data[pair]
+        stoch_k, stoch_d = ta.STOCH(high_prices, low_prices, close_prices, fastk_period=window)
+        data[pair + '_Stoch_K'] = stoch_k
+        data[pair + '_Stoch_D'] = stoch_d
+    return data
+
+def calculate_adx(data, window=14):
+    for pair in data.columns:
+        high_prices = data[pair]
+        low_prices = data[pair]
+        close_prices = data[pair]
+        data[pair + '_ADX'] = ta.ADX(high_prices, low_prices, close_prices, timeperiod=window)
+    return data
+
+def calculate_atr(data, window=14):
+    for pair in data.columns:
+        high_prices = data[pair]
+        low_prices = data[pair]
+        close_prices = data[pair]
+        data[pair + '_ATR'] = ta.ATR(high_prices, low_prices, close_prices, timeperiod=window)
+    return data
+
+def is_range_market(data):
+    conditions = [
+        (data[pair + '_Close'] > data[pair + '_BB_Lower']) & (data[pair + '_Close'] < data[pair + '_BB_Upper'])
+        for pair in data.columns if '_Close' in pair
+    ]
+    data['Range_Market'] = np.all(conditions, axis=0)
+    return data
+
+def calculate_indicators(data):
+    data = calculate_bollinger_bands(data)
+    data = calculate_rsi(data)
+    data = calculate_stochastic(data)
+    data = calculate_adx(data)
+    data = calculate_atr(data)
+    data = is_range_market(data)
+    return data
+
+def calculate_range_market_duration(data):
+    return data['Range_Market'].sum()
 
 def calculate_volatility(df, pairs):
     combined = df[list(pairs)].sum(axis=1)
     return combined.std()
+
+def calculate_individual_volatilities(df, pairs):
+    return sum(df[pair].std() for pair in pairs)
+
+def find_minimum_details(df, pairs):
+    min_details = {}
+    for pair in pairs:
+        combined = df[pair]
+        min_value = combined.min()
+        min_date = combined.idxmin()
+        min_details[pair] = (min_value, min_date)
+    
+    min_dates = [details[1] for details in min_details.values()]
+    min_date = max(set(min_dates), key=min_dates.count)
+    
+    return min_date, min_details
 
 def check_valid_combination(pairs):
     currencies_in_pairs = [pair[:3] + pair[3:6] for pair in pairs]
@@ -87,41 +125,55 @@ def check_valid_combination(pairs):
     
     return len(common_currencies) == 2
 
-# メインの実行部分
-def main():
-    # 通貨ペアのリストを生成
-    currencies = ['AUD', 'NZD', 'USD', 'CHF', 'GBP', 'EUR', 'CAD', 'JPY']
-    currency_pairs = generate_currency_pairs(currencies)
-
-    # 各通貨ペアのレンジ相場の期間を計算
-    range_periods = calculate_range_periods(currency_pairs)
-
-    # レンジ相場の期間が長いものを選択
-    range_periods.sort(key=lambda x: x[1], reverse=True)
-    top_range_pairs = range_periods[:20]
-
-    # 最上位の通貨ペアからすくみ条件を満たすものを選定
-    top_currency_pairs = [pair for pair, _ in top_range_pairs]
-    combos = generate_combinations(top_currency_pairs)
+def display_combination_details(df, pairs):
+    combined_volatility = calculate_volatility(df, pairs)
+    individual_volatility = calculate_individual_volatilities(df, pairs)
+    min_date, min_details = find_minimum_details(df, pairs)
+    range_market_duration = calculate_range_market_duration(df)
     
-    data = download_data(top_currency_pairs)
-    
-    results = []
-    for combo in combos:
-        try:
-            if check_valid_combination(combo):
-                volatility = calculate_volatility(data, combo)
-                results.append((combo, volatility))
-        except KeyError:
-            continue
-    
-    # ボラティリティが小さい順にソート
-    results_sorted = sorted(results, key=lambda x: x[1])
-
-    # 結果を表示
-    print("最小の値動きの上位n個の通貨ペアの組み合わせ（条件に合致するもの）:")
-    for combo, volatility in results_sorted[:]:
-        print(f"組み合わせ: {combo} - 値動き: {volatility:.4f}")
+    print("通貨ペアの組み合わせ:")
+    print(f"  組み合わせ: {pairs}")
+    print(f"  総計ボラティリティ: {combined_volatility:.4f} pips")
+    print(f"  個々の通貨ペアボラティリティの合計: {individual_volatility:.4f} pips")
+    print(f"  最小値が発生した日付: {min_date.strftime('%Y-%m-%d')}")
+    print(f"  レンジ相場の期間の合計: {range_market_duration} 日")
+    for pair, (min_value, date) in min_details.items():
+        print(f"    {pair} - 最小値: {min_value:.4f} pips - 日付: {date.strftime('%Y-%m-%d')}")
+    print()
 
 if __name__ == "__main__":
-    main()
+    currencies = ['AUD', 'NZD', 'USD', 'CHF', 'GBP', 'EUR', 'CAD', 'JPY']
+    currency_pairs = generate_currency_pairs(currencies)
+    data = download_data(currency_pairs)
+
+    if not data.empty:
+        data_pips = convert_all_to_pips(data)
+        data_indicators = calculate_indicators(data_pips)
+        combos = list(combinations(currency_pairs, 3))
+
+        results = []
+        for combo in combos:
+            try:
+                if check_valid_combination(combo):
+                    combined_volatility = calculate_volatility(data_pips, combo)
+                    individual_volatility = calculate_individual_volatilities(data_pips, combo)
+                    min_date, min_details = find_minimum_details(data_pips, combo)
+                    range_market_duration = calculate_range_market_duration(data_indicators)
+                    
+                    result = {
+                        'Pairs': combo,
+                        'Total Volatility': combined_volatility,
+                        'Individual Volatility': individual_volatility,
+                        'Min Date': min_date,
+                        'Range Market Duration': range_market_duration,
+                        'Min Details': min_details
+                    }
+                    
+                    results.append(result)
+                    display_combination_details(data_pips, combo)
+                    
+            except Exception as e:
+                print(f"Error processing combination {combo}: {e}")
+
+        # 最終結果をファイルに保存するなどの処理
+        # 例: pd.DataFrame(results).to_csv('results.csv')
