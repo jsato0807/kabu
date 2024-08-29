@@ -56,7 +56,8 @@ def is_range_market(data):
         (data['Close'] > data['BB_Lower']) & (data['Close'] < data['BB_Upper']),
         (data['RSI'] > 30) & (data['RSI'] < 70),
         (data['Stoch_K'] > 20) & (data['Stoch_K'] < 80),
-        (data['ADX'] < 20)
+        (data['ADX'] < 20),
+        (data['ATR'] < data['ATR'].mean())
     ]
     data['Range_Market'] = np.all(conditions, axis=0)
     return data
