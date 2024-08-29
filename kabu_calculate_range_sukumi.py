@@ -5,14 +5,20 @@ import talib as ta
 from itertools import combinations
 
 def generate_currency_pairs(currencies):
+    """
+    通貨リストから通貨ペアを生成する関数。
+    重複する通貨ペア（例: 'CHFEUR' と 'EURCHF'）を除外する。
+    """
     pairs = []
     for i in range(len(currencies)):
         for j in range(len(currencies)):
             if i != j:
-                pair = currencies[i] + currencies[j] + '=X'
-                if pair not in pairs:
-                    pairs.append(pair)
+                pair1 = currencies[i] + currencies[j] + '=X'
+                pair2 = currencies[j] + currencies[i] + '=X'
+                if pair1 not in pairs and pair2 not in pairs:
+                    pairs.append(pair1)
     return pairs
+
 
 def download_data(pairs, start_date='2019-05-01', end_date='2024-08-01'):
     try:
@@ -131,15 +137,16 @@ def display_combination_details(df, pairs):
     min_date, min_details = find_minimum_details(df, pairs)
     range_market_duration = calculate_range_market_duration(df)
     
-    print("通貨ペアの組み合わせ:")
-    print(f"  組み合わせ: {pairs}")
-    print(f"  総計ボラティリティ: {combined_volatility:.4f} pips")
-    print(f"  個々の通貨ペアボラティリティの合計: {individual_volatility:.4f} pips")
-    print(f"  最小値が発生した日付: {min_date.strftime('%Y-%m-%d')}")
-    print(f"  レンジ相場の期間の合計: {range_market_duration} 日")
-    for pair, (min_value, date) in min_details.items():
-        print(f"    {pair} - 最小値: {min_value:.4f} pips - 日付: {date.strftime('%Y-%m-%d')}")
-    print()
+    result = {
+        'Pairs': pairs,
+        'Total Volatility': combined_volatility,
+        'Individual Volatility': individual_volatility,
+        'Min Date': min_date,
+        'Range Market Duration': range_market_duration,
+        'Min Details': min_details
+    }
+    
+    return result
 
 if __name__ == "__main__":
     currencies = ['AUD', 'NZD', 'USD', 'CHF', 'GBP', 'EUR', 'CAD', 'JPY']
@@ -155,25 +162,24 @@ if __name__ == "__main__":
         for combo in combos:
             try:
                 if check_valid_combination(combo):
-                    combined_volatility = calculate_volatility(data_pips, combo)
-                    individual_volatility = calculate_individual_volatilities(data_pips, combo)
-                    min_date, min_details = find_minimum_details(data_pips, combo)
-                    range_market_duration = calculate_range_market_duration(data_indicators)
-                    
-                    result = {
-                        'Pairs': combo,
-                        'Total Volatility': combined_volatility,
-                        'Individual Volatility': individual_volatility,
-                        'Min Date': min_date,
-                        'Range Market Duration': range_market_duration,
-                        'Min Details': min_details
-                    }
-                    
+                    result = display_combination_details(data_pips, combo)
                     results.append(result)
-                    display_combination_details(data_pips, combo)
                     
             except Exception as e:
                 print(f"Error processing combination {combo}: {e}")
 
-        # 最終結果をファイルに保存するなどの処理
-        # 例: pd.DataFrame(results).to_csv('results.csv')
+        # Sort by Total Volatility and display top 20 combinations
+        results_sorted = sorted(results, key=lambda x: x['Total Volatility'])
+        top_20_results = results_sorted[:20]
+
+        for result in top_20_results:
+            pairs = result['Pairs']
+            print("通貨ペアの組み合わせ:")
+            print(f"  組み合わせ: {pairs}")
+            print(f"  総計ボラティリティ: {result['Total Volatility']:.4f} pips")
+            print(f"  個々の通貨ペアボラティリティの合計: {result['Individual Volatility']:.4f} pips")
+            print(f"  最小値が発生した日付: {result['Min Date'].strftime('%Y-%m-%d')}")
+            print(f"  レンジ相場の期間の合計: {result['Range Market Duration']} 日")
+            for pair, (min_value, date) in result['Min Details'].items():
+                print(f"    {pair} - 最小値: {min_value:.4f} pips - 日付: {date.strftime('%Y-%m-%d')}")
+            print()
