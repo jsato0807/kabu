@@ -6,8 +6,8 @@ import matplotlib.pyplot as plt
 import os
 
 # 為替データをダウンロードする関数
-def download_forex_data(ticker, period='1y'):
-    data = yf.download(ticker, period=period)
+def download_forex_data(tickers, start_date, end_date):
+    data = yf.download(tickers, start=start_date, end=end_date, group_by='ticker')
     return data
 
 # ボリンジャーバンドを計算
@@ -110,30 +110,33 @@ def main():
     output_dir = './png_dir'
     os.makedirs(output_dir, exist_ok=True)
 
-    # 各通貨ペアのデータを取得し、レンジ相場の期間とレンジ内の値動きを計算
+    # データを一括でダウンロード
+    data = download_forex_data(currency_pairs, start_date="2019-06-01", end_date="2024-08-01")
+
+    # 各通貨ペアのデータを処理
     range_periods = []
     range_volatilities = []
     for pair in currency_pairs:
         print(f"Processing {pair}...")
-        data = yf.download(pair, start="2019-06-01", end="2024-08-01")
+        pair_data = data[pair].copy()
 
         # 指標を計算
-        data = calculate_bollinger_bands(data)
-        data = calculate_rsi(data)
-        data = calculate_stochastic(data)
-        data = calculate_adx(data)
-        data = calculate_atr(data)
-        data = calculate_support_resistance(data)
+        pair_data = calculate_bollinger_bands(pair_data)
+        pair_data = calculate_rsi(pair_data)
+        pair_data = calculate_stochastic(pair_data)
+        pair_data = calculate_adx(pair_data)
+        pair_data = calculate_atr(pair_data)
+        pair_data = calculate_support_resistance(pair_data)
 
         # レンジ相場の判別
-        data = is_range_market(data)
+        pair_data = is_range_market(pair_data)
 
         # レンジ相場の期間を計算
-        range_period = data['Range_Market'].sum()  # Trueの数をカウント
+        range_period = pair_data['Range_Market'].sum()  # Trueの数をカウント
         range_periods.append((pair, range_period))
         
         # レンジ内の値動きを計算
-        range_volatility = calculate_range_volatility(data)
+        range_volatility = calculate_range_volatility(pair_data)
         range_volatilities.append((pair, range_volatility))
 
     # レンジ相場の期間が長いものから20個を表示
@@ -154,40 +157,40 @@ def main():
 
     # 各通貨ペアのグラフを保存
     for pair, _ in top_n_range_pairs:
-        data = yf.download(pair, start="2019-06-01", end="2024-08-01")
+        pair_data = data[pair].copy()
 
         # 指標を計算
-        data = calculate_bollinger_bands(data)
-        data = calculate_rsi(data)
-        data = calculate_stochastic(data)
-        data = calculate_adx(data)
-        data = calculate_atr(data)
-        data = calculate_support_resistance(data)
+        pair_data = calculate_bollinger_bands(pair_data)
+        pair_data = calculate_rsi(pair_data)
+        pair_data = calculate_stochastic(pair_data)
+        pair_data = calculate_adx(pair_data)
+        pair_data = calculate_atr(pair_data)
+        pair_data = calculate_support_resistance(pair_data)
 
         # レンジ相場の判別
-        data = is_range_market(data)
+        pair_data = is_range_market(pair_data)
 
         # データの視覚化と保存
         filename = os.path.join(output_dir, f'{pair}_range.png')
-        visualize_data(data, f'{pair} - Range Market', filename)
+        visualize_data(pair_data, f'{pair} - Range Market', filename)
     
     for pair, _ in top_n_volatility_pairs:
-        data = yf.download(pair, start="2019-06-01", end="2024-08-01")
+        pair_data = data[pair].copy()
 
         # 指標を計算
-        data = calculate_bollinger_bands(data)
-        data = calculate_rsi(data)
-        data = calculate_stochastic(data)
-        data = calculate_adx(data)
-        data = calculate_atr(data)
-        data = calculate_support_resistance(data)
+        pair_data = calculate_bollinger_bands(pair_data)
+        pair_data = calculate_rsi(pair_data)
+        pair_data = calculate_stochastic(pair_data)
+        pair_data = calculate_adx(pair_data)
+        pair_data = calculate_atr(pair_data)
+        pair_data = calculate_support_resistance(pair_data)
 
         # レンジ相場の判別
-        data = is_range_market(data)
+        pair_data = is_range_market(pair_data)
 
         # データの視覚化と保存
         filename = os.path.join(output_dir, f'{pair}_volatility.png')
-        visualize_data(data, f'{pair} - Volatility in Range Market', filename)
+        visualize_data(pair_data, f'{pair} - Volatility in Range Market', filename)
 
 # メイン関数を実行
 if __name__ == "__main__":
