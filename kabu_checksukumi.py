@@ -62,11 +62,16 @@ def calculate_volatility(df, pairs):
     combined = df[list(pairs)].sum(axis=1)
     return combined.std()
 
+def calculate_individual_volatilities(df, pairs):
+    """
+    指定された通貨ペアのデータフレームに基づいて、個々の通貨ペアのボラティリティの合計を計算する。
+    """
+    return sum(df[pair].std() for pair in pairs)
+
 def check_valid_combination(pairs):
     """
     通貨ペアの組み合わせが条件に合致しているか確認する関数。
     """
-    currencies_in_pairs = [pair[:3] + pair[3:6] for pair in pairs]
     currencies_set = set()
     
     for pair in pairs:
@@ -79,23 +84,47 @@ def check_valid_combination(pairs):
     # 共通する通貨の数が2つであること
     return len(common_currencies) == 2
 
-# 最適な組み合わせを見つける
+def find_minimum_details(df, pairs):
+    """
+    指定された通貨ペアのデータフレームに基づいて、各通貨ペアの最小値とその日付を出力する関数。
+    """
+    min_details = {}
+    for pair in pairs:
+        combined = df[pair]
+        min_value = combined.min()
+        min_date = combined.idxmin()
+        min_details[pair] = (min_value, min_date)
+    
+    min_dates = [details[1] for details in min_details.values()]
+    min_date = max(set(min_dates), key=min_dates.count)  # 最も頻繁に出現する日付を選択
+    
+    return min_date, min_details
+
+# 結果を格納するリスト
 results = []
 
 for combo in combos:
     try:
         if check_valid_combination(combo):
-            volatility = calculate_volatility(data_pips, combo)
-            results.append((combo, volatility))
+            combined_volatility = calculate_volatility(data_pips, combo)
+            individual_volatility = calculate_individual_volatilities(data_pips, combo)
+            min_date, min_details = find_minimum_details(data_pips, combo)
+            results.append((combo, combined_volatility, individual_volatility, min_date, min_details))
     except KeyError:
         # 指定された通貨ペアのデータが不足している場合
         continue
 
-# ボラティリティが小さい順にソートし、上位5つを選択
+# ボラティリティが小さい順にソートし、上位10個を選択
 results_sorted = sorted(results, key=lambda x: x[1])
-top_n_combos = results_sorted[:10]
+top_10_combos = results_sorted[:10]
 
 # 結果を表示
-print("最小の値動きの上位5つの通貨ペアの組み合わせ（条件に合致するもの）:")
-for combo, volatility in top_n_combos:
-    print(f"組み合わせ: {combo} - 値動き: {volatility:.4f} pips")
+print("総計のボラティリティが小さい順に上位10個の通貨ペアの組み合わせ:")
+for combo, combined_volatility, individual_volatility, min_date, min_details in top_10_combos:
+    print(f"組み合わせ: {combo}")
+    print(f"  総計ボラティリティ: {combined_volatility:.4f} pips")
+    print(f"  個々の通貨ペアボラティリティの合計: {individual_volatility:.4f} pips")
+    print(f"  最小値が発生した日付: {min_date.strftime('%Y-%m-%d')}")
+    for pair, (min_value, date) in min_details.items():
+        print(f"    {pair} - 最小値: {min_value:.4f} pips - 日付: {date.strftime('%Y-%m-%d')}")
+    print()
