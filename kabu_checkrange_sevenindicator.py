@@ -4,11 +4,26 @@ import pandas as pd
 import talib as ta
 import matplotlib.pyplot as plt
 import os
+from kabu_checksukumi import generate_currency_pairs
 
 # 為替データをダウンロードする関数
 def download_forex_data(tickers, start_date, end_date):
     data = yf.download(tickers, start=start_date, end=end_date, group_by='ticker')
     return data
+
+# ピップス単位に変換する関数
+def convert_to_pips(df, ticker):
+    # 通貨ペアに応じてスケーリングの倍率を設定
+    if 'JPY' in ticker:
+        pip_scale = 100  # JPYを含む通貨ペアの場合
+    else:
+        pip_scale = 10000  # JPYを含まない通貨ペアの場合
+
+    # データフレーム全体をスケーリング
+    for col in ['Close', 'High', 'Low']:
+        if col in df.columns:
+            df[col] = df[col] * pip_scale
+    return df
 
 # ボリンジャーバンドを計算
 def calculate_bollinger_bands(data, window=20):
@@ -96,15 +111,9 @@ def calculate_range_volatility(data):
 
 # メインの実行部分
 def main():
-    # 通貨ペアのリスト
-    currency_pairs = [
-        "USDJPY=X", "EURUSD=X", "GBPUSD=X", "AUDUSD=X", "USDCAD=X", "USDCHF=X", "NZDUSD=X",
-        "EURJPY=X", "EURGBP=X", "EURAUD=X", "EURCAD=X", "EURCHF=X", "EURNZD=X",
-        "GBPJPY=X", "GBPAUD=X", "GBPCAD=X", "GBPCHF=X", "GBPNZD=X",
-        "AUDJPY=X", "AUDCAD=X", "AUDCHF=X", "AUDNZD=X",
-        "CADJPY=X", "CADCHF=X", "CHFJPY=X",
-        "NZDJPY=X", "NZDCHF=X"
-    ]
+    # 通貨ペアのリストを生成
+    currencies = ['AUD', 'NZD', 'USD', 'CHF', 'GBP', 'EUR', 'CAD', 'JPY']
+    currency_pairs = generate_currency_pairs(currencies)
 
     # 保存先ディレクトリ
     output_dir = './png_dir'
@@ -119,6 +128,9 @@ def main():
     for pair in currency_pairs:
         print(f"Processing {pair}...")
         pair_data = data[pair].copy()
+
+        # ピップス単位に変換
+        pair_data = convert_to_pips(pair_data, pair)
 
         # 指標を計算
         pair_data = calculate_bollinger_bands(pair_data)
@@ -159,6 +171,9 @@ def main():
     for pair, _ in top_n_range_pairs:
         pair_data = data[pair].copy()
 
+        # ピップス単位に変換
+        pair_data = convert_to_pips(pair_data, pair)
+
         # 指標を計算
         pair_data = calculate_bollinger_bands(pair_data)
         pair_data = calculate_rsi(pair_data)
@@ -177,6 +192,9 @@ def main():
     for pair, _ in top_n_volatility_pairs:
         pair_data = data[pair].copy()
 
+        # ピップス単位に変換
+        pair_data = convert_to_pips(pair_data, pair)
+
         # 指標を計算
         pair_data = calculate_bollinger_bands(pair_data)
         pair_data = calculate_rsi(pair_data)
@@ -190,8 +208,7 @@ def main():
 
         # データの視覚化と保存
         filename = os.path.join(output_dir, f'{pair}_volatility.png')
-        visualize_data(pair_data, f'{pair} - Volatility in Range Market', filename)
+        #visualize_data(pair_data, f'{pair} - Volatility', filename)
 
-# メイン関数を実行
 if __name__ == "__main__":
     main()
