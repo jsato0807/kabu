@@ -19,7 +19,7 @@ def generate_currency_pairs(currencies):
                     pairs.append(pair1)
     return pairs
 
-def download_data(pair, start_date='2019-05-01', end_date='2024-08-01'):
+def download_data(pair, start_date='2019-01-01', end_date='2024-08-01'):
     """
     指定された通貨ペアのデータをyfinanceからダウンロードする関数。
     """
@@ -160,12 +160,17 @@ def display_combination_details(data_dict, pairs):
     
     # レンジ相場の期間の合計を計算
     range_period_sum = sum(data_dict[pair]['Range_Period'] for pair in pairs)
+
+    # 総計の最小値を取得
+    combined_df = sum(data_dict[pair]['Low'] for pair in pairs)
+    min_value = combined_df.min()
     
     print("通貨ペアの組み合わせ:")
     print(f"  組み合わせ: {pairs}")
     print(f"  総計ボラティリティ: {combined_volatility:.4f} pips")
     print(f"  個々の通貨ペアボラティリティの合計: {individual_volatility:.4f} pips")
     print(f"  最小値が発生した日付: {min_date.strftime('%Y-%m-%d')}")
+    print(f"  その時の最小値: {min_value:.4f} pips")
     for pair, (min_value, date) in min_details.items():
         print(f"    {pair} - 最小値: {min_value:.4f} pips - 日付: {date.strftime('%Y-%m-%d')}")
     print(f"  レンジ相場だった期間の合計: {range_period_sum} 日")
@@ -186,12 +191,17 @@ def display_specific_combo_details(data_dict, pairs):
     
     # レンジ相場だった期間の合計を計算
     range_period_sum = sum(data_dict[pair]['Range_Period'] for pair in pairs)
+
+    # 総計の最小値を取得
+    combined_df = sum(data_dict[pair]['Low'] for pair in pairs)
+    min_value = combined_df.min()
     
     print("指定された通貨ペアの組み合わせ:")
     print(f"  組み合わせ: {pairs}")
     print(f"  総計ボラティリティ: {combined_volatility:.4f} pips")
     print(f"  個々の通貨ペアボラティリティの合計: {individual_volatility:.4f} pips")
     print(f"  最小値が発生した日付: {min_date.strftime('%Y-%m-%d')}")
+    print(f"  その時の最小値: {min_value:.4f} pips")
     for pair, (min_value, date) in min_details.items():
         print(f"    {pair} - 最小値: {min_value:.4f} pips - 日付: {date.strftime('%Y-%m-%d')}")
     print(f"  レンジ相場だった期間の合計: {range_period_sum} 日")
