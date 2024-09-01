@@ -85,22 +85,35 @@ def objective(trial):
     return wrapped_objective_function(params, data)
 
 # Optunaの実行
+n_trials = 100
 study = optuna.create_study(direction='maximize')
-study.optimize(objective, n_trials=100)
+study.optimize(objective, n_trials=n_trials)
 
-# 最良のパラメータを取得
+# 最良のパラメータの組み合わせを取得
 best_params = study.best_params
 print(f'Best parameters: {best_params}')
 
-# CSCVによる評価
-df = pd.DataFrame(data)
-best_params_list = [
-    best_params['num_trap'],
-    best_params['profit_width'],
-    best_params['order_size'],
-    best_params['strategy'],
-    best_params['density']
-]
-pbo_result = CSCV(df, n_split=10, eval=lambda x: wrapped_objective_function(best_params_list, x))
+# 複数のパラメータ組み合わせを検証するための関数
+def evaluate_params_with_cscv(params_list, data):
+    df = pd.DataFrame(data)
+    n_splits = 10
+    results = []
+    for params in params_list:
+        pbo_result = CSCV(df, n_split=n_splits, eval=lambda x: wrapped_objective_function(params, x))
+        results.append((params, pbo_result))
+    return results
 
-print(f'PBO result: {pbo_result}')
+# Optunaで最適化したパラメータの組み合わせを取得して検証
+# ここでは、Optunaが探索した全パラメータを使ってCSCVを評価
+param_trials = [study.trials[i].params for i in range(len(study.trials))]
+cscv_results = evaluate_params_with_cscv(param_trials, data)
+
+#全てのpboを対応するパラメータの組み合わせとともに表示
+print(f"all CSCV result: {cscv_results}")
+
+# 最も良いCSCV結果を表示
+best_cscv_result = min(cscv_results, key=lambda x: x[1])  # PBOが小さいほど良い
+best_cscv_params, best_pbo = best_cscv_result
+
+print(f'Best CSCV result: {best_pbo}')
+print(f'Best CSCV parameters: {best_cscv_params}')
