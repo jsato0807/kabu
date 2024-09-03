@@ -1,9 +1,10 @@
 import optuna
 import numpy as np
 import pandas as pd
+from datetime import datetime, timedelta
 import scipy.stats as sts
 from kabu_swap import get_html, parse_swap_points, rename_swap_points, SwapCalculator
-from kabu_backtest import traripi_backtest, pair, initial_funds, grid_start, grid_end, entry_intervals, total_thresholds, data
+from kabu_backtest import fetch_currency_data, traripi_backtest, pair, initial_funds, grid_start, grid_end, entry_intervals, total_thresholds, data
 
 # パラメータの設定
 entry_interval = entry_intervals
@@ -15,6 +16,52 @@ html = get_html(url)
 swap_points = parse_swap_points(html)
 swap_points = rename_swap_points(swap_points)
 calculator = SwapCalculator(swap_points)
+
+# 最適化とエフェクティブマージン計算関数
+def optimize_and_compute_effective_margin(n_trials, train_data):
+    def objective(trial):
+        num_trap = trial.suggest_int('num_trap', 1, 100)
+        profit_width = trial.suggest_float('profit_width', 0.001, 10.0)
+        order_size = trial.suggest_int('order_size', 1, 10) * 1000
+        strategy = trial.suggest_categorical('strategy', ['half_and_half', 'diamond', 'long_only', 'short_only'])
+        density = trial.suggest_float('density', 1.0, 10.0)
+        
+        params = [num_trap, profit_width, order_size, strategy, density]
+        effective_margin = wrapped_objective_function(params, train_data)
+        return effective_margin
+
+    study = optuna.create_study(direction='maximize')
+    study.optimize(objective, n_trials=n_trials)
+
+    # 各試行の結果を取得
+    params_trials = [trial.params for trial in study.trials]
+    margin_trials = [trial.value for trial in study.trials]
+
+    return np.array(params_trials), np.array(margin_trials)
+
+# エフェクティブマージンの行列を計算する関数
+def compute_effective_margin_matrix(period, n_trials, data):
+    n_periods = len(data) // period
+    all_param_trials = []
+    all_margin_values = []
+    periods = []
+
+    for i in range(n_periods):
+        start_idx = i * period
+        end_idx = (i + 1) * period
+        period_data = data[start_idx:end_idx]
+        
+        # 各期間での最適化とエフェクティブマージンの計算
+        best_params, best_margin = optimize_and_compute_effective_margin(n_trials, period_data)
+        
+        all_param_trials.extend(best_params)
+        all_margin_values.extend(best_margin)
+
+    # 各期間の結果を結合して (T, N) 形状にする
+    margin_matrix = np.array(all_margin_values).reshape(n_periods, n_trials)
+    param_trials_matrix = np.array(all_param_trials).reshape(n_periods, n_trials, -1)  # ここで-1はパラメータ数
+
+    return margin_matrix, param_trials_matrix
 
 # CSCV法によるPBO計算関数
 def CSCV(df, n_split, eval=None):
@@ -60,60 +107,51 @@ def CSCV(df, n_split, eval=None):
     pbo = len([x for x in w_ary if x < 0.5]) / len(w_ary)
     return pbo
 
-# OptunaのObjective関数
+# `wrapped_objective_function` の定義
 def wrapped_objective_function(params, train_data):
     num_trap, profit_width, order_size, strategy, density = params
-    
     effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
         calculator, train_data, initial_funds, grid_start, grid_end, num_trap, profit_width, order_size,
         entry_interval, total_threshold, strategy, density
     )
-    
     return effective_margin
 
-# パラメータ最適化のObjective関数
-def objective(trial):
-    num_trap = trial.suggest_int('num_trap', 1, 100)
-    profit_width = trial.suggest_float('profit_width', 0.001, 10.0)
-    order_size = trial.suggest_int('order_size', 1, 10) * 1000
-    strategy = trial.suggest_categorical('strategy', ['half_and_half', 'diamond', 'long_only', 'short_only'])
-    density = trial.suggest_float('density', 1.0, 10.0)
+if __name__ == "__main__":
+    interval = "1d"
+    end_date = datetime.strptime("2022-01-01", "%Y-%m-%d")  # datetime.now() - timedelta(days=7)
+    start_date = datetime.strptime("2010-01-01", "%Y-%m-%d")  # datetime.now() - timedelta(days=14)
+    data = fetch_currency_data(pair, start_date, end_date, interval)
 
-    params = [num_trap, profit_width, order_size, strategy, density]
+    # メインコード
+    period = 50  # 例: 50日ごと
+    n_trials = 50  # 例: 試行回数
+    margin_matrix, param_trials = compute_effective_margin_matrix(period, n_trials, data)
+
+    # 各期間ごとのパラメータとマージン値を結合してDataFrameに変換
+    df_matrix = pd.DataFrame(margin_matrix)
+
+    # ベスト5サンプルの抽出と表示
+    top_n = 5
+    flat_indices = np.argsort(margin_matrix.flatten())[-top_n:]  # すべての値をフラット化してソート
+    top_indices = np.unravel_index(flat_indices, margin_matrix.shape)  # 元の形状に戻す
+
+    print("Top 5 Effective Margin Samples:")
+    for i, idx in enumerate(zip(*top_indices)):
+        period_idx, trial_idx = idx
+        margin_value = margin_matrix[period_idx, trial_idx]
+        params = param_trials[period_idx, trial_idx]
+        start_idx = int(period_idx * period)
+        end_idx = int((period_idx + 1) * period)
+        date_range = f"{start_date + timedelta(days=start_idx)} to {start_date + timedelta(days=end_idx - 1)}"
+        
+        print(f"Sample {i + 1}:")
+        print(f"  Effective Margin: {margin_value}")
+        print(f"  Parameters: {params}")
+        print(f"  Data Period: {date_range}")
     
-    # 全データに対してwrapped_objective_functionを実行してスコアを計算
-    return wrapped_objective_function(params, data)
-
-# Optunaの実行
-n_trials = 100
-study = optuna.create_study(direction='maximize')
-study.optimize(objective, n_trials=n_trials)
-
-# 最良のパラメータの組み合わせを取得
-best_params = study.best_params
-print(f'Best parameters: {best_params}')
-
-# 複数のパラメータ組み合わせを検証するための関数
-def evaluate_params_with_cscv(params_list, data):
-    df = pd.DataFrame(data)
+    # CSCVの実行
     n_splits = 10
-    results = []
-    for params in params_list:
-        pbo_result = CSCV(df, n_split=n_splits, eval=lambda x: wrapped_objective_function(params, x))
-        results.append((params, pbo_result))
-    return results
+    pbo = CSCV(df_matrix, n_split=n_splits)
 
-# Optunaで最適化したパラメータの組み合わせを取得して検証
-# ここでは、Optunaが探索した全パラメータを使ってCSCVを評価
-param_trials = [study.trials[i].params for i in range(len(study.trials))]
-cscv_results = evaluate_params_with_cscv(param_trials, data)
+    print(f'CSCV PBO: {pbo}')
 
-#全てのpboを対応するパラメータの組み合わせとともに表示
-print(f"all CSCV result: {cscv_results}")
-
-# 最も良いCSCV結果を表示
-best_cscv_result = min(cscv_results, key=lambda x: x[1])  # PBOが小さいほど良い
-best_cscv_params, best_pbo = best_cscv_result
-
-print(f'Best CSCV result: {best_pbo}')
-print(f'Best CSCV parameters: {best_cscv_params}')
