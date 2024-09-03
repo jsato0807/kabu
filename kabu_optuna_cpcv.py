@@ -211,38 +211,35 @@ def fetch_currency_data(pair: str, start: str, end: str, interval: str) -> pd.Da
     return data
 
 
-# ベイズ最適化のための目的関数
-def optimize_on_split(X_train: pd.DataFrame) -> Tuple[Dict[str, Any], float]:
-    def objective(trial: optuna.Trial) -> float:
-        num_trap = trial.suggest_int('num_trap', 4, 101)
-        profit_width = trial.suggest_float('profit_width', 0.001, 100.0)
-        order_size = trial.suggest_int('order_size', 1, 10) * 1000
-        density = trial.suggest_float('density', 1.0, 10.0)
-        strategy = trial.suggest_categorical('strategy', ["long_only", "short_only", "half_and_half", "diamond"])
+# wrapped_objective_functionの定義
+def wrapped_objective_function(params, train_data):
+    num_trap, profit_width, order_size, strategy, density = params
+    
+    # traripi_backtestをtrain_dataに対して実行し、effective_marginを計算
+    effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
+        calculator, train_data, initial_funds, grid_start, grid_end, num_trap, profit_width, order_size,
+        entry_interval, total_threshold, strategy, density
+    )
+    
+    return effective_margin
 
-        # トレードシミュレーションのバックテスト
-        effective_margin = traripi_backtest(
-            calculator,
-            X_train,
-            initial_funds,
-            grid_start,
-            grid_end,
-            num_trap,
-            profit_width,
-            order_size,
-            entry_interval=0,
-            total_threshold=0,
-            strategy=strategy,
-            density=density
-        )
+
+# ベイズ最適化のための目的関数
+
+def objective(trial, X_train):
+    num_trap = trial.suggest_int('num_trap', 4, 101)
+    profit_width = trial.suggest_float('profit_width', 0.001, 100.0)
+    order_size = trial.suggest_int('order_size', 1, 10) * 1000
+    density = trial.suggest_float('density', 1.0, 10.0)
+    strategy = trial.suggest_categorical('strategy', ["long_only", "short_only", "half_and_half", "diamond"])
+
+    params = [num_trap, profit_width, order_size, strategy, density]
+
 
         
-        return effective_margin
+    return wrapped_objective_function(params, X_train)
 
-    # Optuna スタディの設定
-    study = optuna.create_study(direction='maximize')
-    study.optimize(objective, n_trials=100)
-    return study.best_params, study.best_value
+
 
 # データを取得
 data = fetch_currency_data('USDJPY=X', '2022-01-01', '2023-01-01', '1d')
@@ -263,23 +260,20 @@ for X_train, X_test in cv.split(X=data):
     print(f"Optimizing on split with {len(X_train)} training samples and {len(X_test)} test samples...")
     
     # 各分割でベイズ最適化を実行
-    best_params, best_effective_margin = optimize_on_split(X_train)
+    study = optuna.create_study(direction="maximize")
+    study.optimize(lambda trial: objective(trial, X_train), n_trials=1)
+
+    best_params = study.best_params
+    best_effective_margin = study.best_value
 
     # 最適なパラメータでテストセットを評価
-    final_effective_margin = traripi_backtest(
-        calculator,
-        X_test,
-        initial_funds,
-        grid_start,
-        grid_end,
+    final_effective_margin = wrapped_objective_function([
         best_params['num_trap'],
         best_params['profit_width'],
         best_params['order_size'],
-        entry_interval=0,
-        total_threshold=0,
-        strategy=best_params['strategy'],
-        density=best_params['density']
-    )
+        best_params['strategy'],
+        best_params['density']
+    ], X_test)
 
     # 結果をリストに追加
     results.append({
