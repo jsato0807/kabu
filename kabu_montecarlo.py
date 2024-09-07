@@ -3,8 +3,9 @@ import matplotlib.pyplot as plt
 import scipy.stats as stats
 import seaborn as sns
 import pandas as pd
+from datetime import datetime
 from kabu_swap import get_html, parse_swap_points, rename_swap_points, SwapCalculator
-from kabu_backtest import traripi_backtest, pair, initial_funds, grid_start, grid_end, entry_intervals, total_thresholds, data
+from kabu_backtest import traripi_backtest, fetch_currency_data, pair, initial_funds, grid_start, grid_end, entry_intervals, total_thresholds, data
 
 entry_interval = entry_intervals
 total_threshold = total_thresholds
@@ -41,26 +42,6 @@ def sample_parameters(param_ranges):
             params[param] = np.random.choice(value)
     return params
 
-# シミュレーション結果を格納するリスト
-
-results = []
-# モンテカルロシミュレーションの実行
-for _ in range(num_simulations):
-    params = sample_parameters(param_ranges)
-    effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
-        calculator, data, initial_funds,
-        grid_start, grid_end, params['num_trap'],
-        params['profit_width'], params['order_size']*1000, entry_interval,
-        total_threshold, params['strategy'], params['density']
-    )
-    params['effective_margin'] = effective_margin
-    results.append(params)
-
-# DataFrame に変換
-df = pd.DataFrame(results)
-
-# 結果の確認
-print(df.head())
 
 # 各ペアに対して正規分布のフィッティングとプロット
 def fit_and_plot_normal_distribution(df, column_name):
@@ -99,11 +80,38 @@ def fit_and_plot_normal_distribution(df, column_name):
     plt.savefig(f'./png_dir/kabu_montecarlo_{column_name}_qq_plot.png')  # 各パラメータのQ-Qプロットを保存
     plt.close()  # プロットを閉じる
 
-# 各数値パラメータに対してフィッティングとプロットを実施
-for column in param_ranges.keys():
-    fit_and_plot_normal_distribution(df, column)
 
-# ペアプロットの作成
-sns.pairplot(df)
-plt.savefig('./png_dir/kabu_montecarlo_pairplot.png')
-plt.show()
+if __name__ == "__main__":
+    interval="1d"
+    end_date = datetime.strptime("2022-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+    start_date = datetime.strptime("2021-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+    data = data = fetch_currency_data(pair, start_date, end_date,interval)
+    # シミュレーション結果を格納するリスト
+
+    results = []
+    # モンテカルロシミュレーションの実行
+    for _ in range(num_simulations):
+        params = sample_parameters(param_ranges)
+        effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
+            calculator, data, initial_funds,
+            grid_start, grid_end, params['num_trap'],
+            params['profit_width'], params['order_size']*1000, entry_interval,
+            total_threshold, params['strategy'], params['density']
+        )
+        params['effective_margin'] = effective_margin
+        results.append(params)
+
+    # DataFrame に変換
+    df = pd.DataFrame(results)
+
+    # 結果の確認
+    print(df.head())
+    
+    # 各数値パラメータに対してフィッティングとプロットを実施
+    for column in param_ranges.keys():
+        fit_and_plot_normal_distribution(df, column)
+
+    # ペアプロットの作成
+    sns.pairplot(df)
+    plt.savefig('./png_dir/kabu_montecarlo_pairplot.png')
+    plt.show()
