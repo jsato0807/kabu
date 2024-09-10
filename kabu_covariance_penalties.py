@@ -97,7 +97,9 @@ def evaluate_model(X_train, y_train, X_test, y_test, model_type):
         raise ValueError("Unsupported model type. Use 'ols' or 'tls'.")
 
 # 全てのラグに対する評価を行う
-def evaluate_lags(lags_list):
+from sklearn.model_selection import TimeSeriesSplit
+
+def evaluate_lags(lags_list, n_splits=5):
     best_aic_lag = None
     best_imp_sharpe_lag = None
     best_sr_lag = None
@@ -108,6 +110,8 @@ def evaluate_lags(lags_list):
     best_sr = -np.inf
     best_r_squared = -np.inf
 
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+
     for lag in lags_list:
         # ラグを使ってデータを準備
         signals = create_lags(pd.Series(returns), lag)
@@ -117,43 +121,45 @@ def evaluate_lags(lags_list):
         X = signals.drop(columns=['returns'])
         y = signals['returns']
         
-        # トレーニングとテストデータの分割
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        
-        # OLSモデルの評価
-        aic_value, imp_sharpe, sr_p, r_squared = evaluate_model(X_train, y_train, X_test, y_test, 'ols')
-        if aic_value is not None and aic_value < best_aic:
-            best_aic = aic_value
-            best_aic_lag = lag
+        for train_index, test_index in tscv.split(X):
+            X_train, X_test = X.iloc[train_index], X.iloc[test_index]
+            y_train, y_test = y.iloc[train_index], y.iloc[test_index]
 
-        if imp_sharpe > best_imp_sharpe:
-            best_imp_sharpe = imp_sharpe
-            best_imp_sharpe_lag = lag
+            # OLSモデルの評価
+            aic_value, imp_sharpe, sr_p, r_squared = evaluate_model(X_train, y_train, X_test, y_test, 'ols')
+            if aic_value is not None and aic_value < best_aic:
+                best_aic = aic_value
+                best_aic_lag = lag
 
-        if sr_p > best_sr:
-            best_sr = sr_p
-            best_sr_lag = lag
+            if imp_sharpe > best_imp_sharpe:
+                best_imp_sharpe = imp_sharpe
+                best_imp_sharpe_lag = lag
 
-        if r_squared > best_r_squared:
-            best_r_squared = r_squared
-            best_r_squared_lag = lag
+            if sr_p > best_sr:
+                best_sr = sr_p
+                best_sr_lag = lag
 
-        # TLSモデルの評価
-        _, imp_sharpe_tls, sr_p_tls, r_squared_tls = evaluate_model(X_train, y_train, X_test, y_test, 'tls')
-        
-        if imp_sharpe_tls > best_imp_sharpe:
-            best_imp_sharpe = imp_sharpe_tls
-            best_imp_sharpe_lag = lag
+            if r_squared > best_r_squared:
+                best_r_squared = r_squared
+                best_r_squared_lag = lag
 
-        if sr_p_tls > best_sr:
-            best_sr = sr_p_tls
-            best_sr_lag = lag
+            # TLSモデルの評価
+            _, imp_sharpe_tls, sr_p_tls, r_squared_tls = evaluate_model(X_train, y_train, X_test, y_test, 'tls')
+            
+            if imp_sharpe_tls > best_imp_sharpe:
+                best_imp_sharpe = imp_sharpe_tls
+                best_imp_sharpe_lag = lag
 
-        if r_squared_tls > best_r_squared:
-            best_r_squared = r_squared_tls
-            best_r_squared_lag = lag
+            if sr_p_tls > best_sr:
+                best_sr = sr_p_tls
+                best_sr_lag = lag
+
+            if r_squared_tls > best_r_squared:
+                best_r_squared = r_squared_tls
+                best_r_squared_lag = lag
 
     return best_aic_lag, best_imp_sharpe_lag, best_sr_lag, best_r_squared_lag
+
 
 # ラグのリスト
 lags_list = [3, 5, 7, 9, 12, 15, 18, 21, 26, 31, 36, 42, 49, 56, 63, 84, 105, 126]
