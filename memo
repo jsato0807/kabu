@@ -1,0 +1,7 @@
+kabu_montecarlo.pyが終わったら、kabu_backtest.pyを、cumulativeなreturnをtxtfileに保存するように修正して、再度kabu_montecarlo.pyを実行せよ
+svmとGAの論文を読んで、完全に再現
+svmとGAの論文以外にcitationの多い、overfitしていない先行研究を探す
+kabu_montecarlo.pyはパラメータを全て一様分布から生成しているが、これも先行研究を探す
+covariance penalitesの論文にある、CV以外の先行研究となった手法を調べる
+cpcvを日足より短い”大量の”データを使って再度試す
+うまくいきそうなら、その結果に対してcscvでpboを確認
