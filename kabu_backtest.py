@@ -22,6 +22,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     margin_deposit = initial_funds
     effective_margin = margin_deposit
     realized_profit = 0
+    squared_realized_profit = 0
     required_margin = 0		# current_rate*order_size*required_margin_rate
     margin_maintenance_rate = float('inf')		# effective_margin/required_margin*100
     required_margin_rate = 0.04
@@ -141,6 +142,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_deposit += order_size * profit_width 
                         profit = order_size * profit_width
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = 'Buy-Closed'
@@ -170,6 +172,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin += profit - pos[4] # 損失分を証拠金に反映
                         margin_deposit += profit
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = "Buy-Closed"
@@ -317,6 +320,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_deposit += order_size * profit_width
                         profit = order_size * profit_width
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = 'Sell-Closed'
@@ -348,6 +352,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin += profit - pos[4] # 損失分を証拠金に反映
                         margin_deposit += profit
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         #print(f'required_margin: {required_margin}')
                         pos[5] = 0
@@ -553,6 +558,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_deposit += order_size * profit_width
                         profit = order_size * profit_width
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = 'Buy-Closed'
@@ -593,6 +599,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_deposit += order_size * profit_width
                         profit = order_size * profit_width
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = 'Sell-Closed'
@@ -626,6 +633,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin += profit - pos[4] # 損失分を証拠金に反映
                         margin_deposit += profit
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] += "-Closed"
@@ -841,6 +849,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_deposit += order_size * profit_width
                         profit = order_size * profit_width
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = 'Buy-Closed'
@@ -881,6 +890,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             margin_deposit += order_size * profit_width
                             profit = order_size * profit_width
                             realized_profit += profit
+                            squared_realized_profit += profit**2
                             required_margin -= pos[5]
                             pos[5] = 0
                             pos[2] = 'Sell-Closed'
@@ -914,6 +924,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin += profit - pos[4] # 損失分を証拠金に反映
                         margin_deposit += profit
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] += "-Closed"
@@ -979,6 +990,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             margin_deposit += order_size * (pos[3] - price)
                             profit =  (pos[3] - price) * order_size
                             realized_profit += profit
+                            squared_realized_profit += profit**2
                             required_margin -= pos[5]
                             pos[5] = 0
                             pos[2] = "Sell-Closed"
@@ -1059,6 +1071,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             effective_margin += profit - pos[4] # 損失分を証拠金に反映
                             margin_deposit += profit
                             realized_profit += profit
+                            squared_realized_profit += profit**2
                             required_margin -= pos[5]
                             pos[5] = 0
                             pos[2] += "-Closed"
@@ -1088,6 +1101,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin += profit - pos[4] # 損失分を証拠金に反映
                         margin_deposit += profit
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] += "-Closed"
@@ -1154,6 +1168,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             margin_deposit += order_size * (pos[3] - price)
                             profit =  (pos[3] - price) * order_size
                             realized_profit += profit
+                            squared_realized_profit += profit**2
                             required_margin -= pos[5]
                             pos[2] = "Sell-child-Closed"
                             
@@ -1172,6 +1187,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             margin_deposit += order_size * (price - pos[3])
                             profit =  (price - pos[3]) * order_size
                             realized_profit += profit
+                            squared_realized_profit += profit**2
                             required_margin -= pos[5]
                             pos[2] = "Buy-child-Closed"
                             
@@ -1266,6 +1282,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             effective_margin += profit - pos[4] # 損失分を証拠金に反映
                             margin_deposit += profit
                             realized_profit += profit
+                            squared_realized_profit += profit**2
                             required_margin -= pos[5]
                             pos[5] = 0
                             pos[2] += pos[2] + "-Closed"
@@ -1287,6 +1304,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             effective_margin += profit - pos[4] # 損失分を証拠金に反映
                             margin_deposit += profit
                             realized_profit += profit
+                            squared_realized_profit += profit**2
                             required_margin -= pos[5]
                             pos[5] = 0
                             pos[2] += "-Closed"
@@ -1315,6 +1333,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin += profit - pos[4] # 損失分を証拠金に反映
                         margin_deposit += profit
                         realized_profit += profit
+                        squared_realized_profit += profit**2
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] += "-Closed"
@@ -1379,21 +1398,27 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     else:
         swap_value = 0
 
+    # Calculate sharp ratio
+    if np.sqrt(squared_realized_profit/len(data) - (realized_profit/len(data))**2) != 0:
+        sharp_ratio = (realized_profit/len(data)) / np.sqrt(squared_realized_profit/len(data) - (realized_profit/len(data))**2)
+    else:
+        sharp_ratio = None
+
     # Calculate margin deposit
     #margin_deposit = initial_funds + realized_profit
 
-    return effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades
+    return effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades, sharp_ratio
 
 
 
 pair = 'USDJPY=X'
 interval="1d"
 end_date = datetime.strptime("2022-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
-start_date = datetime.strptime("2020-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+start_date = datetime.strptime("2010-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 2000000
 grid_start = 100
-grid_end = 110
-strategies = ['long_only']
+grid_end = 150
+strategies = ['long_only','short_only', 'half_and_half', 'diamond']
 entry_intervals = [-15]  # エントリー間隔
 total_thresholds = [100]  # 全ポジション決済の閾値
 # データの取得
@@ -1401,10 +1426,10 @@ data = fetch_currency_data(pair, start_date, end_date,interval)
 
 if __name__ == "__main__":
     # パラメータ設定
-    order_sizes = [1000]
-    num_traps_options = [2]
-    profit_widths = [10]
-    densities = [2]
+    order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
+    num_traps_options = [20, 40, 60, 67, 80, 100]
+    profit_widths = [1,2,3,4,5,6,7,8,9,9.52, 10]
+    densities = [2,4,6,8,8.37,10]
     url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
     html = get_html(url)
     #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
@@ -1420,59 +1445,59 @@ if __name__ == "__main__":
     if "diamond" in strategies and milagroman_list:
         print("hello diamond and {} both".format(milagroman_list))
         for order_size, num_traps, profit_width, strategy, density, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, densities, entry_intervals, total_thresholds):
-            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
+            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades, sharp_ratio = traripi_backtest(
                calculator ,data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=density
             )
       
-            results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate, entry_interval, total_threshold))
+            results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio))
             
     elif "diamond" in strategies and not milagroman_list:
         print("hello diamond only")
         for order_size, num_traps, profit_width, strategy, density in product(order_sizes, num_traps_options, profit_widths, strategies, densities):
-            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, _, _, trades = traripi_backtest(
+            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, _, _, trades, sharp_ratio = traripi_backtest(
                 calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None, strategy=strategy, density=density
             )
       
-            results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate, None, None
+            results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, density, required_margin, margin_maintenance_rate, None, None, sharp_ratio
                             ))
     
     
     elif not "diamond" in strategies and milagroman_list:
         print("{} only".format(milagroman_list))
         for order_size, num_traps, profit_width, strategy, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, entry_intervals, total_thresholds):
-            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
+            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades, sharp_ratio = traripi_backtest(
                 calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=None
             )
       
-            results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, None, required_margin, margin_maintenance_rate, entry_interval, total_threshold))
+            results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, None, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio))
     
     
     elif not "diamond" in strategies and not milagroman_list:
         print("nothing")
         for order_size, num_traps, profit_width, strategy in product(order_sizes, num_traps_options, profit_widths, strategies):
-            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades = traripi_backtest(
+            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, trades, sharp_ratio = traripi_backtest(
                 calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, None, None, strategy=strategy, density=None
             )
       
-            results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, None, required_margin, margin_maintenance_rate, None, None))
+            results.append((effective_margin, margin_deposit, realized_profit, position_value, swap_value, order_size, num_traps, profit_width, strategy, None, required_margin, margin_maintenance_rate, None, None, sharp_ratio))
     
         
     
     # 結果の表示
     results_df = pd.DataFrame(results, columns=[
-        'Effective Margin', 'Margin Deposit', 'Realized Profit', 'Position Value', 'Swap Value' ,'Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density','Required Margin', 'Margin Maintenance Rate', 'Entry Interval', 'Total Threshold'
+        'Effective Margin', 'Margin Deposit', 'Realized Profit', 'Position Value', 'Swap Value' ,'Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density','Required Margin', 'Margin Maintenance Rate', 'Entry Interval', 'Total Threshold', 'Sharp Ratio'
     ])
     
     # 結果の表示
     # ユニークな組み合わせを取得
-    unique_results = results_df.drop_duplicates(subset=['Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density', 'Entry Interval', 'Total Threshold'])
+    unique_results = results_df.drop_duplicates(subset=['Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density', 'Entry Interval', 'Total Threshold', 'Sharp Ratio'])
     
     # Top 5 Results Based on Effective Margin
     print("上位5件の有効証拠金に基づく結果:")
     rank = 1
     seen_results = set()  # 重複を管理するためのセット
     for i, row in results_df.sort_values(by='Effective Margin', ascending=False).iterrows():
-        key = (row['Margin Deposit'], row['Effective Margin'], row['Position Value'], row['Swap Value'], row['Realized Profit'])
+        key = (row['Margin Deposit'], row['Effective Margin'], row['Position Value'], row['Swap Value'], row['Realized Profit'], row['Sharp Ratio'])
         if key in seen_results:
             continue
         seen_results.add(key)
@@ -1484,6 +1509,7 @@ if __name__ == "__main__":
         print(f"  確定利益: {row['Realized Profit']}")
         print(f" 必要証拠金: {row['Required Margin']}")
         print(f"証拠金維持率: {row['Margin Maintenance Rate']}")
+        print(f"シャープレシオ: {row['Sharp Ratio']}")
         print(f"  取引通貨量: {row['Order Size']}, トラップ本数: {row['Num Traps']}, 利益値幅: {row['Profit Width']}, 戦略: {row['Strategy']}, 密度: {row['Density']}, エントリー間隔: {row['Entry Interval']}, 全ポジション決済の閾値: {row['Total Threshold']}")
         rank += 1
         if rank > 5:
@@ -1505,6 +1531,7 @@ if __name__ == "__main__":
         print(f"  確定利益: {row['Realized Profit']}")
         print(f" 必要証拠金: {row['Required Margin']}")
         print(f"証拠金維持率: {row['Margin Maintenance Rate']}")
+        print(f"シャープレシオ: {row['Sharp Ratio']}")
         print(f"  取引通貨量: {row['Order Size']}, トラップ本数: {row['Num Traps']}, 利益値幅: {row['Profit Width']}, 戦略: {row['Strategy']}, 密度: {row['Density']}, エントリー間隔: {row['Entry Interval']}, 全ポジション決済の閾値: {row['Total Threshold']}")
         rank += 1
     
