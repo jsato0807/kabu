@@ -77,14 +77,14 @@ def evaluate(individual, data):
     num_traps, profit_width, order_size, strategy, density = params
     
     # traripi_backtestの結果を取得
-    effective_margin, margin_deposit, realized_profit, _, _, _, _, _, _, _ = traripi_backtest(
+    effective_margin, _, realized_profit, _, _, _, _, _, _, _, sharp_ratio = traripi_backtest(
         calculator, data, initial_funds, grid_start, grid_end,
         num_traps, profit_width, order_size, entry_interval,
         total_threshold, strategy=strategy, density=density
     )
 
     # GPで生成された評価関数に全ての結果を入力
-    result = func(effective_margin, margin_deposit, realized_profit)
+    result = func(effective_margin, realized_profit, sharp_ratio)
     return result,
 
 # パラメータの突然変異
