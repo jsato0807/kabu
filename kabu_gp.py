@@ -40,13 +40,13 @@ param_ranges = {
 creator.create("FitnessMax", base.Fitness, weights=(1.0,))
 creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessMax)
 
-pset = gp.PrimitiveSet("MAIN", 3)  # effective_margin, margin_deposit, realized_profit の3つを入力
+pset = gp.PrimitiveSet("MAIN", 4)  # effective_margin, realized_profit, sharp_ratio, max_draw_down の4つを入力
 pset.addPrimitive(operator.add, 2)
 pset.addPrimitive(operator.sub, 2)
 pset.addPrimitive(operator.mul, 2)
 pset.addPrimitive(operator.truediv, 2)
-pset.addPrimitive(np.sin, 1)
-pset.addPrimitive(np.cos, 1)
+#pset.addPrimitive(np.sin, 1)
+#pset.addPrimitive(np.cos, 1)
 pset.addEphemeralConstant("rand101", lambda: np.random.randint(-1, 2))
 
 # DEAPのツールボックスを定義
@@ -77,14 +77,14 @@ def evaluate(individual, data):
     num_traps, profit_width, order_size, strategy, density = params
     
     # traripi_backtestの結果を取得
-    effective_margin, _, realized_profit, _, _, _, _, _, _, _, sharp_ratio = traripi_backtest(
+    effective_margin, _, realized_profit, _, _, _, _, _, _, _, sharp_ratio, max_draw_down = traripi_backtest(
         calculator, data, initial_funds, grid_start, grid_end,
         num_traps, profit_width, order_size, entry_interval,
         total_threshold, strategy=strategy, density=density
     )
 
     # GPで生成された評価関数に全ての結果を入力
-    result = func(effective_margin, realized_profit, sharp_ratio)
+    result = func(effective_margin, realized_profit, sharp_ratio, max_draw_down)
     return result,
 
 # パラメータの突然変異
