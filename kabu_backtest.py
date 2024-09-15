@@ -63,9 +63,9 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
             if last_price is not None:
                 # Check if price has crossed any grid between last_price and price
-                if price > last_price:
+                if price != last_price:
                     for grid in grids:
-                        if last_price <= grid < price:
+                        if min(last_price,price) <= grid <= max(last_price,price):
                             if margin_maintenance_rate <= 100:
                                 margin_maintenance_flag = True
                                 break
@@ -88,38 +88,6 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                     margin_maintenance_rate = effective_margin / required_margin * 100
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut in last_price <= grid < price")
-                                        margin_maintenance_flag = True
-                                        break
-                                else:
-                                    margin_maintenance_rate = float('inf')
-                                
-
-                elif price < last_price:
-                    for grid in grids:
-                        if last_price >= grid > price:
-                            if margin_maintenance_rate <= 100:
-                                margin_maintenance_flag = True
-                                break
-                            order_capacity = effective_margin - (required_margin + order_margin)
-                            if order_capacity < 0:
-                                order_capacity_flag = True
-                                print(f'cannot order because of lack of order capacity')
-                                break
-                            if margin_maintenance_rate > 100 and order_capacity > 0:
-                                #margin_deposit -= order_size * grid
-                                #effective_margin -= order_size * grid
-                                order_margin -= order_size * grid * required_margin_rate
-                                add_required_margin = grid * order_size * required_margin_rate
-                                required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin, date])
-                                trades.append((date, price, 'Buy'))
-                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
-                                #break  # Exit loop once position is taken
-
-                                if abs(required_margin) > 0:
-                                    margin_maintenance_rate = effective_margin / required_margin * 100
-                                    if margin_maintenance_rate <= 100:
-                                        print("executed loss cut in last_price >= grid > price")
                                         margin_maintenance_flag = True
                                         break
                                 else:
@@ -245,9 +213,9 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
             if last_price is not None:
                 # Check if price has crossed any grid between last_price and price
-                if price < last_price:
+                if price != last_price:
                     for grid in grids:
-                        if last_price >= grid > price:
+                        if min(last_price,price) <= grid <= max(last_price,price):
                             if margin_maintenance_rate <= 100:
                                 margin_maintenance_flag = True
                                 break
@@ -271,38 +239,6 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                     #print(f"Updated Margin Maintenance Rate in if last_price >= grid > price: {margin_maintenance_rate}")
                                     if margin_maintenance_rate <= 100:
                                         print("executed loss cut in if last_price >= grid > price")
-                                        margin_maintenance_flag = True
-                                        break
-                                else:
-                                    margin_maintenance_rate = float('inf')
-
-                elif price > last_price:
-                    for grid in grids:
-                        if last_price <= grid < price:
-                            if margin_maintenance_rate <= 100:
-                                margin_maintenance_flag = True
-                                break
-                            order_capacity = effective_margin - (required_margin + order_margin)
-                            if order_capacity < 0:
-                                order_capacity_flag = True
-                                print(f'cannot order because of lack of order capacity')
-                                break
-                            if margin_maintenance_rate > 100 and order_capacity > 0:
-                                #margin_deposit -= order_size * grid
-                                #effective_margin -= order_size * grid
-                                order_margin -= order_size * grid * required_margin_rate
-                                add_required_margin = grid * order_size * required_margin_rate
-                                required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
-                                trades.append((date, price, 'Sell'))
-                                print(f"Opened Sell position at price {price}, last_price {last_price} with grid {grid}, Effective Margin: {effective_margin}, Required Margin:{required_margin}")
-                                #break  # Exit loop once position is taken
-
-                                if abs(required_margin) > 0:
-                                    margin_maintenance_rate = effective_margin / required_margin * 100
-                                    #print(f"Updated Margin Maintenance Rate in if last_price <= grid < price: {margin_maintenance_rate}")
-                                    if margin_maintenance_rate <= 100:
-                                        print("executed loss cut in if last_price <= grid < price")
                                         margin_maintenance_flag = True
                                         break
                                 else:
@@ -437,123 +373,68 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 # Check bottom half area
                 if price <= half_point:
                     for grid in grids_bottom:
-                        if last_price > grid >= price:
-                            if margin_maintenance_rate <= 100:
-                                margin_maintenance_flag = True
-                                break
-                            order_capacity = effective_margin - (required_margin + order_margin)
-                            if order_capacity < 0:
-                                order_capacity_flag = True
-                                print(f'cannot order because of lack of order capacity')
-                                break
-                            if margin_maintenance_rate > 100 and order_capacity > 0:
-                                #margin_deposit -= order_size * grid
-                                #effective_margin -= order_size * grid
-                                order_margin -= order_size * grid * required_margin_rate
-                                add_required_margin = grid * order_size * required_margin_rate
-                                required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
-                                trades.append((date, price, 'Buy'))
-                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
-                                #break
-                                if abs(required_margin) > 0:
-                                    margin_maintenance_rate = effective_margin / required_margin * 100
-                                    if margin_maintenance_rate <= 100:
-                                        print("executed loss cut")
-                                        margin_maintenance_flag = True
-                                        break
-                                else:
-                                    margin_maintenance_rate = float('inf')
-
-
-                        if last_price < grid <= price:
-                            if margin_maintenance_rate <= 100:
-                                margin_maintenance_flag = True
-                                break
-                            order_capacity = effective_margin - (required_margin + order_margin)
-                            if order_capacity < 0:
-                                order_capacity_flag = True
-                                print(f'cannot order because of lack of order capacity')
-                                break
-                            if margin_maintenance_rate > 100 and order_capacity > 0:
-                                #margin_deposit -= order_size * grid
-                                #effective_margin -= order_size * grid
-                                order_margin -= order_size * grid * required_margin_rate
-                                add_required_margin = grid * order_size * required_margin_rate
-                                required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
-                                trades.append((date, price, 'Buy'))
-                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
-                                #break
-                                if abs(required_margin) > 0:
-                                    margin_maintenance_rate = effective_margin / required_margin * 100
-                                    if margin_maintenance_rate <= 100:
-                                        print("executed loss cut")
-                                        margin_maintenance_flag = True
-                                        break
-                                else:
-                                    margin_maintenance_rate = float('inf')
+                        if price != last_price:
+                            if min(last_price,price) <= grid <= max(last_price,price):
+                                if margin_maintenance_rate <= 100:
+                                    margin_maintenance_flag = True
+                                    break
+                                order_capacity = effective_margin - (required_margin + order_margin)
+                                if order_capacity < 0:
+                                    order_capacity_flag = True
+                                    print(f'cannot order because of lack of order capacity')
+                                    break
+                                if margin_maintenance_rate > 100 and order_capacity > 0:
+                                    #margin_deposit -= order_size * grid
+                                    #effective_margin -= order_size * grid
+                                    order_margin -= order_size * grid * required_margin_rate
+                                    add_required_margin = grid * order_size * required_margin_rate
+                                    required_margin += add_required_margin
+                                    positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
+                                    trades.append((date, price, 'Buy'))
+                                    print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                    #break
+                                    if abs(required_margin) > 0:
+                                        margin_maintenance_rate = effective_margin / required_margin * 100
+                                        if margin_maintenance_rate <= 100:
+                                            print("executed loss cut")
+                                            margin_maintenance_flag = True
+                                            break
+                                    else:
+                                        margin_maintenance_rate = float('inf')
 
 
                 # Check top half area
                 if price > half_point:
                     for grid in grids_top:
-                        if last_price < grid <= price:
-                            if margin_maintenance_rate <= 100:
-                                margin_maintenance_flag = True
-                                break
-                            order_capacity = effective_margin - (required_margin + order_margin)
-                            if order_capacity < 0:
-                                order_capacity_flag = True
-                                print(f'cannot order because of lack of order capacity')
-                                break
-                            if margin_maintenance_rate > 100 and order_capacity > 0:
-                                #margin_deposit -= order_size * grid
-                                #effective_margin -= order_size * grid
-                                order_margin -= order_size * grid * required_margin_rate
-                                add_required_margin = grid * order_size * required_margin_rate
-                                required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
-                                trades.append((date, price, 'Sell'))
-                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
-                                #break
-                                if abs(required_margin) > 0:
-                                    margin_maintenance_rate = effective_margin / required_margin * 100
-                                    if margin_maintenance_rate <= 100:
-                                        print("executed loss cut")
-                                        margin_maintenance_flag = True
-                                        break
-                                else:
-                                    margin_maintenance_rate = float('inf')
+                        if price != last_price:
+                            if min(last_price, price) <= grid <= max(last_price, price):
+                                if margin_maintenance_rate <= 100:
+                                    margin_maintenance_flag = True
+                                    break
+                                order_capacity = effective_margin - (required_margin + order_margin)
+                                if order_capacity < 0:
+                                    order_capacity_flag = True
+                                    print(f'cannot order because of lack of order capacity')
+                                    break
+                                if margin_maintenance_rate > 100 and order_capacity > 0:
+                                    #margin_deposit -= order_size * grid
+                                    #effective_margin -= order_size * grid
+                                    order_margin -= order_size * grid * required_margin_rate
+                                    add_required_margin = grid * order_size * required_margin_rate
+                                    required_margin += add_required_margin
+                                    positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
+                                    trades.append((date, price, 'Sell'))
+                                    print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                    #break
+                                    if abs(required_margin) > 0:
+                                        margin_maintenance_rate = effective_margin / required_margin * 100
+                                        if margin_maintenance_rate <= 100:
+                                            print("executed loss cut")
+                                            margin_maintenance_flag = True
+                                            break
+                                    else:
+                                        margin_maintenance_rate = float('inf')
                     
-                        if last_price > grid >= price:
-                            if margin_maintenance_rate <= 100:
-                                margin_maintenance_flag = True
-                                break
-                            order_capacity = effective_margin - (required_margin + order_margin)
-                            if order_capacity < 0:
-                                order_capacity_flag = True
-                                print(f'cannot order because of lack of order capacity')
-                                break
-                            if margin_maintenance_rate > 100 and order_capacity > 0:
-                                #margin_deposit -= order_size * grid
-                                #effective_margin -= order_size * grid
-                                order_margin -= order_size * grid * required_margin_rate
-                                add_required_margin = grid * order_size * required_margin_rate
-                                required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
-                                trades.append((date, price, 'Sell'))
-                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
-                                #break
-
-                                if abs(required_margin) > 0:
-                                    margin_maintenance_rate = effective_margin / required_margin * 100
-                                    if margin_maintenance_rate <= 100:
-                                        print("executed loss cut")
-                                        margin_maintenance_flag = True
-                                        break
-                                else:
-                                    margin_maintenance_rate = float('inf')
 
             # Position closure processing
             for pos in positions[:]:
@@ -735,124 +616,70 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 # Check bottom two areas
                 if price <= half_point:
                     for grid in np.concatenate([grids_bottom, grids_lower_center]):
-                        if last_price > grid >= price:
-                            if margin_maintenance_rate <= 100:
-                                margin_maintenance_flag = True
-                                break
-                            order_capacity = effective_margin - (required_margin + order_margin)
-                            if order_capacity < 0:
-                                order_capacity_flag = True
-                                print(f'cannot order because of lack of order capacity')
-                                break
-                            if margin_maintenance_rate > 100 and order_capacity > 0:
-                                #margin_deposit -= order_size * grid
-                                #effective_margin -= order_size * grid
-                                order_margin -= order_size * grid * required_margin_rate
-                                add_required_margin = grid * order_size * required_margin_rate
-                                required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
-                                trades.append((date, price, 'Buy'))
-                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
-                                #break
-                                if abs(required_margin) > 0:
-                                    margin_maintenance_rate = effective_margin / required_margin * 100
-                                    if margin_maintenance_rate <= 100:
-                                        print("executed loss cut")
-                                        margin_maintenance_flag = True
-                                        break
-                                else:
-                                    margin_maintenance_rate = float('Inf')
+                        if price != last_price
+                            if min(last_price, price) <= grid <= max(last_price,price):
+                                if margin_maintenance_rate <= 100:
+                                    margin_maintenance_flag = True
+                                    break
+                                order_capacity = effective_margin - (required_margin + order_margin)
+                                if order_capacity < 0:
+                                    order_capacity_flag = True
+                                    print(f'cannot order because of lack of order capacity')
+                                    break
+                                if margin_maintenance_rate > 100 and order_capacity > 0:
+                                    #margin_deposit -= order_size * grid
+                                    #effective_margin -= order_size * grid
+                                    order_margin -= order_size * grid * required_margin_rate
+                                    add_required_margin = grid * order_size * required_margin_rate
+                                    required_margin += add_required_margin
+                                    positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
+                                    trades.append((date, price, 'Buy'))
+                                    print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                    #break
+                                    if abs(required_margin) > 0:
+                                        margin_maintenance_rate = effective_margin / required_margin * 100
+                                        if margin_maintenance_rate <= 100:
+                                            print("executed loss cut")
+                                            margin_maintenance_flag = True
+                                            break
+                                    else:
+                                        margin_maintenance_rate = float('Inf')
 
-
-                        if last_price < grid <= price:
-                            if margin_maintenance_rate <= 100:
-                                margin_maintenance_flag = True
-                                break
-                            order_capacity = effective_margin - (required_margin + order_margin)
-                            if order_capacity < 0:
-                                order_capacity_flag = True
-                                print(f'cannot order because of lack of order capacity')
-                                break
-                            if margin_maintenance_rate > 100 and order_capacity > 0:
-                                #margin_deposit -= order_size * grid
-                                #effective_margin -= order_size * grid
-                                order_margin -= order_size * grid * required_margin_rate
-                                add_required_margin = grid * order_size * required_margin_rate
-                                required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
-                                trades.append((date, price, 'Buy'))
-                                print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
-                                #break
-                                if abs(required_margin) > 0:
-                                    margin_maintenance_rate = effective_margin / required_margin * 100
-                                    if margin_maintenance_rate <= 100:
-                                        print("executed loss cut")
-                                        margin_maintenance_flag = True
-                                        break
-                                else:
-                                    margin_maintenance_rate = float('inf')
 
 
                 # Check top two areas
                 if price >= half_point:
                     for grid in np.concatenate([grids_top, grids_upper_center]):
-                        if last_price < grid <= price:
-                            if margin_maintenance_rate <= 100:
-                                margin_maintenance_flag = True
-                                break
-                            order_capacity = effective_margin - (required_margin + order_margin)
-                            if order_capacity < 0:
-                                order_capacity_flag = True
-                                print(f'cannot order because of lack of order capacity')
-                                break
-                            if margin_maintenance_rate > 100 and order_capacity > 0:
-                                #margin_deposit -= order_size * grid
-                                #effective_margin -= order_size * grid
-                                order_margin -= order_size * grid * required_margin_rate
-                                add_required_margin = grid * order_size * required_margin_rate
-                                required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
-                                trades.append((date, price, 'Sell'))
-                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}, Required Margin: {required_margin}")
-                                #break
+                        if price != last_price:
+                            if min(last_price, price) <= grid <= max(last_price, price):
+                                if margin_maintenance_rate <= 100:
+                                    margin_maintenance_flag = True
+                                    break
+                                order_capacity = effective_margin - (required_margin + order_margin)
+                                if order_capacity < 0:
+                                    order_capacity_flag = True
+                                    print(f'cannot order because of lack of order capacity')
+                                    break
+                                if margin_maintenance_rate > 100 and order_capacity > 0:
+                                    #margin_deposit -= order_size * grid
+                                    #effective_margin -= order_size * grid
+                                    order_margin -= order_size * grid * required_margin_rate
+                                    add_required_margin = grid * order_size * required_margin_rate
+                                    required_margin += add_required_margin
+                                    positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
+                                    trades.append((date, price, 'Sell'))
+                                    print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}, Required Margin: {required_margin}")
+                                    #break
 
-                                if abs(required_margin) > 0:
-                                    margin_maintenance_rate = effective_margin / required_margin * 100
-                                    if margin_maintenance_rate <= 100:
-                                        print("executed loss cut last_price < grid <= price")
-                                        margin_maintenance_flag = True
-                                        break
-                                else:
-                                    margin_maintenance_rate = float('inf')
+                                    if abs(required_margin) > 0:
+                                        margin_maintenance_rate = effective_margin / required_margin * 100
+                                        if margin_maintenance_rate <= 100:
+                                            print("executed loss cut last_price < grid <= price")
+                                            margin_maintenance_flag = True
+                                            break
+                                    else:
+                                        margin_maintenance_rate = float('inf')
 
-                        if last_price > grid >= price:
-                            if margin_maintenance_rate <= 100:
-                                margin_maintenance_flag = True
-                                break
-                            order_capacity = effective_margin - (required_margin + order_margin)
-                            if order_capacity < 0:
-                                order_capacity_flag = True
-                                print(f'cannot order because of lack of order capacity')
-                                break
-                            if margin_maintenance_rate > 100 and order_capacity > 0:
-                                #margin_deposit -= order_size * grid
-                                #effective_margin -= order_size * grid
-                                order_margin -= order_size * grid * required_margin_rate
-                                add_required_margin = grid * order_size * required_margin_rate
-                                required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
-                                trades.append((date, price, 'Sell'))
-                                print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
-                                #break
-
-                                if abs(required_margin) > 0:
-                                    margin_maintenance_rate = effective_margin / required_margin * 100
-                                    if margin_maintenance_rate <= 100:
-                                        print("executed loss cut in last_price > grid >= price")
-                                        margin_maintenance_flag = True
-                                        break
-                                else:
-                                    float('inf')
 
             # Position closure processing
             for pos in positions[:]:
@@ -1404,6 +1231,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #check swap
                 if ("Buy" in pos[2] and not pos[2].endswith('Closed')) or ("Sell" in pos[2] and not pos[2].endswith('Closed')) or ("Closed" in pos[2] and add_business_days(pos[6],1) == date):
 
+                    realized_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     squared_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)**2
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
@@ -1473,11 +1301,13 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 pair = 'USDJPY=X'
 interval="1d"
 end_date = datetime.strptime("2022-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
-start_date = datetime.strptime("2010-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+#start_date = datetime.strptime("2010-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+start_date = datetime.strptime("2021-06-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 2000000
 grid_start = 100
 grid_end = 150
-strategies = ['long_only','short_only', 'half_and_half', 'diamond']
+#strategies = ['long_only','short_only', 'half_and_half', 'diamond']
+strategies = ['short_only']
 entry_intervals = [-15]  # エントリー間隔
 total_thresholds = [100]  # 全ポジション決済の閾値
 # データの取得
@@ -1485,10 +1315,14 @@ data = fetch_currency_data(pair, start_date, end_date,interval)
 
 if __name__ == "__main__":
     # パラメータ設定
-    order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
-    num_traps_options = [20, 40, 60, 67, 80, 100]
-    profit_widths = [1,2,3,4,5,6,7,8,9,9.52, 10]
-    densities = [2,4,6,8,8.37,10]
+    #order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
+    order_sizes = [3000]
+    #num_traps_options = [20, 40, 60, 67, 80, 100]
+    num_traps_options = [100]
+    #profit_widths = [1,2,3,4,5,6,7,8,9,9.52, 10]
+    profit_widths = [1]
+    #densities = [2,4,6,8,8.37,10]
+    densities = [2]
     url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
     html = get_html(url)
     #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
