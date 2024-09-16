@@ -26,14 +26,12 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     """
     Perform Trailing Stop strategy backtest on given data.
     """
+    RETURN = []
     margin_deposit = initial_funds
     effective_margin = margin_deposit
     effective_margin_max = -np.inf
     effective_margin_min = np.inf
     realized_profit = 0
-    squared_realized_profit = 0
-    realized_swap_point = 0
-    squared_swap_point = 0
     required_margin = 0		# current_rate*order_size*required_margin_rate
     margin_maintenance_rate = float('inf')		# effective_margin/required_margin*100
     required_margin_rate = 0.04
@@ -80,7 +78,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
+                                positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date, 0,0])    # each 0 means unrialized_profit, profit, swap_point
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                 #break  # Exit loop once position is taken
@@ -123,7 +121,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_deposit += order_size * profit_width 
                         profit = order_size * profit_width
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = 'Buy-Closed'
@@ -154,7 +152,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                         margin_deposit += profit
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = "Buy-Closed"
@@ -169,16 +167,18 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
                 #""" 
                 #check swap
+            num_positions = 0
             for pos in positions:
                 if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1) == date):
                     
-                    realized_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
-                    squared_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)**2
+                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
                         pos[6] = date
+
+                    num_positions += 1
 
                         
 
@@ -192,6 +192,9 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                     margin_maintenance_rate = float('inf')
                     #"""
 
+            if num_positions != 0:
+                RETURN.append(sum((pos[7]+pos[8]) for pos in positions)/num_positions)
+                positions = [pos[:7] + [0, 0] for pos in positions]
 
 
 
@@ -230,7 +233,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                 order_margin -= order_size * grid * required_margin_rate
                                 add_required_margin = grid * order_size * required_margin_rate
                                 required_margin += add_required_margin
-                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
+                                positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date,0,0])
                                 trades.append((date, price, 'Sell'))
                                 print(f"Opened Sell position at price {price}, last_price {last_price} with grid {grid}, Effective Margin: {effective_margin}, Required Margin:{required_margin}")
                                 #break  # Exit loop once position is taken
@@ -275,7 +278,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_deposit += order_size * profit_width
                         profit = order_size * profit_width
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = 'Sell-Closed'
@@ -308,7 +311,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                         margin_deposit += profit
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         #print(f'required_margin: {required_margin}')
                         pos[5] = 0
@@ -324,16 +327,18 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
                 #""" 
                 #check swap
+            num_positions = 0
             for pos in positions:
                 if pos[2] == "Sell" or (pos[2] == "Sell-Closed" and add_business_days(pos[6],1) == date):
 
-                    realized_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
-                    squared_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)**2
+                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
                         pos[6] = date
+
+                    num_positions += 1
 
                         
 
@@ -348,6 +353,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                     #"""
 
 
+            if num_positions != 0:
+                RETURN.append(sum((pos[7]+pos[8]) for pos in positions)/num_positions)
+
+                positions = [pos[:7] + [0, 0] for pos in positions]
 
 
     elif strategy == 'half_and_half':
@@ -389,7 +398,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                     order_margin -= order_size * grid * required_margin_rate
                                     add_required_margin = grid * order_size * required_margin_rate
                                     required_margin += add_required_margin
-                                    positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
+                                    positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date,0,0])
                                     trades.append((date, price, 'Buy'))
                                     print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                     #break
@@ -422,7 +431,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                     order_margin -= order_size * grid * required_margin_rate
                                     add_required_margin = grid * order_size * required_margin_rate
                                     required_margin += add_required_margin
-                                    positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
+                                    positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date,0,0])
                                     trades.append((date, price, 'Sell'))
                                     print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                     #break
@@ -464,7 +473,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_deposit += order_size * profit_width
                         profit = order_size * profit_width
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = 'Buy-Closed'
@@ -507,7 +516,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_deposit += order_size * profit_width
                         profit = order_size * profit_width
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = 'Sell-Closed'
@@ -542,7 +551,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                         margin_deposit += profit
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] += "-Closed"
@@ -556,16 +565,18 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
                 #""" 
                 #check swap
+            num_positions = 0
             for pos in positions:
                 if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1) == date) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and add_business_days(pos[6],1) == date):
 
-                    realized_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
-                    squared_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)**2
+                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
                         pos[6] = date
+
+                    num_positions += 1
 
                         
 
@@ -579,6 +590,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                     margin_maintenance_rate = float('inf')
                     #"""
 
+            if num_positions != 0:
+                RETURN.append(sum((pos[7]+pos[8]) for pos in positions)/num_positions)
+
+                positions = [pos[:7] + [0, 0] for pos in positions]
 
 
 
@@ -616,7 +631,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 # Check bottom two areas
                 if price <= half_point:
                     for grid in np.concatenate([grids_bottom, grids_lower_center]):
-                        if price != last_price
+                        if price != last_price:
                             if min(last_price, price) <= grid <= max(last_price,price):
                                 if margin_maintenance_rate <= 100:
                                     margin_maintenance_flag = True
@@ -632,7 +647,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                     order_margin -= order_size * grid * required_margin_rate
                                     add_required_margin = grid * order_size * required_margin_rate
                                     required_margin += add_required_margin
-                                    positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
+                                    positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date,0,0])
                                     trades.append((date, price, 'Buy'))
                                     print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
                                     #break
@@ -666,7 +681,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                     order_margin -= order_size * grid * required_margin_rate
                                     add_required_margin = grid * order_size * required_margin_rate
                                     required_margin += add_required_margin
-                                    positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date])
+                                    positions.append([order_size, i, 'Sell', grid, 0, add_required_margin,date,0,0])
                                     trades.append((date, price, 'Sell'))
                                     print(f"Opened Sell position at {price} with grid {grid}, Effective Margin: {effective_margin}, Required Margin: {required_margin}")
                                     #break
@@ -709,7 +724,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_deposit += order_size * profit_width
                         profit = order_size * profit_width
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] = 'Buy-Closed'
@@ -752,7 +767,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             margin_deposit += order_size * profit_width
                             profit = order_size * profit_width
                             realized_profit += profit
-                            squared_realized_profit += profit**2
+                            pos[7] += profit
                             required_margin -= pos[5]
                             pos[5] = 0
                             pos[2] = 'Sell-Closed'
@@ -787,7 +802,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                         margin_deposit += profit
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] += "-Closed"
@@ -802,16 +817,18 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
                 #""" 
                 #check swap
+            num_positions = 0
             for pos in positions:
                 if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1) == date) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and add_business_days(pos[6],1) == date):
 
-                    realized_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
-                    squared_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)**2
+                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
                         pos[6] = date
+
+                    num_positions += 1
 
                         
 
@@ -824,8 +841,11 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 else:
                     margin_maintenance_rate = float('inf')
                     #"""
+            
+            if num_positions != 0:
+                RETURN.append(sum((pos[7]+pos[8]) for pos in positions)/num_positions)
 
-
+                positions = [pos[:7] + [0, 0] for pos in positions]
 
 
 
@@ -842,10 +862,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 # 買いと売りの同時エントリー
                 add_required_margin = price * order_size * required_margin_rate
                 required_margin += add_required_margin
-                positions.append([order_size, i, 'Buy', price, 0, add_required_margin,date])
+                positions.append([order_size, i, 'Buy', price, 0, add_required_margin,date,0,0])
                 add_required_margin = price * order_size * required_margin_rate
                 required_margin += add_required_margin        
-                positions.append([order_size, i, 'Sell', price, 0, add_required_margin,date])
+                positions.append([order_size, i, 'Sell', price, 0, add_required_margin,date,0,0])
 
 
                     # 売りポジションの決済
@@ -857,7 +877,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             margin_deposit += order_size * (pos[3] - price)
                             profit =  (pos[3] - price) * order_size
                             realized_profit += profit
-                            squared_realized_profit += profit**2
+                            pos[7] += profit
                             required_margin -= pos[5]
                             pos[5] = 0
                             pos[2] = "Sell-Closed"
@@ -875,7 +895,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 if price - last_price < - entry_interval:
                     add_required_margin = price * order_size * required_margin_rate
                     required_margin += add_required_margin
-                    positions.append([order_size, i, 'Buy', price, 0, add_required_margin,date])
+                    positions.append([order_size, i, 'Buy', price, 0, add_required_margin,date,0,0])
 
                     if abs(required_margin) > 0:
                         margin_maintenance_rate = effective_margin / required_margin * 100
@@ -941,7 +961,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                             margin_deposit += profit
                             realized_profit += profit
-                            squared_realized_profit += profit**2
+                            pos[7] += profit
                             required_margin -= pos[5]
                             pos[5] = 0
                             pos[2] += "-Closed"
@@ -972,7 +992,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                         margin_deposit += profit
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] += "-Closed"
@@ -986,16 +1006,18 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
             #""" 
             #check swap
+            num_positions = 0
             for pos in positions:
                 if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1) == date) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and add_business_days(pos[6],1) == date):
 
-                    realized_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
-                    effective_margin += realized_swap_point
-                    squared_swap_point += realized_swap_point**2
+                    effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
+                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
                         pos[6] = date
+
+                    num_positions += 1
 
                         
 
@@ -1009,6 +1031,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                     margin_maintenance_rate = float('inf')
                     #"""
 
+            if num_positions != 0:
+                RETURN.append(sum((pos[7]+pos[8]) for pos in positions)/num_positions)
+
+                positions = [pos[:7] + [0, 0] for pos in positions]
 
 	
     elif strategy == 'milagroman3':
@@ -1027,10 +1053,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 # 買い子ポジションと売り子ポジションの同時エントリー
                 add_required_margin = price * order_size * required_margin_rate
                 required_margin += add_required_margin
-                positions.append([order_size, i, 'Buy-child', price, 0, add_required_margin,date])
+                positions.append([order_size, i, 'Buy-child', price, 0, add_required_margin,date,0,0])
                 add_required_margin = price * order_size * required_margin_rate
                 required_margin += add_required_margin        
-                positions.append([order_size, i, 'Sell-child', price, 0, add_required_margin,date])
+                positions.append([order_size, i, 'Sell-child', price, 0, add_required_margin,date,0,0])
 
 
 
@@ -1043,7 +1069,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             margin_deposit += order_size * (pos[3] - price)
                             profit =  (pos[3] - price) * order_size
                             realized_profit += profit
-                            squared_realized_profit += profit**2
+                            pos[7] += profit
                             required_margin -= pos[5]
                             pos[2] = "Sell-child-Closed"
                             
@@ -1063,7 +1089,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             margin_deposit += order_size * (price - pos[3])
                             profit =  (price - pos[3]) * order_size
                             realized_profit += profit
-                            squared_realized_profit += profit**2
+                            pos[7] += profit
                             required_margin -= pos[5]
                             pos[2] = "Buy-child-Closed"
                             
@@ -1080,7 +1106,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 if price - last_price < - entry_interval and gradient > 0:
                     add_required_margin = price * order_size * required_margin_rate
                     required_margin += add_required_margin
-                    positions.append([order_size, i, 'Buy-main', price, 0, add_required_margin,date])
+                    positions.append([order_size, i, 'Buy-main', price, 0, add_required_margin,date,0,0])
 
                     if abs(required_margin) > 0:
                         margin_maintenance_rate = effective_margin / required_margin * 100
@@ -1094,7 +1120,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 if price - last_price > entry_interval and gradient < 0:
                     add_required_margin = price * order_size * required_margin_rate
                     required_margin += add_required_margin
-                    positions.append([order_size, i, 'Sell-hedge', price, 0, add_required_margin,date])
+                    positions.append([order_size, i, 'Sell-hedge', price, 0, add_required_margin,date,0,0])
 
                     if abs(required_margin) > 0:
                         margin_maintenance_rate = effective_margin / required_margin * 100
@@ -1161,7 +1187,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                             margin_deposit += profit
                             realized_profit += profit
-                            squared_realized_profit += profit**2
+                            pos[7] += profit
                             required_margin -= pos[5]
                             pos[5] = 0
                             pos[2] += pos[2] + "-Closed"
@@ -1184,7 +1210,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                             effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                             margin_deposit += profit
                             realized_profit += profit
-                            squared_realized_profit += profit**2
+                            pos[7] += profit
                             required_margin -= pos[5]
                             pos[5] = 0
                             pos[2] += "-Closed"
@@ -1214,7 +1240,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                         margin_deposit += profit
                         realized_profit += profit
-                        squared_realized_profit += profit**2
+                        pos[7] += profit
                         required_margin -= pos[5]
                         pos[5] = 0
                         pos[2] += "-Closed"
@@ -1227,18 +1253,20 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 
                 #"""
+            num_positions = 0
             for pos in positions:
                 #check swap
                 if ("Buy" in pos[2] and not pos[2].endswith('Closed')) or ("Sell" in pos[2] and not pos[2].endswith('Closed')) or ("Closed" in pos[2] and add_business_days(pos[6],1) == date):
 
-                    realized_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
-                    squared_swap_point += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)**2
+                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
 
                     if not "Closed" in pos[2]:
                         pos[6] = date
+
+                    num_positions += 1
                     
 
                 if abs(required_margin) > 0:
@@ -1252,13 +1280,17 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #"""
 
 
+            if num_positions != 0:
+                RETURN.append(sum((pos[7]+pos[8]) for pos in positions)/num_positions)
+
+                positions = [pos[:7] + [0, 0] for pos in positions]
 
     if positions:
       #print(positions)
-      buy_count = sum(1 if 'Buy' in status and not status.endswith('Closed') else 0 for size, index, status, _, _, _, _ in positions)
-      sell_count = sum(1 if 'Sell' in status and not status.endswith('Closed') else 0 for size, index, status, _, _, _, _ in positions)
-      buy_closed_count = sum(1 if "Buy" in status and 'Closed' in status  else 0 for size, index, status, _, _, _, _ in positions)
-      sell_closed_count = sum(1 if "Sell" in status and 'Closed' in status else 0 for size, index, status, _, _, _, _ in positions)
+      buy_count = sum(1 if 'Buy' in status and not status.endswith('Closed') else 0 for size, index, status, _, _, _, _, _, _ in positions)
+      sell_count = sum(1 if 'Sell' in status and not status.endswith('Closed') else 0 for size, index, status, _, _, _, _, _, _ in positions)
+      buy_closed_count = sum(1 if "Buy" in status and 'Closed' in status  else 0 for size, index, status, _, _, _, _, _, _ in positions)
+      sell_closed_count = sum(1 if "Sell" in status and 'Closed' in status else 0 for size, index, status, _, _, _, _, _, _ in positions)
       
       print(f'buy_count{buy_count}')
       print(f'sell_count{sell_count}')
@@ -1270,7 +1302,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     if positions:
         position_value = sum(size * (data.iloc[-1] - grid) if 'Buy' in status and not status.endswith('Closed') else
                      -size * (data.iloc[-1] - grid) if 'Sell'  in status and not status.endswith('Closed') else
-                     0 for size, _, status, grid, _, _, _ in positions)
+                     0 for size, _, status, grid, _, _, _, _, _ in positions)
     else:
         position_value = 0
 
@@ -1278,13 +1310,13 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     #"""
     if positions:
         swap_value = sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') else
-                     0 for size, index, status, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],add_business_days(swap_day,1),size) if 'Closed' in status else 0 for size, index, status, _, _, _, swap_day in positions)
+                     0 for size, index, status, _, _, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],add_business_days(swap_day,1),size) if 'Closed' in status else 0 for size, index, status, _, _, _, swap_day, _, _ in positions)
     else:
         swap_value = 0
 
     # Calculate sharp ratio
-    if np.sqrt((squared_realized_profit+squared_swap_point)/len(data) - ((realized_profit+realized_swap_point)/len(data))**2) != 0:
-        sharp_ratio = ((realized_profit+realized_swap_point)/len(data)) / np.sqrt((squared_realized_profit+squared_swap_point)/len(data) - ((realized_profit+realized_swap_point)/len(data))**2)
+    if np.std(RETURN) > 0:
+        sharp_ratio = np.mean(RETURN)/np.std(RETURN)
     else:
         sharp_ratio = None
 
@@ -1300,14 +1332,14 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 pair = 'USDJPY=X'
 interval="1d"
-end_date = datetime.strptime("2022-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+end_date = datetime.strptime("2023-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
 #start_date = datetime.strptime("2010-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-start_date = datetime.strptime("2021-06-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+start_date = datetime.strptime("2022-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 2000000
 grid_start = 100
 grid_end = 150
 #strategies = ['long_only','short_only', 'half_and_half', 'diamond']
-strategies = ['short_only']
+strategies = ['diamond']
 entry_intervals = [-15]  # エントリー間隔
 total_thresholds = [100]  # 全ポジション決済の閾値
 # データの取得
@@ -1316,11 +1348,11 @@ data = fetch_currency_data(pair, start_date, end_date,interval)
 if __name__ == "__main__":
     # パラメータ設定
     #order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
-    order_sizes = [3000]
+    order_sizes = [1000]
     #num_traps_options = [20, 40, 60, 67, 80, 100]
     num_traps_options = [100]
     #profit_widths = [1,2,3,4,5,6,7,8,9,9.52, 10]
-    profit_widths = [1]
+    profit_widths = [5]
     #densities = [2,4,6,8,8.37,10]
     densities = [2]
     url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
