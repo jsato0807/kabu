@@ -12,18 +12,22 @@ def is_holiday(date):
 def add_business_days(start_date, num_days, trading_days):
     business_day = start_date
     added_days = 0
+    trading_days_set = set(trading_days)  # Set に変換して高速化
     while added_days < num_days:
         business_day += timedelta(days=1)
-        if business_day.weekday() < 5 and (not is_holiday(business_day)) or business_day in trading_days:
+        # 土日でなく、かつ祝日でない、もしくは trading_days に含まれている場合
+        if business_day.weekday() < 5 and (not is_holiday(business_day)) or business_day in trading_days_set:
             added_days += 1
     return business_day
 
-# ロールオーバーの日数を計算する関数（修正版）
-def calculate_rollover_days(open_date, current_date,trading_days):
-    rollover_days = (add_business_days(current_date, 2, trading_days) - add_business_days(open_date, 2, trading_days)).days
+# ロールオーバーの日数を計算する関数
+def calculate_rollover_days(open_date, current_date, trading_days):
+    try:
+        rollover_days = (add_business_days(current_date, 2, trading_days) - add_business_days(open_date, 2, trading_days)).days
+    except IndexError as e:
+        print(f"Error in calculating rollover days: {e}")
+        return 0
     return rollover_days
-
-
 
 
 # URLからHTMLデータを取得する関数
@@ -36,8 +40,6 @@ def get_html(url):
 def clean_text(text):
     return text.replace('\xa0', '').replace('円', '').strip()
 
-
-
 # HTMLを解析してスワップポイントを抽出する関数
 def parse_swap_points(html):
     soup = BeautifulSoup(html, 'html.parser')
@@ -45,45 +47,29 @@ def parse_swap_points(html):
     if not swap_table:
         raise ValueError("スワップポイントのテーブルが見つかりません")
     
-    #print("Debug: Found table")  # デバッグ出力
     rows = swap_table.find_all('tr')
     
-    # テーブルのヘッダーを取得
-    headers = []
-    for th in rows[0].find_all('th'):
-        header_text = clean_text(th.get_text(strip=True))
-        headers.append(header_text)
+    headers = [clean_text(th.get_text(strip=True)) for th in rows[0].find_all('th')]
 
-    #print(f"Debug: Headers found - {headers}")  # デバッグ出力
-
-    # スワップポイントを格納するリスト
     swap_points = []
-
-    # 各行のデータを抽出
-    for row in rows[1:]:  # ヘッダー行を除外
+    for row in rows[1:]:
         cells = row.find_all(['th', 'td'])
         if len(cells) != len(headers):
-            print(f"Debug: Skipping incomplete row - {row}")  # デバッグ出力
-            continue  # 不完全な行をスキップ
+            continue
         swap_point = {headers[i]: clean_text(cells[i].get_text(strip=True)) for i in range(len(headers))}
         swap_points.append(swap_point)
     
-    #print(f"Debug: Swap points found - {swap_points}")  # デバッグ出力
     return swap_points
 
-
 def rename_swap_points(swap_points):
-    # 各要素の通貨名を変換する
     for item in swap_points:
-        
         item['通貨名'] = convert_currency_name(item['通貨名'])
     return swap_points
 
 class SwapCalculator:
-    def __init__(self, swap_points,pair):
+    def __init__(self, swap_points, pair):
         self.swap_points_dict = self._create_swap_dict(swap_points)
-        self.per_order_size = 10000 if pair == 'ZARJPY=X' or pair == 'MXNJPY=X' else 1000
-        #self.per_order_size = 10000
+        self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000
 
     def _create_swap_dict(self, swap_points):
         swap_dict = {}
@@ -98,75 +84,53 @@ class SwapCalculator:
         try:
             return float(value)
         except (ValueError, TypeError):
-            print(f"Debug: Invalid swap point value encountered: {value}")
             return 0.0
 
     def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
         rollover_days = calculate_rollover_days(open_date, current_date, trading_days)
-        total_swap_points = 0
         if pair not in self.swap_points_dict:
-            print(f"Debug: Pair {pair} not found in swap points data.")
-            return total_swap_points
+            return 0.0
 
-        try:
-            if "Buy" in position:
-                buy_swap = self.swap_points_dict[pair]['buy']
-                if abs(buy_swap) > 0:
-                    total_swap_points += buy_swap
-            if "Sell" in position:
-                sell_swap = self.swap_points_dict[pair]['sell']
-                if abs(sell_swap) > 0:
-                    total_swap_points += sell_swap
-        except ValueError:
-            print(f"Debug: Skipping invalid swap point value for pair {pair}.")
-        
-        total_swap_points *= rollover_days * order_size / self.per_order_size
-        
-        return total_swap_points
-
+        swap_value = self.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
+        return swap_value * rollover_days * order_size / self.per_order_size
 
 # 通貨名を変換する関数
 def convert_currency_name(currency_name):
     currency_mappings = {
-    '米ドル/カナダドル': 'USDCAD=X',
-    'ユーロ/米ドル': 'EURUSD=X',
-    '英ポンド/米ドル': 'GBPUSD=X',
-    '豪ドル/米ドル': 'AUDUSD=X',
-    'NZドル/米ドル': 'NZDUSD=X',
-    'ユーロ/英ポンド': 'EURGBP=X',
-    '豪ドル/NZドル': 'AUDNZD=X',
-    '米ドル/': 'USDJPY=X',
-    'ユーロ/': 'EURJPY=X',
-    '英ポンド/': 'GBPJPY=X',
-    '豪ドル/': 'AUDJPY=X',
-    'NZドル/': 'NZDJPY=X',
-    'カナダドル/': 'CADJPY=X',
-    '南アフリカランド/': 'ZARJPY=X',
-    'トルコリラ/': 'TRYJPY=X',
-    'メキシコペソ/': 'MXNJPY=X'
-}
+        '米ドル/カナダドル': 'USDCAD=X',
+        'ユーロ/米ドル': 'EURUSD=X',
+        '英ポンド/米ドル': 'GBPUSD=X',
+        '豪ドル/米ドル': 'AUDUSD=X',
+        'NZドル/米ドル': 'NZDUSD=X',
+        'ユーロ/英ポンド': 'EURGBP=X',
+        '豪ドル/NZドル': 'AUDNZD=X',
+        '米ドル/': 'USDJPY=X',
+        'ユーロ/': 'EURJPY=X',
+        '英ポンド/': 'GBPJPY=X',
+        '豪ドル/': 'AUDJPY=X',
+        'NZドル/': 'NZDJPY=X',
+        'カナダドル/': 'CADJPY=X',
+        '南アフリカランド/': 'ZARJPY=X',
+        'トルコリラ/': 'TRYJPY=X',
+        'メキシコペソ/': 'MXNJPY=X'
+    }
     for key, value in currency_mappings.items():
         if key in currency_name:
             return value
-    return currency_name  # 変換できない場合はそのまま返す
-
+    return currency_name
 
 if __name__ == "__main__":
     order_size = 1000
     url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
     html = get_html(url)
-    #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
     swap_points = parse_swap_points(html)
     swap_points = rename_swap_points(swap_points)
-    calculator = SwapCalculator(swap_points)
-    total_swap_points =  calculator.get_total_swap_points('USDJPY=X',"Buy",datetime(2024,5,31),datetime(2024,6,12),order_size)
-    print(total_swap_points)
+    calculator = SwapCalculator(swap_points, 'USDJPY=X')
     
+    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 5, 31), datetime(2024, 6, 12), order_size, [])
+    print(total_swap_points)
 
-
-
-    a = calculator.get_total_swap_points('USDJPY=X',"Buy",datetime(2024,6,4),datetime(2024,6,10),order_size)
-    b = calculator.get_total_swap_points('USDJPY=X',"Buy",datetime(2024,6,11),datetime(2024,6,11),order_size)
-    c = calculator.get_total_swap_points('USDJPY=X',"Buy",datetime(2024,6,12),datetime(2024,6,12),order_size)
-    ###
-    print(f"a,b,a+b+c:{a,b,c,a+b+c}")
+    a = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 4), datetime(2024, 6, 10), order_size, [])
+    b = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 11), datetime(2024, 6, 11), order_size, [])
+    c = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 12), datetime(2024, 6, 12), order_size, [])
+    print(f"a, b, a+b+c: {a}, {b}, {c}, {a + b + c}")
