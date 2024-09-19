@@ -6,6 +6,36 @@ from itertools import product
 from kabu_swap import SwapCalculator, get_html, parse_swap_points, add_business_days, rename_swap_points
 from datetime import datetime, timedelta
 
+def check_totalscore(margin_deposit, position_value, swap_value, effective_margin,i,date,realized_profit):
+    print(i)
+    print(date)
+    #swap_value = 0
+    print(f"effective_margin:{effective_margin}")
+    print(f"realized_profit:{realized_profit}")
+    print(f"margin_deposit+position_value+swap_value:{margin_deposit+position_value+swap_value}")
+    print(f"margin_deposit:{margin_deposit}")
+    print(f"position_value:{position_value}")
+    print(f"swap_value:{swap_value}")
+    if abs(effective_margin - (margin_deposit+position_value+swap_value)) > 1:
+        print("calculation is wrong")
+        print(f"effective_margin - (margin_deposit + position_value + swap_value):{effective_margin - (margin_deposit+position_value+swap_value)}")
+        exit()
+
+def calc_position_value(positions,price):
+    position_value = sum(size * (price - grid) if 'Buy' in status and not status.endswith('Closed') else
+             -size * (price - grid) if 'Sell'  in status and not status.endswith('Closed') else
+             0 for size, _, status, grid, _, _, _ in positions)
+    return position_value
+
+def calc_swap_value(positions,data,date,pair,calculator):
+    #print(f"positions:{positions}")
+    print(f"len(positions){len(positions)}")
+    #a = [pos for pos in positions if pos[2] == "Buy-Closed"]
+    #print(f"{a}")
+    swap_value = sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size,data.index) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') else
+                  0 for size, index, status, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],add_business_days(swap_day,1,data.index),size,data.index) if 'Closed' in status and add_business_days(swap_day,1,data.index) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day in positions)
+    return swap_value
+
 def fetch_currency_data(pair, start, end, interval):
     """
     Fetch historical currency pair data from Yahoo Finance.
@@ -13,6 +43,8 @@ def fetch_currency_data(pair, start, end, interval):
     data = yf.download(pair, start=start, end=end, interval=interval)
     data = data['Close']
     print(f"Fetched data length: {len(data)}")
+    print(data.tail())
+    #exit()
     return data
 
 def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None,strategy='standard', density=1):
@@ -71,6 +103,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                 positions.append([order_size, i, 'Buy', grid, 0, add_required_margin,date])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                print(f"positions.append({order_size, i, 'Buy', grid, 0, add_required_margin,date})")
                                 #break  # Exit loop once position is taken
                                 if abs(required_margin) > 0:
                                     margin_maintenance_rate = effective_margin / required_margin * 100
@@ -102,6 +135,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                 positions.append([order_size, i, 'Buy', grid, 0, add_required_margin, date])
                                 trades.append((date, price, 'Buy'))
                                 print(f"Opened Buy position at {price} with grid {grid}, Effective Margin: {effective_margin}")
+                                print(f"positions.append({order_size, i, 'Buy', grid, 0, add_required_margin,date})")
                                 #break  # Exit loop once position is taken
 
                                 if abs(required_margin) > 0:
@@ -116,7 +150,8 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
           # Position closure processing
             for pos in positions[:]:
-                if pos[2] == 'Buy' and pos[1] < len(data) - 1:
+                if pos[2] == 'Buy' and pos[1] <= len(data) - 1:
+                   
                     if price - pos[3] < profit_width:
                         # Update unrealized profit for open positions
                         unrealized_profit = order_size * (price - pos[3])
@@ -182,12 +217,12 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 
 
-                #""" 
-                #check swap
+            #"""
+            #check swap
             for pos in positions:
-                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1) == date):
+                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]): #last condition acts when a position is opend and closed in intraday
 
-                    effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
+                    effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
                         pos[6] = date
@@ -204,7 +239,12 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                     margin_maintenance_rate = float('inf')
                     #"""
 
-
+            #position_value = calc_position_value(positions,price)
+            #swap_value = calc_swap_value(positions,data,date,pair,calculator)
+            # Calculate position value
+            #print(positions)
+            
+            #check_totalscore(margin_deposit, position_value, swap_value, effective_margin,i,date, realized_profit)
 
 
     elif strategy == 'short_only':
@@ -1374,8 +1414,8 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     # Calculate swap values  
     #"""
     if positions:
-        swap_value = sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') else
-                     0 for size, index, status, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],add_business_days(swap_day,1),size) if 'Closed' in status else 0 for size, index, status, _, _, _, swap_day in positions)
+        swap_value = sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size,data.index) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') else
+                      0 for size, index, status, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],add_business_days(swap_day,1,data.index),size,data.index) if 'Closed' in status and add_business_days(swap_day,1,data.index) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day in positions)
     else:
         swap_value = 0
 
@@ -1388,11 +1428,11 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 pair = 'USDJPY=X'
 interval="1d"
-end_date = datetime.strptime("2022-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
-start_date = datetime.strptime("2020-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+end_date = datetime.strptime("2023-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+start_date = datetime.strptime("2022-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 2000000
 grid_start = 100
-grid_end = 110
+grid_end = 160
 strategies = ['long_only']
 entry_intervals = [-15]  # エントリー間隔
 total_thresholds = [100]  # 全ポジション決済の閾値
@@ -1402,15 +1442,15 @@ data = fetch_currency_data(pair, start_date, end_date,interval)
 if __name__ == "__main__":
     # パラメータ設定
     order_sizes = [1000]
-    num_traps_options = [2]
-    profit_widths = [10]
+    num_traps_options = [100]
+    profit_widths = [1]
     densities = [2]
     url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
     html = get_html(url)
     #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
     swap_points = parse_swap_points(html)
     swap_points = rename_swap_points(swap_points)
-    calculator = SwapCalculator(swap_points)
+    calculator = SwapCalculator(swap_points,pair)
     
     results = []
     
