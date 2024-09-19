@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import yfinance as yf
 from itertools import product
-from kabu_swap import SwapCalculator, get_html, parse_swap_points, add_business_days, rename_swap_points
+from kabu_swap import SwapCalculator, get_html, parse_swap_points, rename_swap_points
 from datetime import datetime, timedelta
 
 def check_totalscore(margin_deposit, position_value, swap_value, effective_margin,i,date,realized_profit):
@@ -33,7 +33,7 @@ def calc_swap_value(positions,data,date,pair,calculator):
     #a = [pos for pos in positions if pos[2] == "Buy-Closed"]
     #print(f"{a}")
     swap_value = sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size,data.index) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') else
-                  0 for size, index, status, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],add_business_days(swap_day,1,data.index),size,data.index) if 'Closed' in status and add_business_days(swap_day,1,data.index) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day in positions)
+                  0 for size, index, status, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],calculator.add_business_days(swap_day,1,data.index),size,data.index) if 'Closed' in status and calculator.add_business_days(swap_day,1,data.index) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day in positions)
     return swap_value
 
 def fetch_currency_data(pair, start, end, interval):
@@ -202,7 +202,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             #check swap
             num_positions = 0
             for pos in positions:
-                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]): #last condition acts when a position is opend and closed in intraday
+                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]): #last condition acts when a position is opend and closed in intraday
 
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                     print(f'added swap to effective_margin: {effective_margin}')
@@ -365,7 +365,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #check swap
             num_positions = 0
             for pos in positions:
-                if pos[2] == "Sell" or (pos[2] == "Sell-Closed" and add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]):
+                if pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]):
 
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                     pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
@@ -603,7 +603,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #check swap
             num_positions = 0
             for pos in positions:
-                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]):
+                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]):
 
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                     pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
@@ -855,7 +855,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #check swap
             num_positions = 0
             for pos in positions:
-                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]):
+                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]):
 
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                     pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
@@ -1044,7 +1044,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             #check swap
             num_positions = 0
             for pos in positions:
-                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]):
+                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]):
 
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                     pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
@@ -1292,7 +1292,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             num_positions = 0
             for pos in positions:
                 #check swap
-                if ("Buy" in pos[2] and not pos[2].endswith('Closed')) or ("Sell" in pos[2] and not pos[2].endswith('Closed')) or ("Closed" in pos[2] and add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]):
+                if ("Buy" in pos[2] and not pos[2].endswith('Closed')) or ("Sell" in pos[2] and not pos[2].endswith('Closed')) or ("Closed" in pos[2] and calculator.add_business_days(pos[6],1,data.index) == date and data.index[pos[1]] != pos[6]):
 
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
                     pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size)
@@ -1323,6 +1323,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
     if positions:
       #print(positions)
+      """
       buy_count = sum(1 if 'Buy' in status and not status.endswith('Closed') else 0 for size, index, status, _, _, _, _, _, _ in positions)
       sell_count = sum(1 if 'Sell' in status and not status.endswith('Closed') else 0 for size, index, status, _, _, _, _, _, _ in positions)
       buy_closed_count = sum(1 if "Buy" in status and 'Closed' in status  else 0 for size, index, status, _, _, _, _, _, _ in positions)
@@ -1332,6 +1333,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
       print(f'sell_count{sell_count}')
       print(f'buy_closed_count{buy_closed_count}')
       print(f'sell_closed_count{sell_closed_count}')
+      """
 
 
     # Calculate position value
@@ -1346,7 +1348,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     #"""
     if positions:
         swap_value = sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size,data.index) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') else
-                      0 for size, index, status, _, _, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],add_business_days(swap_day,1,data.index),size,data.index) if 'Closed' in status and add_business_days(swap_day,1,data.index) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day,_ ,_ in positions)
+                      0 for size, index, status, _, _, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],calculator.add_business_days(swap_day,1,data.index),size,data.index) if 'Closed' in status and calculator.add_business_days(swap_day,1,data.index) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day,_ ,_ in positions)
     else:
         swap_value = 0
 
@@ -1373,7 +1375,7 @@ start_date = datetime.strptime("2022-09-01","%Y-%m-%d")#datetime.now() - timedel
 initial_funds = 2000000
 grid_start = 100
 grid_end = 160
-strategies = ['milagroman2']
+strategies = ['long_only']
 entry_intervals = [-15]  # エントリー間隔
 total_thresholds = [100]  # 全ポジション決済の閾値
 # データの取得

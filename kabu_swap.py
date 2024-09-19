@@ -3,32 +3,59 @@ import holidays
 import requests
 from bs4 import BeautifulSoup
 
-# 祝日を考慮する関数
-def is_holiday(date):
-    jp_holidays = holidays.Japan(years=date.year)
-    return date in jp_holidays
+class SwapCalculator:
+    def __init__(self, swap_points, pair):
+        self.swap_points_dict = self._create_swap_dict(swap_points)
+        self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000
+        self.jp_holidays = holidays.Japan()  # 祝日データをインスタンスに保持
 
-# 2営業日後の日付を計算する関数
-def add_business_days(start_date, num_days, trading_days):
-    business_day = start_date
-    added_days = 0
-    trading_days_set = set(trading_days)  # Set に変換して高速化
-    while added_days < num_days:
-        business_day += timedelta(days=1)
-        # 土日でなく、かつ祝日でない、もしくは trading_days に含まれている場合
-        if business_day.weekday() < 5 and (not is_holiday(business_day)) or business_day in trading_days_set:
-            added_days += 1
-    return business_day
+    def _create_swap_dict(self, swap_points):
+        swap_dict = {}
+        for point in swap_points:
+            pair = point.get('通貨名')
+            buy_swap = self._safe_float(point.get('買スワップ', 0))
+            sell_swap = self._safe_float(point.get('売スワップ', 0))
+            swap_dict[pair] = {'buy': buy_swap, 'sell': sell_swap}
+        return swap_dict
 
-# ロールオーバーの日数を計算する関数
-def calculate_rollover_days(open_date, current_date, trading_days):
-    try:
-        rollover_days = (add_business_days(current_date, 2, trading_days) - add_business_days(open_date, 2, trading_days)).days
-    except IndexError as e:
-        print(f"Error in calculating rollover days: {e}")
-        return 0
-    return rollover_days
+    def _safe_float(self, value):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return 0.0
 
+    # 祝日をチェックするメソッド
+    def is_holiday(self, date):
+        return date in self.jp_holidays
+
+    # 2営業日後の日付を計算するメソッド
+    def add_business_days(self, start_date, num_days, trading_days):
+        business_day = start_date
+        added_days = 0
+        trading_days_set = set(trading_days)  # Setに変換して高速化
+        while added_days < num_days:
+            business_day += timedelta(days=1)
+            # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
+            if business_day.weekday() < 5 and (not self.is_holiday(business_day)) or business_day in trading_days_set:
+                added_days += 1
+        return business_day
+
+    # ロールオーバーの日数を計算するメソッド
+    def calculate_rollover_days(self, open_date, current_date, trading_days):
+        try:
+            rollover_days = (self.add_business_days(current_date, 2, trading_days) - self.add_business_days(open_date, 2, trading_days)).days
+        except IndexError as e:
+            print(f"Error in calculating rollover days: {e}")
+            return 0
+        return rollover_days
+
+    def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
+        rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days)
+        if pair not in self.swap_points_dict:
+            return 0.0
+
+        swap_value = self.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
+        return swap_value * rollover_days * order_size / self.per_order_size
 
 # URLからHTMLデータを取得する関数
 def get_html(url):
@@ -65,34 +92,6 @@ def rename_swap_points(swap_points):
     for item in swap_points:
         item['通貨名'] = convert_currency_name(item['通貨名'])
     return swap_points
-
-class SwapCalculator:
-    def __init__(self, swap_points, pair):
-        self.swap_points_dict = self._create_swap_dict(swap_points)
-        self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000
-
-    def _create_swap_dict(self, swap_points):
-        swap_dict = {}
-        for point in swap_points:
-            pair = point.get('通貨名')
-            buy_swap = self._safe_float(point.get('買スワップ', 0))
-            sell_swap = self._safe_float(point.get('売スワップ', 0))
-            swap_dict[pair] = {'buy': buy_swap, 'sell': sell_swap}
-        return swap_dict
-
-    def _safe_float(self, value):
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return 0.0
-
-    def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
-        rollover_days = calculate_rollover_days(open_date, current_date, trading_days)
-        if pair not in self.swap_points_dict:
-            return 0.0
-
-        swap_value = self.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
-        return swap_value * rollover_days * order_size / self.per_order_size
 
 # 通貨名を変換する関数
 def convert_currency_name(currency_name):
