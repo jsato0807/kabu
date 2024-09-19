@@ -9,18 +9,18 @@ def is_holiday(date):
     return date in jp_holidays
 
 # 2営業日後の日付を計算する関数
-def add_business_days(start_date, num_days):
+def add_business_days(start_date, num_days, trading_days):
     business_day = start_date
     added_days = 0
     while added_days < num_days:
         business_day += timedelta(days=1)
-        if business_day.weekday() < 5 and not is_holiday(business_day):
+        if business_day.weekday() < 5 and (not is_holiday(business_day)) or business_day in trading_days:
             added_days += 1
     return business_day
 
 # ロールオーバーの日数を計算する関数（修正版）
-def calculate_rollover_days(open_date, current_date):
-    rollover_days = (add_business_days(current_date, 2) - add_business_days(open_date, 2)).days
+def calculate_rollover_days(open_date, current_date,trading_days):
+    rollover_days = (add_business_days(current_date, 2, trading_days) - add_business_days(open_date, 2, trading_days)).days
     return rollover_days
 
 
@@ -80,8 +80,10 @@ def rename_swap_points(swap_points):
     return swap_points
 
 class SwapCalculator:
-    def __init__(self, swap_points):
+    def __init__(self, swap_points,pair):
         self.swap_points_dict = self._create_swap_dict(swap_points)
+        self.per_order_size = 10000 if pair == 'ZARJPY=X' or pair == 'MXNJPY=X' else 1000
+        #self.per_order_size = 10000
 
     def _create_swap_dict(self, swap_points):
         swap_dict = {}
@@ -99,8 +101,8 @@ class SwapCalculator:
             print(f"Debug: Invalid swap point value encountered: {value}")
             return 0.0
 
-    def get_total_swap_points(self, pair, position, open_date, current_date, order_size):
-        rollover_days = calculate_rollover_days(open_date, current_date)
+    def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
+        rollover_days = calculate_rollover_days(open_date, current_date, trading_days)
         total_swap_points = 0
         if pair not in self.swap_points_dict:
             print(f"Debug: Pair {pair} not found in swap points data.")
@@ -118,7 +120,7 @@ class SwapCalculator:
         except ValueError:
             print(f"Debug: Skipping invalid swap point value for pair {pair}.")
         
-        total_swap_points *= rollover_days * order_size / 10000
+        total_swap_points *= rollover_days * order_size / self.per_order_size
         
         return total_swap_points
 
