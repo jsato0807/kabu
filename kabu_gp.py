@@ -43,6 +43,13 @@ param_ranges = {
 def rand101():
     return np.random.randint(-1, 2)
 
+
+def safe_div(x, y):
+    if y == 0:
+        return 1  # ゼロ除算の場合、1を返す
+    return x / y
+
+
 # DEAPの設定
 creator.create("FitnessMax", base.Fitness, weights=(1.0,))
 creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessMax)
@@ -51,7 +58,7 @@ pset = gp.PrimitiveSet("MAIN", 4)  # effective_margin, realized_profit, sharp_ra
 pset.addPrimitive(operator.add, 2)
 pset.addPrimitive(operator.sub, 2)
 pset.addPrimitive(operator.mul, 2)
-pset.addPrimitive(operator.truediv, 2)
+pset.addPrimitive(safe_div, 2)  # 安全な除算関数を追加
 #pset.addPrimitive(np.sin, 1)
 #pset.addPrimitive(np.cos, 1)
 # 既存コードにおいて rand101 を addEphemeralConstant で使う場合
