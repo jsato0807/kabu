@@ -8,6 +8,7 @@ class SwapCalculator:
         self.swap_points_dict = self._create_swap_dict(swap_points)
         self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000
         self.jp_holidays = holidays.Japan()  # 祝日データをインスタンスに保持
+        self.holiday_cache = {}  # 祝日判定結果のキャッシュ
 
     def _create_swap_dict(self, swap_points):
         swap_dict = {}
@@ -26,13 +27,14 @@ class SwapCalculator:
 
     # 祝日をチェックするメソッド
     def is_holiday(self, date):
-        return date in self.jp_holidays
+        if date not in self.holiday_cache:  # キャッシュに結果がない場合のみ計算
+            self.holiday_cache[date] = date in self.jp_holidays
+        return self.holiday_cache[date]
 
     # 2営業日後の日付を計算するメソッド
-    def add_business_days(self, start_date, num_days, trading_days):
+    def add_business_days(self, start_date, num_days, trading_days_set):
         business_day = start_date
         added_days = 0
-        trading_days_set = set(trading_days)  # Setに変換して高速化
         while added_days < num_days:
             business_day += timedelta(days=1)
             # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
@@ -41,16 +43,17 @@ class SwapCalculator:
         return business_day
 
     # ロールオーバーの日数を計算するメソッド
-    def calculate_rollover_days(self, open_date, current_date, trading_days):
+    def calculate_rollover_days(self, open_date, current_date, trading_days_set):
         try:
-            rollover_days = (self.add_business_days(current_date, 2, trading_days) - self.add_business_days(open_date, 2, trading_days)).days
+            rollover_days = (self.add_business_days(current_date, 2, trading_days_set) - self.add_business_days(open_date, 2, trading_days_set)).days
         except IndexError as e:
             print(f"Error in calculating rollover days: {e}")
             return 0
         return rollover_days
 
     def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
-        rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days)
+        trading_days_set = set(trading_days)
+        rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set)
         if pair not in self.swap_points_dict:
             return 0.0
 
@@ -76,7 +79,10 @@ def parse_swap_points(html):
     
     rows = swap_table.find_all('tr')
     
-    headers = [clean_text(th.get_text(strip=True)) for th in rows[0].find_all('th')]
+    #headers = [clean_text(th.get_text(strip=True)) for th in rows[0].find_all('th')]
+    # 'clean_text'の処理をその場で行う
+    headers = [th.get_text(strip=True).replace('\xa0', '').replace('円', '').strip() for th in rows[0].find_all('th')]
+
 
     swap_points = []
     for row in rows[1:]:
