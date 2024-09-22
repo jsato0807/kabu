@@ -6,17 +6,19 @@ from kabu_swap import get_html, parse_swap_points, rename_swap_points, SwapCalcu
 import operator
 import multiprocessing
 
+pair = "AUDNZD=X"
+
 # 外部データの取得と設定
 url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
 html = get_html(url)
 swap_points = parse_swap_points(html)
 swap_points = rename_swap_points(swap_points)
-calculator = SwapCalculator(swap_points)
+calculator = SwapCalculator(swap_points,pair)
 
 # サンプル取引データ（train_dataとtest_dataに分割）
-end_date = datetime.strptime("2024-09-01", "%Y-%m-%d")
+end_date = datetime.strptime("2024-01-01", "%Y-%m-%d")
 start_date = datetime.strptime("2019-01-01", "%Y-%m-%d")
-data = fetch_currency_data("AUDNZD=X", start_date, end_date, "1d")
+data = fetch_currency_data(pair, start_date, end_date, "1d")
 train_data = data[:len(data) // 2]
 test_data = data[len(data) // 2:]
 
@@ -36,6 +38,11 @@ param_ranges = {
     "density": [0.01, 10.0]
 }
 
+
+# ラムダ式の代わりに通常の関数として定義
+def rand101():
+    return np.random.randint(-1, 2)
+
 # DEAPの設定
 creator.create("FitnessMax", base.Fitness, weights=(1.0,))
 creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessMax)
@@ -47,7 +54,8 @@ pset.addPrimitive(operator.mul, 2)
 pset.addPrimitive(operator.truediv, 2)
 #pset.addPrimitive(np.sin, 1)
 #pset.addPrimitive(np.cos, 1)
-pset.addEphemeralConstant("rand101", lambda: np.random.randint(-1, 2))
+# 既存コードにおいて rand101 を addEphemeralConstant で使う場合
+pset.addEphemeralConstant("rand101", rand101)
 
 # DEAPのツールボックスを定義
 toolbox = base.Toolbox()
