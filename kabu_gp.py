@@ -122,7 +122,17 @@ def mutate_params(individual):
 def custom_mutate(individual):
     # 評価関数の突然変異
     if np.random.rand() < 0.5:  # 50%の確率で評価関数の突然変異
-        tools.mutUniform(individual, expr=toolbox.expr, pset=pset)
+        # gp.mutUniformを使用して個体の突然変異を行う
+        mutated_expr = gp.mutUniform(individual, expr=toolbox.expr, pset=pset)[0]
+        
+        if mutated_expr is None:
+            print("mutated_expr is None")
+        else:
+            # 個別に代入
+            for i in range(len(individual)):
+                individual[i] = mutated_expr[i]  # 各要素を個別に更新 
+
+        #individual[:] = mutated_expr  # 変異後の表現を更新
     
     # パラメータの突然変異
     mutate_params(individual)
