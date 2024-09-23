@@ -1,8 +1,70 @@
 kabu_montecarlo.pyが終わったら、kabu_backtest.pyを、cumulativeなreturnをtxtfileに保存するように修正して、再度kabu_montecarlo.pyを実行せよ
 svmとGAの論文を読んで、完全に再現
 svmとGAの論文で使われている、動的なGAについて、ハイパーパラメータをどう決めるか、その動的な手法が高精度なのはどのような原因が考えられるか解読する
-svmとGAの論文以外にcitationの多い、overfitしていない先行研究を探す
+svmとGAの論文以外にcitationの多い、overfitしていない先行研究を探す→Modeling, forecasting and trading the EUR exchange rates with hybrid rolling genetic algorithms-Support vector regression forecast combinations（citation132）
 kabu_montecarlo.pyはパラメータを全て一様分布から生成しているが、これも先行研究を探す
 covariance penalitesの論文にある、CV以外の先行研究となった手法を調べる
 cpcvを日足より短い”大量の”データを使って再度試す
 うまくいきそうなら、その結果に対してcscvでpboを確認
+transaction costsを導入すべきか考える、また最適化する関数の返り値がeffective_marginでは、過学習するからリスクを考慮した指標を使用するべきで、sharp_ratioか、最大ドローダウンなどを組み合わせた独自の関数を作るか考える→遺伝プログラミングで評価関数を自動で生成すれば良いのではないか
+
+
+・各戦略が生成したリターンの統計的な性質に焦点を当てた論文
+
+A Bayesian Approach to Measurement of Backtest Overfitting (2021年のものなのでまだcitationが少ない)
+https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/66e2115f-c26c-800e-ac38-9ebc1d24fa2e
+指定した平均と標準偏差から複数の投資戦略のリターンを生成し、MCMCを使って戦略の平均と共分散をサンプリング。その後、その平均と共分散からout_sampleリターンを生成し、シャープレシオを計算。
+
+
+
+
+・各戦略のパラメータを具体的に最適化することに焦点を当てた論文
+    <GA関連>
+Parameter Optimization for Trading Algorithms of Technical Agents
+https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/66e214f0-9a78-800e-a1cc-f45886fd52c0
+BOとGAを使って累積リターンが最大となるようなRSIの下限値と上限値、ボリンジャーバンドの平均と標準偏差を推定
+ロールフォワード法によるoverfit軽減
+
+FOREX Trading Strategy Optimization (citationほぼ0)
+https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/66dc4040-d17c-800e-aada-7f882fe2e79c
+GAを使って移動平均の次数、取引頻度のパラメータ、最小閾値を最適化
+trainとtestを分けただけ
+
+
+
+    <svm関連>
+Combining Support Vector Machine with Genetic Algorithms to optimize investments in Forex markets with high leverage (citation77)
+https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/66de16a3-db5c-800e-8c3a-d8228ae1bd8b
+svmにより、市場のトレンドを３つに判別し、各トレンドに対応するGAで別々に最適化、GAはハイパーミューテーション、ハイパーセレクションを実行
+svmに対してkfold交差検証を実施、GAに対してはtrainとtestを分けただけ
+
+Modeling, forecasting and trading the EUR exchange rates with hybrid rolling genetic algorithms-Support vector regression forecast combinations (citation132)
+https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/66df6ac1-189c-800e-ba55-fd18a8a7e128
+svrによって過去の為替レートから１日先の予測値を算出、GAでsvrのハイパーパラメータを調整。svrの入力データは教師データ：ARMAモデルやNNによって得られる１日先の予測値、教師ラベル：実際の１日先の値、として学習。GAの評価関数は、年率リターン-10*RMSE-0.001*(サポートベクターの数/トレーニングサンプル数)
+svrに含まれる正則化項Cによって過学習を抑えられる
+
+
+
+<その他>
+Evaluating machine learning classification for financial trading: An empirical approach (citation200)
+https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/66e0bb4c-2f04-800e-981e-684f82061d9e
+シンプルな機械学習モデル（OneR, C4.5, JRip, Logistic Model Tree, KStar, Naïve Bayes）を使用し、予測精度が50%程度だったが高い収益性を誇った。異なる市場でも安定した結果となった。シンプルなモデルのため計算コストが低いことを活かして定期的に再訓練ができる
+
+Data selection to avoid overfitting for foreign exchange intraday trading with machine learning
+https://pdf.sciencedirectassets.com/272229/1-s2.0-S1568494621X00087/1-s2.0-S1568494621003847/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEH0aCXVzLWVhc3QtMSJHMEUCIQCGI39Wo7zu4IWNC%2BfsPtxwCVnN6epLfo7m%2Bcwpq7LvxQIgCh%2FyBhQZ7dc3zj5dEevvbVqjcDFi3HpuSHXlzKZ6c0AquwUItf%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARAFGgwwNTkwMDM1NDY4NjUiDDiWdgj5p%2FB1Xrf4kyqPBfQ%2BiP8RfmgSfxi5%2F%2FNusbayAUtM7dHd%2B%2FxuAcOwQlc9K2ubn87MVVQULSWdNAlCQgK5jUVHlMGRsH31Vh5XIKetFuIetQNLE5E9p%2FnFbLBBc5gdsILKR8Qt3%2BHZpy8sW3jimg4FhHiVcFkjzxT1Ky17upZg0fMluQd%2BGitP0q%2F7sGVV3KGq31KxQKfQfB6X1uEdHXL2RdaSfuA%2FsdVAgoCluCljkFtoYba1Mtp1A0YShxetxRTCC05Sm7G4wh4pXLmiZHlvA1JqURFD6SSaJ9V4XJ%2FjjSIyz1TGrN1vbvEpP7jMa94%2FrUtPGgeNxrDjiDhz8ULeJgsRoBudbsQOOWa6vqjZM91BnjW9RU6KWTW0wLC85UavAmpYaXRJ2wmAkKel0dUSEAOpNFHIGDhxviLM19n6wXgopG0WNv3HDWp2AJC5ZnlUTDtL05JIu6BbCHg1g4VFkZ0X4W2yI7XYk3ifsJRxQnQbV0vZMWFL1gyH3UASjCz10qSwrzyj98JghlkoHMGjjw%2BPLiFZiAxW3MKFs8QT%2BBGdsLpgRxbB8ryWaVTgFwL1xZKJish%2BUPHuS1loveXBDTfoBbzKrzcvpTP9fW%2FkNe%2FTsw%2B3gkxQwUMDd65hTPMkd1l0U7hzoLPEMwLL4%2BJNzRkeycTYzFtAOHXqmuIJaH2G0fMbZzhSBwZca49vrrpRD17LOfQsRp%2BT6fhxqIh8r0Wd06jS7u5PIrqHtT2AYHHBaev0CFLYZW5i8sZfZv61ME8JlL%2BWDBPtRPs1WfO7SH8lkwilG7KWqZ%2BKP%2F%2Fh1aQiAIXdiIkYpicGrKNAdVUC9xmJxnwOsnmNHqZuRvjzB9eEhl8OHs5TMd7OXUbPNnjuyFoalsaq%2FxQwr9bDtwY6sQFE%2FPLL8%2FNz7LWfVLXY2HtFx23Kdq5YYztp7zwXRVTDSvaqWUdEgmfXreWeXWsFONfm8SnueWIJq%2BvkMCifhgDIkpYHKxKzYXZ7MJ3KEpEp7%2Ft2pRFVab5Du0AUGcmhvdbRPTQA4HSjFEEK8lIrHyx25fBinOSgiOgwx7nu%2FX9EYBUfypOyUdl2o4JTAEuTwbnGl7%2BX065dwcDTA04v0b3XZhoS3tA6WHPFo6Zg3p%2BKsDM%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20240923T045844Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTY3DVXELR2%2F20240923%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=325e86f41210c83071c3ff0e8aa2e7f4914eb5d4faf23d0ad91a8cecd0d56d4a&hash=54c56f9bc33e589d31d64dac937359175e1b47d665ea0c753e1da42698e38c16&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S1568494621003847&tid=spdf-c78b5e9d-b534-4675-b555-fa23ab6e66aa&sid=e70f03667dfcb143f69b1c967124316984e0gxrqa&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=10155f0251550552510c0a&rr=8c77f61beff02601&cc=jp
+新しくパスロス指標(精度＊log(正規化されたinsampleリターン)/収益率)を提案、２つの学習目的（回帰と分類）、２つの取引戦略（１機関保有、切り替えまで保有）、４つの機械学習モデルを使用（NN、ランダムフォレスト、SVM/SVR、XGBoost）
+
+
+・新しい手法
+Avoiding Backtesting Overfitting by Covariance-Penalties: an empirical investigation of the ordinary and total least squares cases (citation12)
+https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/66da70eb-4eb0-800e-a45b-4825778a7845
+共分散ペナルティ補正法によるoverfitの回避
+
+
+
+
+・交差検証の応用
+The Probability of Backtest Overfitting (citation132)
+https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/66dba0a1-bcec-800e-9da5-89196b3a70b5
+cscv法によるPBOの計算によりoverfitを定量的に評価できる
+
