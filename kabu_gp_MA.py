@@ -50,8 +50,14 @@ def rand101():
 
 def safe_div(x, y):
     if y == 0:
-        return 1  # ゼロ除算の場合、1を返す
+        return 0  # ゼロ除算の場合、0を返す
     return x / y
+
+def safe_mul(x, y):
+    result = x * y
+    if np.abs(result) > 1e6:  # 上限を1e6に設定
+        return 1e6 if result > 0 else -1e6
+    return result
 
 # DEAPの設定
 creator.create("FitnessMax", base.Fitness, weights=(1.0,))
@@ -60,7 +66,7 @@ creator.create("Individual", gp.PrimitiveTree, fitness=creator.FitnessMax)
 pset = gp.PrimitiveSet("MAIN", 4)
 pset.addPrimitive(operator.add, 2)
 pset.addPrimitive(operator.sub, 2)
-pset.addPrimitive(operator.mul, 2)
+pset.addPrimitive(safe_mul, 2)
 pset.addPrimitive(safe_div, 2)
 pset.addEphemeralConstant("rand101", rand101)
 
@@ -91,6 +97,13 @@ def evaluate(individual, data):
     params = individual.params
     num_traps, profit_width, order_size, strategy, density = params
     
+    # 演算子の数が制限を超えた場合、ペナルティを与える
+    max_operators = 6  # 演算子の最大数
+    operator_count = sum(1 for node in individual if isinstance(node, gp.Primitive))
+    
+    if operator_count > max_operators:
+        return -1e12,  # 評価値として -無限大を返す
+
     random_window = np.random.randint(1, 100)
     train_data_moving_avg = calculate_moving_average(data, random_window)
 
@@ -122,8 +135,12 @@ def mutate_params(individual):
 def custom_mutate(individual):
     if np.random.rand() < 0.5:
         mutated_expr = gp.mutUniform(individual, expr=toolbox.expr, pset=pset)[0]
-        if mutated_expr is not None:
-            individual[:] = mutated_expr
+        if mutated_expr is None:
+            print("mutated_expr is None")
+        else:
+            # 個別に代入
+            for i in range(len(individual)):
+                individual[i] = mutated_expr[i]  # 各要素を個別に更新 
     mutate_params(individual)
     return individual,
 
