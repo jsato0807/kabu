@@ -36,7 +36,7 @@ def cpcv(data, k_folds=10, validation_size=4):
     validation_data = np.concatenate([folds[i] for i in validation_indices])
     train_data = np.concatenate([folds[i] for i in range(k_folds) if i not in validation_indices])
     
-    return train_data, validation_data
+    return pd.Series(train_data), pd.Series(validation_data)
 
 # 移動平均線を計算する関数
 def calculate_moving_average(series: pd.Series, window: int) -> pd.Series:
