@@ -6,6 +6,7 @@ from kabu_swap import get_html, parse_swap_points, rename_swap_points, SwapCalcu
 import operator
 import multiprocessing
 import pandas as pd
+import functools
 
 pair = "AUDNZD=X"
 
@@ -31,12 +32,65 @@ def cpcv(data, k_folds=10, validation_size=4):
     
     # バリデーション用のインデックスをランダムに選択
     validation_indices = np.random.choice(range(k_folds), size=validation_size, replace=False)
+    validation_indices = np.sort(validation_indices)
+
+    train_indices = [i for i in range(k_folds) if i not in validation_indices]
     
     # バリデーションデータとトレーニングデータを取得
-    validation_data = np.concatenate([folds[i] for i in validation_indices])
-    train_data = np.concatenate([folds[i] for i in range(k_folds) if i not in validation_indices])
+    #validation_data = [folds[i] for i in validation_indices]
+    #train_data = [folds[i] for i in range(k_folds) if i not in validation_indices]
     
-    return pd.Series(train_data), pd.Series(validation_data)
+    return train_indices,validation_indices, folds
+
+# 自己相関が高いかどうかを判定するための関数
+def is_high_autocorrelation(data1, data2, threshold=0.1):
+    combined_data = np.concatenate((data1, data2))  # データを結合して自己相関を計算
+    autocorr = pd.Series(combined_data).autocorr(lag=len(data1))  # data1 と data2 の境界部分の自己相関を計算
+    return abs(autocorr) >= threshold  # 自己相関が threshold 以上なら高すぎるとみなす
+
+# 境界部分でデータリークを防ぐための前処理
+def purging_and_embargo(data, threshold=0.1):
+    """
+    threshold: 自己相関が大きいとみなすための閾値
+    """
+    # dataの不連続な部分のインデックスを特定
+    for i in range(len(data) - 1):
+        # dataの最後のデータと次のdataの最初のデータを切り捨てる
+        while len(data[i]) > 0 and len(data[i + 1]) > 0 and is_high_autocorrelation(data[i][-5:], data[i + 1][:5], threshold):
+            # train_dataの最後のデータを切り捨て
+            data[i] = data[i][:-1]  # 現在のtrain_dataの最後の部分を削除
+            data[i + 1] = data[i + 1][1:]  # 次のtrain_dataの最初の部分を削除
+
+    return data
+
+
+# インデックスに従ってデータを分割する関数
+def split_data(folds, indices):
+    grouped_data = []
+    current_group = [folds[indices[0]]]  # 最初のデータを初期グループに
+
+
+    for i in range(1, len(indices)):
+        if indices[i] == indices[i - 1] + 1:
+            # 連続している場合はグループに追加
+            current_group.append(folds[indices[i]])
+        else:
+            # 現在のグループの長さによって処理を分ける
+            if len(current_group) == 1:
+                grouped_data.append(current_group[0])  # 要素が1つならそのまま追加
+            else:
+                grouped_data.append(pd.concat(current_group))  # 要素が複数なら結合して追加
+
+            current_group = [folds[indices[i]]]  # 新しいグループを初期化
+
+    # 最後のグループを追加
+    if len(current_group) == 1:
+        grouped_data.append(current_group[0])  # 要素が1つならそのまま追加
+    else:
+        grouped_data.append(pd.concat(current_group))  # 要素が複数なら結合して追加
+
+    return grouped_data
+
 
 # 移動平均線を計算する関数
 def calculate_moving_average(series: pd.Series, window: int) -> pd.Series:
@@ -118,14 +172,36 @@ def evaluate(individual, data):
     if operator_count > max_operators:
         return -1e12,  # 評価値として -無限大を返す
 
-    random_window = np.random.randint(1, 100)
-    train_data_moving_avg = calculate_moving_average(data, random_window)
+    realized_profit = 0
+    required_margin = 0
+    position_value = 0
+    swap_value = 0
+    effective_margin_max = -np.inf
+    effective_margin_min = np.inf
 
-    effective_margin, _, realized_profit, _, _, _, _, _, _, _, sharp_ratio, max_draw_down = traripi_backtest(
-        calculator, train_data_moving_avg, initial_funds, grid_start, grid_end,
-        num_traps, profit_width, order_size, entry_interval,
-        total_threshold, strategy=strategy, density=density
-    )
+    for sequence in data:
+        sequence = pd.Series(sequence)
+
+        # sequence が空の場合はスキップ
+        if sequence.empty:
+            print("Warning: Empty sequence detected, skipping moving average calculation.")
+            continue
+
+        # sequence が数値データ型でない場合のチェック
+        if not pd.api.types.is_numeric_dtype(sequence):
+            print(f"Warning: Non-numeric data detected in sequence: {sequence}, skipping.")
+            continue
+
+        random_window = np.random.randint(1, 100)
+        train_data_moving_avg = calculate_moving_average(sequence, random_window)
+
+        effective_margin, _, realized_profit, position_value, swap_value, required_margin, _, _, _, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min = traripi_backtest(
+            calculator, train_data_moving_avg, initial_funds, grid_start, grid_end,
+            num_traps, profit_width, order_size, entry_interval,
+            total_threshold, strategy=strategy, density=density,
+            realized_profit=realized_profit,required_margin=required_margin,position_value=position_value,swap_value=swap_value,
+            effective_margin_max=effective_margin_max,effective_margin_min=effective_margin_min
+        )
 
     result = func(effective_margin, realized_profit, sharp_ratio, max_draw_down)
     return result,
@@ -175,7 +251,6 @@ def early_stopping(fitness_history, patience=50):
 if __name__ == "__main__":
     early_stopping_flag = False
     # その他の設定
-    toolbox.register("evaluate", evaluate, data=train_data)  # train_dataを使用
     toolbox.register("select", tools.selTournament, tournsize=3)
     toolbox.register("mate", custom_mate)
     toolbox.register("mutate", custom_mutate)
@@ -188,10 +263,24 @@ if __name__ == "__main__":
     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:   
         for gen in range(2000):
             # トレーニングデータのサブセットとバリデーションデータを取得
-            train_subset, validation_data = cpcv(train_data)
+            train_indices, validation_indices, folds = cpcv(train_data)
+
+
+            #　不連続なデータを独立させるために自己相関の高いデータ点を切り捨て
+            train_subset = split_data(folds, train_indices)
+            validation_data = split_data(folds, validation_indices)
+
+            train_subset = purging_and_embargo(train_subset)
+            validation_data = purging_and_embargo(validation_data)
+            
+
+            # evaluate関数にtrain_subsetを渡す
+            evaluate_with_data = functools.partial(evaluate, data=train_subset)
+            toolbox.register("evaluate_with_data", evaluate_with_data)  # train_dataを使用
+
 
             # 各個体に対して評価を実行
-            fitnesses = pool.map(toolbox.evaluate, population)
+            fitnesses = pool.map(toolbox.evaluate_with_data, population)
             for ind, fit in zip(population, fitnesses):
                 ind.fitness.values = fit
 
