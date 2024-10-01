@@ -6,6 +6,7 @@ from itertools import product
 from kabu_swap import SwapCalculator, get_html, parse_swap_points, rename_swap_points
 from datetime import datetime, timedelta
 
+"""
 def check_totalscore(margin_deposit, position_value, swap_value, effective_margin,i,date,realized_profit):
     print(i)
     print(date)
@@ -35,6 +36,7 @@ def calc_swap_value(positions,data,date,pair,calculator):
     swap_value = sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size,data.index) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') else
                   0 for size, index, status, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],calculator.add_business_days(swap_day,1,data.index),size,data.index) if 'Closed' in status and calculator.add_business_days(swap_day,1,data.index) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day in positions)
     return swap_value
+"""
 
 def fetch_currency_data(pair, start, end, interval):
     """
@@ -43,8 +45,6 @@ def fetch_currency_data(pair, start, end, interval):
     data = yf.download(pair, start=start, end=end, interval=interval)
     data = data['Close']
     print(f"Fetched data length: {len(data)}")
-    print(data.tail())
-    #exit()
     return data
 
 def check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min):
@@ -54,17 +54,13 @@ def check_min_max_effective_margin(effective_margin, effective_margin_max, effec
         effective_margin_min = effective_margin
     return effective_margin_max, effective_margin_min
 
-def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None,strategy='standard', density=1):
+def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None,strategy='standard', density=1,realized_profit=0, required_margin=0, position_value=0, swap_value=0, effective_margin_max = -np.inf, effective_margin_min = np.inf):
     """
     Perform Trailing Stop strategy backtest on given data.
     """
     RETURN = []
-    margin_deposit = initial_funds
-    effective_margin = margin_deposit
-    effective_margin_max = -np.inf
-    effective_margin_min = np.inf
-    realized_profit = 0
-    required_margin = 0		# current_rate*order_size*required_margin_rate
+    margin_deposit = initial_funds + realized_profit
+    effective_margin = margin_deposit + position_value + swap_value
     margin_maintenance_rate = float('inf')		# effective_margin/required_margin*100
     required_margin_rate = 0.04
     positions = []
@@ -1317,7 +1313,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
     # Calculate position value
     if positions:
-        position_value = sum(size * (data.iloc[-1] - grid) if 'Buy' in status and not status.endswith('Closed') else
+        position_value += sum(size * (data.iloc[-1] - grid) if 'Buy' in status and not status.endswith('Closed') else
                      -size * (data.iloc[-1] - grid) if 'Sell'  in status and not status.endswith('Closed') else
                      0 for size, _, status, grid, _, _, _, _, _ in positions)
     else:
@@ -1326,7 +1322,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     # Calculate swap values  
     #"""
     if positions:
-        swap_value = sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size,data.index) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') else
+        swap_value += sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size,data.index) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') else
                       0 for size, index, status, _, _, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],calculator.add_business_days(swap_day,1,data.index),size,data.index) if 'Closed' in status and calculator.add_business_days(swap_day,1,data.index) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day,_ ,_ in positions)
     else:
         swap_value = 0
@@ -1343,7 +1339,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     # Calculate margin deposit
     #margin_deposit = initial_funds + realized_profit
 
-    return effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down
+    return effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min
 
 
 
@@ -1382,7 +1378,7 @@ if __name__ == "__main__":
     if "diamond" in strategies and milagroman_list:
         print("hello diamond and {} both".format(milagroman_list))
         for order_size, num_traps, profit_width, strategy, density, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, densities, entry_intervals, total_thresholds):
-            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down = traripi_backtest(
+            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min  = traripi_backtest(
                calculator ,data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=density
             )
       
@@ -1391,7 +1387,7 @@ if __name__ == "__main__":
     elif "diamond" in strategies and not milagroman_list:
         print("hello diamond only")
         for order_size, num_traps, profit_width, strategy, density in product(order_sizes, num_traps_options, profit_widths, strategies, densities):
-            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, _, _, sharp_ratio, max_draw_down = traripi_backtest(
+            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, _, _, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min = traripi_backtest(
                 calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None, strategy=strategy, density=density
             )
       
@@ -1402,7 +1398,7 @@ if __name__ == "__main__":
     elif not "diamond" in strategies and milagroman_list:
         print("{} only".format(milagroman_list))
         for order_size, num_traps, profit_width, strategy, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, entry_intervals, total_thresholds):
-            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down = traripi_backtest(
+            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min = traripi_backtest(
                 calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval, total_threshold, strategy=strategy, density=None
             )
       
@@ -1412,7 +1408,7 @@ if __name__ == "__main__":
     elif not "diamond" in strategies and not milagroman_list:
         print("nothing")
         for order_size, num_traps, profit_width, strategy in product(order_sizes, num_traps_options, profit_widths, strategies):
-            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down = traripi_backtest(
+            effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min = traripi_backtest(
                 calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, None, None, strategy=strategy, density=None
             )
       
