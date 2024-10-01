@@ -19,8 +19,8 @@ calculator = SwapCalculator(swap_points,pair)
 end_date = datetime.strptime("2024-01-01", "%Y-%m-%d")
 start_date = datetime.strptime("2019-01-01", "%Y-%m-%d")
 data = fetch_currency_data(pair, start_date, end_date, "1d")
-train_data = data[:len(data) // 2]
-test_data = data[len(data) // 2:]
+train_data = data[len(data) // 2:]
+test_data = data[:len(data) // 2]
 
 # 固定された取引パラメータ（初期設定）
 initial_funds = 200000

@@ -7,6 +7,8 @@ import operator
 import multiprocessing
 import pandas as pd
 
+early_stopping_flag = False
+
 pair = "AUDNZD=X"
 
 # 外部データの取得と設定
@@ -20,8 +22,8 @@ calculator = SwapCalculator(swap_points, pair)
 end_date = datetime.strptime("2024-01-01", "%Y-%m-%d")
 start_date = datetime.strptime("2019-01-01", "%Y-%m-%d")
 data = fetch_currency_data(pair, start_date, end_date, "1d")
-train_data = data[:len(data) // 2]
-test_data = data[len(data) // 2:]
+train_data = data[len(data) // 2:]
+test_data = data[:len(data) // 2]
 
 # 移動平均線を計算する関数
 def calculate_moving_average(series: pd.Series, window: int) -> pd.Series:
@@ -171,7 +173,7 @@ def evolve_with_train_test():
     fitness_history = []
 
     # 進化を行い、テストデータで評価
-    for gen in range(200):
+    for gen in range(2000):
         algorithms.eaSimple(pop, toolbox, cxpb=0.5, mutpb=0.2, ngen=1, stats=stats, halloffame=hof, verbose=True)
         
         # フィットネスを記録
@@ -179,11 +181,14 @@ def evolve_with_train_test():
 
         # Early Stoppingの確認
         if early_stopping(fitness_history):
-            print(f"Early stopping at generation {gen + 1}")
+            early_stopping_flag = True
+            early_stopping_gen = gen
             break
 
     best_individual = hof[0]
     test_score = evaluate(best_individual, test_data)
+    if early_stopping_flag:
+        print(f"early stopped at {early_stopping_gen}")
     print(f"テストデータでの評価スコア: {test_score}")
     return best_individual
 

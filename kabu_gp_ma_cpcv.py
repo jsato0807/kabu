@@ -7,6 +7,7 @@ import operator
 import multiprocessing
 import pandas as pd
 import functools
+import random
 
 pair = "AUDNZD=X"
 
@@ -21,8 +22,8 @@ calculator = SwapCalculator(swap_points, pair)
 end_date = datetime.strptime("2024-01-01", "%Y-%m-%d")
 start_date = datetime.strptime("2019-01-01", "%Y-%m-%d")
 data = fetch_currency_data(pair, start_date, end_date, "1d")
-train_data = data[:len(data) // 2]
-test_data = data[len(data) // 2:]
+train_data = data[len(data) // 2:]
+test_data = data[:len(data) // 2]
 
 # データを分割する
 def cpcv(data, k_folds=10, validation_size=4):
@@ -242,6 +243,20 @@ def custom_mate(ind1, ind2):
             ind1.params[i], ind2.params[i] = ind2.params[i], ind1.params[i]
     return ind1, ind2
 
+
+# カスタムトーナメント選択関数
+def custom_tournament_selection(population, validation_data, tournsize):
+    selected = []
+    for _ in range(len(population)):
+        # トーナメント参加者を選ぶ
+        aspirants = random.sample(population, tournsize)
+        # validation_dataを使ってスコアを計算
+        scores = [evaluate(ind, validation_data)[0] for ind in aspirants]
+        # スコアが最も高い個体を選ぶ
+        winner = aspirants[scores.index(max(scores))]
+        selected.append(winner)
+    return selected
+
 # Early Stoppingのための関数
 def early_stopping(fitness_history, patience=50):
     if len(fitness_history) < patience:
@@ -251,7 +266,8 @@ def early_stopping(fitness_history, patience=50):
 if __name__ == "__main__":
     early_stopping_flag = False
     # その他の設定
-    toolbox.register("select", tools.selTournament, tournsize=3)
+    # 選択関数をカスタム関数に登録
+    toolbox.register("select", custom_tournament_selection, tournsize=3)
     toolbox.register("mate", custom_mate)
     toolbox.register("mutate", custom_mutate)
 
@@ -285,8 +301,8 @@ if __name__ == "__main__":
                 ind.fitness.values = fit
 
 
-            # バリデーションデータに対するスコアを計算
-            validation_scores = list(map(lambda ind: evaluate(ind, validation_data), population))
+            ## バリデーションデータに対するスコアを計算
+            #validation_scores = list(map(lambda ind: evaluate(ind, validation_data), population))
 
 
             # 最良個体をハルオブフェームに追加
@@ -299,7 +315,7 @@ if __name__ == "__main__":
                 break
 
             # 新しい世代の選択
-            offspring = toolbox.select(population, len(population), key=lambda ind: validation_scores[population.index(ind)])
+            offspring = toolbox.select(population, validation_data)
             offspring = list(map(toolbox.clone, offspring))
 
             # 交叉と突然変異を適用
