@@ -107,7 +107,7 @@ def evaluate(individual, data):
     random_window = np.random.randint(1, 100)
     train_data_moving_avg = calculate_moving_average(data, random_window)
 
-    effective_margin, _, realized_profit, _, _, _, _, _, _, _, sharp_ratio, max_draw_down = traripi_backtest(
+    effective_margin, _, realized_profit, _, _, _, _, _, _, sharp_ratio, max_draw_down, _, _  = traripi_backtest(
         calculator, train_data_moving_avg, initial_funds, grid_start, grid_end,
         num_traps, profit_width, order_size, entry_interval,
         total_threshold, strategy=strategy, density=density
@@ -141,7 +141,7 @@ def custom_mutate(individual):
             # 個別に代入
             for i in range(len(individual)):
                 individual[i] = mutated_expr[i]  # 各要素を個別に更新 
-    mutate_params(individual)
+    individual, = mutate_params(individual)
     return individual,
 
 # 交叉関数のカスタム実装
