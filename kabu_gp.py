@@ -135,7 +135,7 @@ def custom_mutate(individual):
         #individual[:] = mutated_expr  # 変異後の表現を更新
     
     # パラメータの突然変異
-    mutate_params(individual)
+    individual, = mutate_params(individual)
     
     return individual,
 

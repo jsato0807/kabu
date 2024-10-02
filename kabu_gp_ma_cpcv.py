@@ -232,7 +232,7 @@ def custom_mutate(individual):
             # 個別に代入
             for i in range(len(individual)):
                 individual[i] = mutated_expr[i]  # 各要素を個別に更新 
-    mutate_params(individual)
+    individual, = mutate_params(individual)
     return individual,
 
 # 交叉関数のカスタム実装
