@@ -204,7 +204,7 @@ def evaluate(individual, data):
             effective_margin_max=effective_margin_max,effective_margin_min=effective_margin_min
         )
 
-    result = func(effective_margin, realized_profit, sharp_ratio, max_draw_down)
+    result = func(effective_margin/initial_funds, realized_profit/initial_funds, sharp_ratio, max_draw_down/100)
     return result,
 
 # パラメータの突然変異
@@ -220,7 +220,7 @@ def mutate_params(individual):
         individual.params[param_idx] = np.random.choice(param_ranges["strategy"])
     elif param_idx == 4:
         individual.params[param_idx] = np.random.uniform(*param_ranges["density"])
-    return individual,
+    return individual   #pay attention to the value of the return, list, not tuple.
 
 # 評価関数とパラメータの両方を突然変異させるカスタム関数
 def custom_mutate(individual):
@@ -232,8 +232,8 @@ def custom_mutate(individual):
             # 個別に代入
             for i in range(len(individual)):
                 individual[i] = mutated_expr[i]  # 各要素を個別に更新 
-    individual, = mutate_params(individual)
-    return individual,
+    individual = mutate_params(individual)
+    return individual   #pay attention to the value of the return, list, not tuple.
 
 # 交叉関数のカスタム実装
 def custom_mate(ind1, ind2):
@@ -247,15 +247,18 @@ def custom_mate(ind1, ind2):
 # カスタムトーナメント選択関数
 def custom_tournament_selection(population, validation_data, tournsize):
     selected = []
+    selected_scores = []
     for _ in range(len(population)):
         # トーナメント参加者を選ぶ
         aspirants = random.sample(population, tournsize)
         # validation_dataを使ってスコアを計算
         scores = [evaluate(ind, validation_data)[0] for ind in aspirants]
         # スコアが最も高い個体を選ぶ
-        winner = aspirants[scores.index(max(scores))]
+        winner_index = scores.index(max(scores))
+        winner = aspirants[winner_index]
         selected.append(winner)
-    return selected
+        selected_scores.append(scores[winner_index])
+    return selected, selected_scores
 
 # Early Stoppingのための関数
 def early_stopping(fitness_history, patience=50):
@@ -273,8 +276,10 @@ if __name__ == "__main__":
 
     # 遺伝アルゴリズムの進化の過程
     population = [create_individual() for _ in range(100)]
-    hof = tools.HallOfFame(1)  # ベスト個体を保存するホールオブフェーム
+    # = tools.HallOfFame(1)  # ベスト個体を保存するホールオブフェーム
     fitness_history = []
+    best_validation_score = -np.inf
+    best_individual = None
     
     with multiprocessing.Pool(processes=multiprocessing.cpu_count()) as pool:   
         for gen in range(2000):
@@ -306,7 +311,7 @@ if __name__ == "__main__":
 
 
             # 最良個体をハルオブフェームに追加
-            hof.update(population)
+            #hof.update(population)
 
 
             # Early stoppingのチェック
@@ -315,7 +320,7 @@ if __name__ == "__main__":
                 break
 
             # 新しい世代の選択
-            offspring = toolbox.select(population, validation_data)
+            offspring, validation_scores = toolbox.select(population, validation_data)
             offspring = list(map(toolbox.clone, offspring))
 
             # 交叉と突然変異を適用
@@ -329,7 +334,7 @@ if __name__ == "__main__":
 
 
             # ベスト個体のスコアを記録
-            best_fitness = hof[0].fitness.values[0]
+            best_fitness = max(validation_scores)
             fitness_history.append(best_fitness)
 
             # Early Stoppingのチェック
@@ -337,11 +342,17 @@ if __name__ == "__main__":
                 early_stopping_flag = True
                 break
 
-        test_score = evaluate(hof[0], test_data)
+            if max(validation_scores) > best_validation_score:
+                best_validation_score = max(validation_scores)
+                best_individual = offspring[np.argmax(validation_scores)]
+
+
+
+        test_score = evaluate(best_individual, test_data)
         print(f"テストデータでの評価スコア: {test_score}")
 
 
     if early_stopping_flag:
         print("Early stopping was executed")
-    print(f"Best individual: {hof[0]}, fitness: {hof[0].fitness.values}")
-    print("Parameters:", hof[0].params)  # パラメータ
+    print(f"Best individual: {best_individual}, fitness: {best_validation_score}")
+    print("Parameters:", best_individual.params)  # パラメータ
