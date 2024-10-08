@@ -14,7 +14,7 @@ def get_business_days(start_date, end_date):
     business_days = pd.date_range(start=start_date, end=end_date, freq='B')
     return business_days
 
-def fetch_data_from_oanda(instrument, start_date, end_date):
+def fetch_data_from_oanda(instrument, start_date, end_date, interval):
     business_days = get_business_days(start_date, end_date)
     all_data = []  # 全てのデータを格納するリスト
     
@@ -28,7 +28,7 @@ def fetch_data_from_oanda(instrument, start_date, end_date):
 
             # OANDA APIのパラメータ設定
             params = {
-                'granularity': 'M1',
+                'granularity': f'{interval}',
                 'from': from_time.isoformat() + 'Z',  # UTC形式
                 'to': to_time.isoformat() + 'Z'         # UTC形式
             }
@@ -61,7 +61,7 @@ def fetch_data_from_oanda(instrument, start_date, end_date):
     df = pd.DataFrame(all_data)
 
     # CSVファイルに保存
-    df.to_csv(f"{instrument}_from{start_date}_to{end_date}_data.csv", index=False)
+    df.to_csv(f"./github/kabu_dir/{instrument}_from{start_date}_to{end_date}_{interval}.csv", index=False)
     print(f"Data saved to {instrument}_from{start_date}_to{end_date}_data.csv.")
 
 # 使用例
