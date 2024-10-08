@@ -5,6 +5,7 @@ import yfinance as yf
 from itertools import product
 from kabu_swap import SwapCalculator, get_html, parse_swap_points, rename_swap_points
 from datetime import datetime, timedelta
+import re
 
 """
 def check_totalscore(margin_deposit, position_value, swap_value, effective_margin,i,date,realized_profit):
@@ -38,14 +39,66 @@ def calc_swap_value(positions,data,date,pair,calculator):
     return swap_value
 """
 
-def fetch_currency_data(pair, start, end, interval):
-    """
-    Fetch historical currency pair data from Yahoo Finance.
-    """
-    data = yf.download(pair, start=start, end=end, interval=interval)
-    data = data['Close']
-    print(f"Fetched data length: {len(data)}")
-    return data
+def get_file_id(url):
+    # 正規表現パターン
+    pattern = r'/d/([a-zA-Z0-9_-]+)'
+    
+    # パターンにマッチする部分を抽出
+    match = re.search(pattern, url)
+    
+    if match:
+        return match.group(1)  # マッチした部分の最初のグループ（ファイルID）を返す
+    else:
+        return None
+
+def fetch_currency_data(pair, start, end, interval,link=None):
+    if link is None:
+        # Yahoo Financeからデータを取得
+        data = yf.download(pair, start=start, end=end, interval=interval)
+        data = data['Close']
+        print(f"Fetched data length: {len(data)}")
+
+        return data
+    
+    else:
+        import pandas as pd
+        import gdown
+        file_id = get_file_id(link)
+        url = f"https://drive.google.com/uc?id={file_id}"
+
+
+
+        # Google Driveの共有リンクからファイルIDを取得
+        # 共有リンクは通常この形式: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+
+        pair = pair.replace('=X','')
+
+        pair = pair[:3] + "_" + pair[3:]
+        start = str(start).split(' ')[0]
+        end = str(end).split(' ')[0]
+
+        filename = '{}_from{}_to{}_{}.csv'.format(pair, start, end, interval)
+
+
+        # CSVファイルをダウンロード
+        gdown.download(url, filename, quiet=False)
+
+        # pandasを使ってCSVファイルをDataFrameに読み込む
+        df = pd.read_csv(filename)
+        # time列をdatetime型に変換
+        df['time'] = pd.to_datetime(df['time'])
+
+        # Date列をtime列の値に更新
+        df['Date'] = df['time']
+
+        # Dateをインデックスに設定し、time列を削除
+        df.set_index('Date', inplace=True)
+        df.drop(columns=['time'], inplace=True)
+        df = df['close']
+        print(f"Fetched data length: {len(df)}")
+        
+        return df
+
 
 def check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min):
     if effective_margin_max < effective_margin:
@@ -1343,25 +1396,27 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 
 
-pair = 'USDJPY=X'
-interval="1d"
-end_date = datetime.strptime("2023-01-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
-start_date = datetime.strptime("2022-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+pair = 'AUDNZD=X'
+interval="M1"
+end_date = datetime.strptime("2024-10-05","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+#start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+start_date = datetime.strptime("2019-05-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 2000000
-grid_start = 100
-grid_end = 160
+grid_start = 1.02
+grid_end = 1.14
 strategies = ['long_only']
 entry_intervals = [-15]  # エントリー間隔
 total_thresholds = [100]  # 全ポジション決済の閾値
-# データの取得
-data = fetch_currency_data(pair, start_date, end_date,interval)
 
 if __name__ == "__main__":
+    # データの取得
+    link="https://drive.google.com/file/d/1XQhYNS5Q72nEqCz9McF5yizFxhadAaRT/view?usp=drive_link"
+    data = fetch_currency_data(pair, start_date, end_date,interval,link=link)
     # パラメータ設定
     #order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
-    order_sizes = [1000]
-    num_traps_options = [100]
-    profit_widths = [1]
+    order_sizes = [9000]
+    num_traps_options = [64]
+    profit_widths = [20.24308811182149]
     densities = [2]
     url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
     html = get_html(url)
