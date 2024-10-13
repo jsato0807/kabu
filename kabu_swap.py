@@ -1,13 +1,17 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 import holidays
 import requests
 from bs4 import BeautifulSoup
+import pytz
 
 class SwapCalculator:
-    def __init__(self, swap_points, pair):
+    NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
+    NY_TIMEZONE = pytz.timezone("America/New_York")  # ニューヨーク時間帯
+    def __init__(self, swap_points, pair, timeframe_minutes=1):
+        self.timeframe_minutes = timeframe_minutes  # 進める間隔を指定
         self.swap_points_dict = self._create_swap_dict(swap_points)
         self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000
-        self.jp_holidays = holidays.Japan()  # 祝日データをインスタンスに保持
+        self.jp_holidays = holidays.US()  # 祝日データをインスタンスに保持
         self.holiday_cache = {}  # 祝日判定結果のキャッシュ
 
     def _create_swap_dict(self, swap_points):
@@ -27,6 +31,15 @@ class SwapCalculator:
 
     # 祝日をチェックするメソッド
     def is_holiday(self, date):
+        # 入力が時刻を含むかどうかを判断
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
+            try:
+                # 試行して日付を解析
+                date = datetime.strptime(str(date), fmt).date()
+                break  # 成功したらループを抜ける
+            except ValueError:
+                continue  # 失敗したら次の形式を試す
+
         if date not in self.holiday_cache:  # キャッシュに結果がない場合のみ計算
             self.holiday_cache[date] = date in self.jp_holidays
         return self.holiday_cache[date]
@@ -36,11 +49,31 @@ class SwapCalculator:
         business_day = start_date
         added_days = 0
         while added_days < num_days:
-            business_day += timedelta(days=1)
-            # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
-            if business_day.weekday() < 5 and (not self.is_holiday(business_day)) or business_day in trading_days_set:
-                added_days += 1
+            #print(f"added_days:{added_days}")
+            #print(f"business_day:{business_day}, NY_day:{business_day.astimezone(self.NY_TIMEZONE)}")
+            # timeframe_minutesを日数に変換
+            if self.timeframe_minutes >= 1440:  # 日足の場合
+                business_day += timedelta(days=1)
+            else:
+                business_day += timedelta(minutes=self.timeframe_minutes)
+            
+            # NYクローズを跨いだかをチェック
+            if self.crossed_ny_close(business_day):
+                # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
+                if business_day.weekday() < 5 and (not self.is_holiday(business_day)) or business_day in trading_days_set:
+                    added_days += 1
         return business_day
+
+    # NYクローズを跨いだかを判定するメソッド
+    def crossed_ny_close(self, dt):
+        # 現在の日時をニューヨーク時間に変換
+        ny_time = dt.astimezone(self.NY_TIMEZONE)
+
+        # 夏時間・冬時間を考慮しつつ午後5時を跨いでいればTrueを返す
+        if ny_time.time() >= self.NY_CLOSE_TIME:
+            return True
+        return False
+
 
     # ロールオーバーの日数を計算するメソッド
     def calculate_rollover_days(self, open_date, current_date, trading_days_set):
@@ -130,12 +163,12 @@ if __name__ == "__main__":
     html = get_html(url)
     swap_points = parse_swap_points(html)
     swap_points = rename_swap_points(swap_points)
-    calculator = SwapCalculator(swap_points, 'USDJPY=X')
+    calculator = SwapCalculator(swap_points, 'USDJPY=X',timeframe_minutes=1)
     
-    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 5, 31), datetime(2024, 6, 12), order_size, [])
+    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 8, 27, 0, 0), datetime(2024, 8, 28, 0, 0), order_size, [])
     print(total_swap_points)
 
-    a = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 4), datetime(2024, 6, 10), order_size, [])
-    b = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 11), datetime(2024, 6, 11), order_size, [])
-    c = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 12), datetime(2024, 6, 12), order_size, [])
-    print(f"a, b, a+b+c: {a}, {b}, {c}, {a + b + c}")
+    #a = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 4), datetime(2024, 6, 10), order_size, [])
+    #b = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 11), datetime(2024, 6, 11), order_size, [])
+    #c = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 12), datetime(2024, 6, 12), order_size, [])
+    #print(f"a, b, a+b+c: {a}, {b}, {c}, {a + b + c}")
