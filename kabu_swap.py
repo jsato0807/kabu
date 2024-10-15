@@ -7,8 +7,8 @@ import pytz
 class SwapCalculator:
     NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
     NY_TIMEZONE = pytz.timezone("America/New_York")  # ニューヨーク時間帯
-    def __init__(self, swap_points, pair, timeframe_minutes=1):
-        self.timeframe_minutes = timeframe_minutes  # 進める間隔を指定
+    original_timezone = pytz.utc
+    def __init__(self, swap_points, pair, interval="1d"):
         self.swap_points_dict = self._create_swap_dict(swap_points)
         self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000
         self.jp_holidays = holidays.US()  # 祝日データをインスタンスに保持
@@ -45,32 +45,42 @@ class SwapCalculator:
         return self.holiday_cache[date]
 
     # 2営業日後の日付を計算するメソッド
-    def add_business_days(self, start_date, num_days, trading_days_set):
+    def add_business_days(self, start_date, num_units, trading_days_set, interval):
+        # 現在の日時をニューヨーク時間に変換
+        start_date = start_date.astimezone(self.NY_TIMEZONE)
+
         business_day = start_date
-        added_days = 0
-        while added_days < num_days:
-            #print(f"added_days:{added_days}")
-            #print(f"business_day:{business_day}, NY_day:{business_day.astimezone(self.NY_TIMEZONE)}")
+        added_units = 0
+
+        while added_units < num_units:
+            print(f"added_units:{added_units}")
+            print(f"business_day:{business_day}, utc:{business_day.astimezone(self.original_timezone)}")
             # timeframe_minutesを日数に変換
-            if self.timeframe_minutes >= 1440:  # 日足の場合
+
+            business_day_before = business_day
+
+            if interval == "1d":  # 日足の場合
                 business_day += timedelta(days=1)
-            else:
-                business_day += timedelta(minutes=self.timeframe_minutes)
+            elif interval == "H1":
+                business_day += timedelta(hours=1)
+            elif interval == "M1":
+                business_day += timedelta(minutes=1)
             
-            # NYクローズを跨いだかをチェック
-            if self.crossed_ny_close(business_day):
-                # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
-                if business_day.weekday() < 5 and (not self.is_holiday(business_day)) or business_day in trading_days_set:
-                    added_days += 1
-        return business_day
+
+            # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
+            if (business_day.weekday() < 5 and (not self.is_holiday(business_day)) or business_day in trading_days_set):
+                # NYクローズを跨いでいるかを判定
+                if not self.crossed_ny_close(business_day_before) and self.crossed_ny_close(business_day) or interval == "1d":
+                    added_units += 1
+
+        print(f"return of business_day:{business_day}")
+        return business_day.astimezone(self.original_timezone)
 
     # NYクローズを跨いだかを判定するメソッド
     def crossed_ny_close(self, dt):
-        # 現在の日時をニューヨーク時間に変換
-        ny_time = dt.astimezone(self.NY_TIMEZONE)
 
         # 夏時間・冬時間を考慮しつつ午後5時を跨いでいればTrueを返す
-        if ny_time.time() >= self.NY_CLOSE_TIME:
+        if dt.time() >= self.NY_CLOSE_TIME:
             return True
         return False
 
@@ -78,7 +88,84 @@ class SwapCalculator:
     # ロールオーバーの日数を計算するメソッド
     def calculate_rollover_days(self, open_date, current_date, trading_days_set):
         try:
-            rollover_days = (self.add_business_days(current_date, 2, trading_days_set) - self.add_business_days(open_date, 2, trading_days_set)).days
+            rollover_days = (self.add_business_days(current_date, 2, trading_days_set, "1d") - self.add_business_days(open_date, 2, trading_days_set, "1d")).days
+
+
+            open_date = open_date.astimezone(self.NY_TIMEZONE)
+            current_date = current_date.astimezone(self.NY_TIMEZONE)
+            open_time = open_date.time()
+            current_time = current_date.time()
+            print(open_time)
+            print(current_time)
+            print(self.NY_CLOSE_TIME)
+
+            if open_time <= self.NY_CLOSE_TIME <= current_time:
+                if open_time== self.NY_CLOSE_TIME == current_time:
+                    pass
+                elif open_time == self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != current_time:
+                    pass
+                elif open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == current_time:
+                    rollover_days += 1
+                elif open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != current_time:
+                    pass
+
+            elif current_time <= self.NY_CLOSE_TIME <= open_time:
+                if current_time == self.NY_CLOSE_TIME == open_time:
+                    pass
+                elif current_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == open_time:
+                    pass
+                elif current_time == self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time:
+                    pass
+                elif current_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time:
+                    rollover_days -= 1
+                print("subracted 1 to rollover_days in elif")    
+
+            elif  current_time <= open_time <= self.NY_CLOSE_TIME:
+                if current_time == open_time == self.NY_CLOSE_TIME:
+                    pass
+                elif current_time != open_time and open_time == self.NY_CLOSE_TIME:
+                    pass
+                elif current_time == open_time and open_time != self.NY_CLOSE_TIME:
+                    pass
+                elif current_time != open_time and open_time != self.NY_CLOSE_TIME:
+                    rollover_days += 1
+                print("added 1 to rollover_days in elif")
+
+            elif open_time <= current_time <= self.NY_CLOSE_TIME:
+                if open_time == current_time == self.NY_CLOSE_TIME:
+                    pass
+                elif open_time != current_time == self.NY_CLOSE_TIME:
+                    pass
+                elif open_time == current_time != self.NY_CLOSE_TIME:
+                    pass
+                elif open_time != current_time != self.NY_CLOSE_TIME:
+                    pass
+                
+
+            elif self.NY_CLOSE_TIME <= open_time <= current_time:
+                if self.NY_CLOSE_TIME == open_time == current_time:
+                    pass
+                elif self.NY_CLOSE_TIME != open_time and open_time == current_time:
+                    pass
+                elif self.NY_CLOSE_TIME == open_time and open_time != current_time:
+                    pass
+                elif self.NY_CLOSE_TIME != open_time and open_time != current_time:
+                    pass
+
+
+            elif self.NY_CLOSE_TIME <= current_time <= open_time:
+                if self.NY_CLOSE_TIME == current_time == open_time:
+                    pass
+                elif self.NY_CLOSE_TIME != current_time and current_time == open_time:
+                    pass
+                elif self.NY_CLOSE_TIME == current_time and current_time != open_time:
+                    rollover_days += 1
+                    print("added 1 to rollover_days in elif")
+                elif self.NY_CLOSE_TIME != current_time and current_time != open_time:
+                    pass
+
+            
+            
         except IndexError as e:
             print(f"Error in calculating rollover days: {e}")
             return 0
@@ -163,9 +250,9 @@ if __name__ == "__main__":
     html = get_html(url)
     swap_points = parse_swap_points(html)
     swap_points = rename_swap_points(swap_points)
-    calculator = SwapCalculator(swap_points, 'USDJPY=X',timeframe_minutes=1)
+    calculator = SwapCalculator(swap_points, 'USDJPY=X',interval="M1")
     
-    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 8, 27, 0, 0), datetime(2024, 8, 28, 0, 0), order_size, [])
+    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 8, 29, 6, 1), datetime(2024, 8, 30, 5, 59), order_size, [])
     print(total_swap_points)
 
     #a = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 4), datetime(2024, 6, 10), order_size, [])
