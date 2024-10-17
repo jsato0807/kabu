@@ -53,8 +53,8 @@ class SwapCalculator:
         added_units = 0
 
         while added_units < num_units:
-            print(f"added_units:{added_units}")
-            print(f"business_day:{business_day}, utc:{business_day.astimezone(self.original_timezone)}")
+            #print(f"added_units:{added_units}")
+            #print(f"business_day:{business_day}, utc:{business_day.astimezone(self.original_timezone)}")
             # timeframe_minutesを日数に変換
 
             business_day_before = business_day
@@ -73,7 +73,7 @@ class SwapCalculator:
                 if not self.crossed_ny_close(business_day_before) and self.crossed_ny_close(business_day) or interval == "1d":
                     added_units += 1
 
-        print(f"return of business_day:{business_day}")
+        #print(f"return of business_day:{business_day}")
         return business_day.astimezone(self.original_timezone)
 
     # NYクローズを跨いだかを判定するメソッド
@@ -95,9 +95,6 @@ class SwapCalculator:
             current_date = current_date.astimezone(self.NY_TIMEZONE)
             open_time = open_date.time()
             current_time = current_date.time()
-            print(open_time)
-            print(current_time)
-            print(self.NY_CLOSE_TIME)
 
             if open_time <= self.NY_CLOSE_TIME <= current_time:
                 if open_time== self.NY_CLOSE_TIME == current_time:
@@ -106,63 +103,67 @@ class SwapCalculator:
                     pass
                 elif open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == current_time:
                     rollover_days += 1
+                    print("added 1 to rollover_days in 'if open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == current_time' in 'if open_time <= self.NY_CLOSE_TIME <= current_time' ")
                 elif open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != current_time:
-                    pass
+                    rollover_days += 1
+                    print("added 1 to rollover_days in 'if open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != current_time' in 'if open_time <= self.NY_CLOSE_TIME <= current_time' ")
 
             elif current_time <= self.NY_CLOSE_TIME <= open_time:
                 if current_time == self.NY_CLOSE_TIME == open_time:
                     pass
-                elif current_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == open_time:
+                elif current_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == open_time:    #open_time=17:00 current_time=16:59
                     pass
-                elif current_time == self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time:
+                elif current_time == self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time:    #open_time=17:01 current_time=17:00
+                    rollover_days += 1
+                    print("added 1 to rollover_days in 'if current_time == self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time' in 'elif current_time <= self.NY_CLOSE_TIME <= open_time' ")
+                elif current_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time:    #open_time=17:02 current_time=16:59
                     pass
-                elif current_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time:
-                    rollover_days -= 1
-                print("subracted 1 to rollover_days in elif")    
 
             elif  current_time <= open_time <= self.NY_CLOSE_TIME:
                 if current_time == open_time == self.NY_CLOSE_TIME:
                     pass
-                elif current_time != open_time and open_time == self.NY_CLOSE_TIME:
+                elif current_time != open_time and open_time == self.NY_CLOSE_TIME: #open_time=17:00 current_time=16:59
                     pass
-                elif current_time == open_time and open_time != self.NY_CLOSE_TIME:
+                elif current_time == open_time and open_time != self.NY_CLOSE_TIME: #open_time=16:59 current_time=16:59
                     pass
-                elif current_time != open_time and open_time != self.NY_CLOSE_TIME:
+                elif current_time != open_time and open_time != self.NY_CLOSE_TIME: #open_time=16:59 current_time=16:58
                     rollover_days += 1
-                print("added 1 to rollover_days in elif")
+                    print("added 1 to rollover_days in 'elif current_time != open_time and open_time != self.NY_CLOSE_TIME' in 'elif current_time <= open_time <= self.NY_CLOSE_TIME' ")
 
             elif open_time <= current_time <= self.NY_CLOSE_TIME:
                 if open_time == current_time == self.NY_CLOSE_TIME:
                     pass
-                elif open_time != current_time == self.NY_CLOSE_TIME:
+                elif open_time != current_time and current_time == self.NY_CLOSE_TIME:  #open_time=16:59 current_time=17:00
+                    rollover_days += 1
+                    print("added 1 to rollover_days in 'if open_time != current_time and current_time == self.NY_CLOSE_TIME' in 'elif open_time <= current_time <= self.NY_CLOSE_TIME' ")
+                elif open_time == current_time and current_time != self.NY_CLOSE_TIME:  #open_time=16:59 current_time=16:59
                     pass
-                elif open_time == current_time != self.NY_CLOSE_TIME:
-                    pass
-                elif open_time != current_time != self.NY_CLOSE_TIME:
+                elif open_time != current_time and current_time != self.NY_CLOSE_TIME:  #open_time=16:58 current_time=16:59
                     pass
                 
 
             elif self.NY_CLOSE_TIME <= open_time <= current_time:
                 if self.NY_CLOSE_TIME == open_time == current_time:
                     pass
-                elif self.NY_CLOSE_TIME != open_time and open_time == current_time:
+                elif self.NY_CLOSE_TIME != open_time and open_time == current_time: #open_time=17:01 current_time=17:01
                     pass
-                elif self.NY_CLOSE_TIME == open_time and open_time != current_time:
+                elif self.NY_CLOSE_TIME == open_time and open_time != current_time: #open_time=17:00 current_time=17:01
                     pass
-                elif self.NY_CLOSE_TIME != open_time and open_time != current_time:
+                elif self.NY_CLOSE_TIME != open_time and open_time != current_time: #open_time=17:01 current_time=17:02
                     pass
 
 
             elif self.NY_CLOSE_TIME <= current_time <= open_time:
                 if self.NY_CLOSE_TIME == current_time == open_time:
                     pass
-                elif self.NY_CLOSE_TIME != current_time and current_time == open_time:
+                elif self.NY_CLOSE_TIME != current_time and current_time == open_time:  #open_time=17:01 current_time=17:01
                     pass
-                elif self.NY_CLOSE_TIME == current_time and current_time != open_time:
+                elif self.NY_CLOSE_TIME == current_time and current_time != open_time:  #open_time=17:01 current_time=17:00
                     rollover_days += 1
-                    print("added 1 to rollover_days in elif")
-                elif self.NY_CLOSE_TIME != current_time and current_time != open_time:
-                    pass
+                    print("added 1 to rollover_days in 'elif self.NY_CLOSE_TIME == current_time and current_time != open_time' in 'elif self.NY_CLOSE_TIME <= current_time <= open_time' ")
+                elif self.NY_CLOSE_TIME != current_time and current_time != open_time:  #open_time=17:02 current_time=17:01
+                    rollover_days += 1
+                    print("added 1 to rollover_days in 'self.NY_CLOSE_TIME != current_time and current_time != open_time' in 'elif self.NY_CLOSE_TIME <= current_time <= open_time' ")
 
             
             
@@ -252,7 +253,7 @@ if __name__ == "__main__":
     swap_points = rename_swap_points(swap_points)
     calculator = SwapCalculator(swap_points, 'USDJPY=X',interval="M1")
     
-    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 8, 29, 6, 1), datetime(2024, 8, 30, 5, 59), order_size, [])
+    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 8, 29, 6, 1), datetime(2024, 8, 30, 6, 1), order_size, [])
     print(total_swap_points)
 
     #a = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 4), datetime(2024, 6, 10), order_size, [])
