@@ -1,6 +1,10 @@
 import pandas as pd
 import gdown
 
+#https://data.bis.org/topics/CBPOL/data
+#のexportをクリックし、Bulk downloadsを選択したあと、Centrarl bank policy rates(CSV, flat)を選択するとデータを獲得可能
+
+
 filename = "WS_CBPOL_csv_flat.csv"
 file_id = "1q74UoB3Oby_1Ormlg-wny9n8ohG7awpR"
 url = f"https://drive.google.com/uc?id={file_id}"
