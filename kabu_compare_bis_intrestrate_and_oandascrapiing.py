@@ -1,16 +1,15 @@
 from kabu_oanda_swapscraping import scrape_from_oanda
 from kabu_bis_intrestrate import filter_country_data
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
+import matplotlib.pyplot as plt
 
 # Pandasの表示設定
-pd.set_option('display.max_columns', None)  # 列数をすべて表示
-pd.set_option('display.expand_frame_repr', False)  # 横幅に合わせて折り返し表示しない
-pd.set_option('display.max_colwidth', None)  # 各列の表示幅を広げる
-# 行数を100に設定（必要に応じて変更）
+pd.set_option('display.max_columns', None)
+pd.set_option('display.expand_frame_repr', False)
+pd.set_option('display.max_colwidth', None)
 pd.set_option('display.max_rows', 100)
-
 
 def currency_code_to_country_name(currency_code):
     currency_map = {
@@ -65,19 +64,16 @@ def calculate_theoretical_swap(pair, start_date, end_date, order_size):
     return (AVERAGES[0] - AVERAGES[1]) * order_size / 100 / 365
 
 # 複数期間でのスワップポイント検証
-def multiple_period_swap_comparison(pair, start_date, end_date, order_size):
+def multiple_period_swap_comparison(pair, start_date, end_date, order_size,months_interval):
     current_start = datetime.strptime(start_date, "%Y-%m-%d")
     final_end = datetime.strptime(end_date, "%Y-%m-%d")
     results = []
 
     while current_start < final_end:
-        # 現在の期間の終了日を設定（1か月後に設定）
-        current_end = current_start + relativedelta(months=1)
-        # 最終日を超えないように調整
+        current_end = current_start + relativedelta(months=months_interval)
         if current_end > final_end:
             current_end = final_end
 
-        # スワップの比較を計算
         avg_buy, avg_sell = calculate_swap_averages(pair, current_start.strftime("%Y-%m-%d"), current_end.strftime("%Y-%m-%d"))
         
         pair_splits = pair.split("/")
@@ -91,7 +87,6 @@ def multiple_period_swap_comparison(pair, start_date, end_date, order_size):
         buy_ratio = avg_buy / theory if theory != 0 else None
         sell_ratio = avg_sell / theory if theory != 0 else None
 
-        # 結果をリストに追加
         results.append({
             "期間": f"{current_start.strftime('%Y-%m-%d')} - {current_end.strftime('%Y-%m-%d')}",
             "平均買いスワップ": avg_buy,
@@ -101,10 +96,8 @@ def multiple_period_swap_comparison(pair, start_date, end_date, order_size):
             "売りスワップ割合": sell_ratio
         })
 
-        # 次の期間にスライド
         current_start = current_end
 
-    # 結果をデータフレームに変換
     comparison_df = pd.DataFrame(results)
     return comparison_df
 
@@ -113,6 +106,47 @@ pair = "USD/JPY"
 start_date = "2019-04-01"
 end_date = "2024-09-30"
 order_size = 10000 if pair != "ZAR/JPY" and pair != "HKD/JPY" else 100000
+months_interval = 1
 
-comparison_df = multiple_period_swap_comparison(pair, start_date, end_date, order_size)
+comparison_df = multiple_period_swap_comparison(pair, start_date, end_date, order_size, months_interval)
 print(comparison_df)
+
+# 結果をCSVファイルとして保存
+comparison_df.to_csv(f"./kabu_compare_bis_intrestrate_and_oandascraping_{pair}_{start_date}_{end_date}_{months_interval}_results.csv", index=False, encoding='utf-8-sig')
+
+# グラフを作成
+plt.figure(figsize=(10, 12))
+
+# スワップポイントグラフ
+plt.subplot(2, 1, 1)
+plt.plot(comparison_df['期間'], comparison_df['平均買いスワップ'], label='平均買いスワップ', marker='o')
+plt.plot(comparison_df['期間'], comparison_df['平均売りスワップ'], label='平均売りスワップ', marker='o')
+plt.plot(comparison_df['期間'], comparison_df['理論スワップ'], label='理論スワップ', marker='o')
+
+plt.title(f"{pair}のスワップポイント比較")
+plt.xlabel("期間")
+plt.ylabel("スワップポイント")
+plt.xticks(rotation=45, ha='right')
+plt.legend()
+plt.tight_layout()
+
+# グラフを保存
+plt.savefig(f"./kabu_compare_bis_intrestrate_and_oandascraping_{pair}_{start_date}_{end_date}_{months_interval}_graph.png")
+
+# 割合グラフ
+plt.subplot(2, 1, 2)
+plt.plot(comparison_df['期間'], comparison_df['買いスワップ割合'], label='買いスワップ割合', marker='o')
+plt.plot(comparison_df['期間'], comparison_df['売りスワップ割合'], label='売りスワップ割合', marker='o')
+
+plt.title(f"{pair}のスワップ割合比較")
+plt.xlabel("期間")
+plt.ylabel("割合")
+plt.xticks(rotation=45, ha='right')
+plt.legend()
+plt.tight_layout()
+
+# 割合グラフを保存
+plt.savefig(f"./kabu_compare_bis_intrestrate_and_oandascraping_ratio_{pair}_{start_date}_{end_date}_{months_interval}_graph.png")
+
+# グラフを表示
+plt.show()
