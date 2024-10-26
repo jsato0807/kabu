@@ -4,6 +4,7 @@ import oandapyV20.endpoints.instruments as instruments
 from dateutil import parser
 from datetime import timezone, timedelta
 import time
+from kabu_calculate_range_sukumi import generate_currency_pairs
 
 # OANDA APIの設定
 api_token = "c2fad4cffcc5baabf88caeaf45c82d45-fe82c00081ebe4f61910e3160cce1e65"  # 自分のOANDA APIトークンに置き換えてください
@@ -61,8 +62,15 @@ def fetch_data_from_oanda(instrument, start_date, end_date, interval):
     df = pd.DataFrame(all_data)
 
     # CSVファイルに保存
-    df.to_csv(f"./github/kabu_dir/{instrument}_from{start_date}_to{end_date}_{interval}.csv", index=False)
-    print(f"Data saved to {instrument}_from{start_date}_to{end_date}_data.csv.")
+    df.to_csv(f"~/github/kabu_dir/{instrument}_from{start_date}_to{end_date}_{interval}.csv", index=False)
+    print(f"Data saved to {instrument}_from{start_date}_to{end_date}_{interval}.csv.")
 
 # 使用例
-fetch_data_from_oanda("AUD_NZD", "2019-05-01", "2024-10-05")
+if __name__ == "__main__":
+    currencies = ['AUD', 'NZD', 'USD', 'CHF', 'GBP', 'EUR', 'CAD', 'JPY']
+    currency_pairs = generate_currency_pairs(currencies)
+
+    for currency_pair in currency_pairs:
+        currency_pair = currency_pair.replace('=X','')
+        currency_pair = currency_pair[:3] + "_" + currency_pair[3:]
+        fetch_data_from_oanda(currency_pair, "2010-01-01", "2024-10-26", "M1")
