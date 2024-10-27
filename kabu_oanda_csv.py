@@ -42,35 +42,50 @@ def fetch_data_from_oanda(instrument, start_date, end_date, interval):
                 
                 # データをリストに追加
                 for candle in data:
-                    # 必要な情報を抽出して辞書に格納
                     candle_info = {
                         'time': candle['time'],
                         'open': candle['mid']['o'],
                         'high': candle['mid']['h'],
-                        'low': candle['mid']['l'],
+                        'low': candle['mid']['c'],
                         'close': candle['mid']['c'],
                         'volume': candle['volume']
                     }
                     all_data.append(candle_info)
 
                 print(f"Fetched data for {instrument} from {from_time} to {to_time}.")
+                
             except Exception as e:
-                print(f"Error fetching data for {instrument}: {e}")
-                time.sleep(1)  # 一時的なエラーの場合はスリープを入れる
+                error_message = str(e)
+                print(f"Error fetching data for {instrument}: {error_message}")
+                
+                # エラーが無効な通貨ペアに関するものである場合、通貨ペアの順序を逆にして再試行
+                if "Invalid value specified for 'instrument'" in error_message:
+                    instrument = instrument[4:] + "_" + instrument[:3]
+                    print(f"Retrying with reversed instrument: {instrument}")
+                else:
+                    time.sleep(1)
+                    continue
 
     # データをDataFrameに変換
     df = pd.DataFrame(all_data)
 
     # CSVファイルに保存
-    df.to_csv(f"~/github/kabu_dir/{instrument}_from{start_date}_to{end_date}_{interval}.csv", index=False)
-    print(f"Data saved to {instrument}_from{start_date}_to{end_date}_{interval}.csv.")
+    if not df.empty:
+        df.to_csv(f"~/github/kabu_dir/{instrument}_from{start_date}_to{end_date}_{interval}.csv", index=False)
+        print(f"Data saved to {instrument}_from{start_date}_to{end_date}_{interval}.csv.")
+    else:
+        print(f"No data available for {instrument} in the specified date range.")
 
 # 使用例
 if __name__ == "__main__":
     currencies = ['AUD', 'NZD', 'USD', 'CHF', 'GBP', 'EUR', 'CAD', 'JPY']
     currency_pairs = generate_currency_pairs(currencies)
 
+    currency_pairs = currency_pairs[3:]
+
     for currency_pair in currency_pairs:
         currency_pair = currency_pair.replace('=X','')
-        currency_pair = currency_pair[:3] + "_" + currency_pair[3:]
-        fetch_data_from_oanda(currency_pair, "2010-01-01", "2024-10-26", "M1")
+        instrument = currency_pair[:3] + "_" + currency_pair[3:]
+
+        # データを取得
+        fetch_data_from_oanda(instrument, "1994-01-01", "2024-10-26", "M1")
