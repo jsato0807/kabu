@@ -3,54 +3,16 @@ import holidays
 import requests
 from bs4 import BeautifulSoup
 import pytz
-#import time
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.support.ui import Select
-from webdriver_manager.chrome import ChromeDriverManager
 
 class SwapCalculator:
     NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
     NY_TIMEZONE = pytz.timezone("America/New_York")  # ニューヨーク時間帯
     original_timezone = pytz.utc
-    def __init__(self, pair, interval="1d"):
-        self.swap_points_dict = {}
+    def __init__(self, swap_points, pair, interval="1d"):
+        self.swap_points_dict = self._create_swap_dict(swap_points)
         self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000
-        self.each_holidays = self.get_holidays_from_pair(pair)  # 祝日データをインスタンスに保持
+        self.jp_holidays = holidays.US()  # 祝日データをインスタンスに保持
         self.holiday_cache = {}  # 祝日判定結果のキャッシュ
-
-    def get_holidays_from_pair(self, pair):
-        # 通貨ペアから"X"を削除し、通貨コードを抽出
-        pair = pair.replace("=X", "")
-        base_currency = pair[:3]  # 最初の通貨
-        quote_currency = pair[3:]  # 次の通貨
-        
-        # 例外処理（ユーロ、貴金属など）
-        exceptions = {
-            "EUR": "DE",   # ユーロはドイツを代表例に設定
-            "XAU": None,   # 金は特定の国の祝日は不要
-            "XAG": None    # 銀も同様
-        }
-
-        # 祝日を保持するオブジェクト
-        holidays_combined = holidays.HolidayBase()
-        
-        # ベース通貨とクオート通貨それぞれの祝日を追加
-        for currency in [base_currency, quote_currency]:
-            # 例外処理をチェック
-            country_code = exceptions.get(currency, currency[:2])
-            if country_code:  # Noneの場合はスキップ
-                holidays_combined += holidays.CountryHoliday(country_code)
-        
-        return holidays_combined
-
-
-    def add_swap_points(self, swap_points):
-        swap_dict = self._create_swap_dict(swap_points)
-        self.swap_points_dict.update(swap_dict)
-
 
     def _create_swap_dict(self, swap_points):
         swap_dict = {}
@@ -79,7 +41,7 @@ class SwapCalculator:
                 continue  # 失敗したら次の形式を試す
 
         if date not in self.holiday_cache:  # キャッシュに結果がない場合のみ計算
-            self.holiday_cache[date] = date in self.each_holidays
+            self.holiday_cache[date] = date in self.jp_holidays
         return self.holiday_cache[date]
 
     # 2営業日後の日付を計算するメソッド
@@ -219,45 +181,6 @@ class SwapCalculator:
         swap_value = self.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
         return swap_value * rollover_days * order_size / self.per_order_size
 
-
-    def fetch_swap_points_oanda(self):
-            # Seleniumを使用してOANDAのスワップポイントを取得
-            options = Options()
-            options.add_argument('--headless')
-            service = Service(ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=options)
-
-            try:
-                url = "https://www.oanda.jp/course/ny4/swap"
-                driver.get(url)
-                currency_pair = Select(driver.find_element(By.CLASS_NAME, 'st-Select'))
-                currency_pair.select_by_visible_text('USD/JPY')  # 必要な通貨ペアに変更
-
-                month_select = Select(driver.find_elements(By.CLASS_NAME, 'st-Select')[1])
-                month_select.select_by_visible_text('2024年09月')  # 必要な月に変更
-
-                time.sleep(2)  # データがロードされるのを待つ
-                swap_table = driver.find_element(By.CLASS_NAME, 'tr-SwapHistory_Table')
-                rows = swap_table.find_elements(By.TAG_NAME, 'tr')
-
-                swap_points = []
-                for row in rows[1:]:
-                    cols = row.find_elements(By.TAG_NAME, 'td')
-                    data = { '通貨名': cols[0].text, '買スワップ': cols[1].text, '売スワップ': cols[2].text }
-                    swap_points.append(data)
-
-                self.add_swap_points(swap_points)
-
-            finally:
-                driver.quit()
-
-    def fetch_swap_points_minkabu(self):
-        url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
-        html = get_html(url)
-        swap_points = parse_swap_points(html)
-        self.add_swap_points(swap_points)
-
-
 # URLからHTMLデータを取得する関数
 def get_html(url):
     response = requests.get(url)
@@ -324,16 +247,13 @@ def convert_currency_name(currency_name):
 
 if __name__ == "__main__":
     order_size = 1000
-    #url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
-    #html = get_html(url)
-    #swap_points = parse_swap_points(html)
-    #swap_points = rename_swap_points(swap_points)
-    calculator = SwapCalculator('USDJPY=X')
-    #calculator = SwapCalculator(swap_points, 'USDJPY=X',interval="M1")
-    #calculator.fetch_swap_points_oanda()  # OANDAからスワップポイントを取得
-    calculator.fetch_swap_points_minkabu()  # MINKABUからスワップポイントを取得
+    url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
+    html = get_html(url)
+    swap_points = parse_swap_points(html)
+    swap_points = rename_swap_points(swap_points)
+    calculator = SwapCalculator(swap_points, 'USDJPY=X',interval="M1")
     
-    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 9, 20, 5, 59), datetime(2024, 9, 21, 5, 59), order_size, [])
+    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 8, 29, 6, 1), datetime(2024, 8, 30, 6, 1), order_size, [])
     print(total_swap_points)
 
     #a = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 4), datetime(2024, 6, 10), order_size, [])

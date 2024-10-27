@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 
 # Pandasの表示設定
 pd.set_option('display.max_columns', None)
@@ -63,8 +64,8 @@ def calculate_theoretical_swap(pair, start_date, end_date, order_size):
         AVERAGES.append(average_rate)
     return (AVERAGES[0] - AVERAGES[1]) * order_size / 100 / 365
 
-# 複数期間でのスワップポイント検証
-def multiple_period_swap_comparison(pair, start_date, end_date, order_size,months_interval):
+# 複数periodでのスワップポイント検証
+def multiple_period_swap_comparison(pair, start_date, end_date, order_size, months_interval):
     current_start = datetime.strptime(start_date, "%Y-%m-%d")
     final_end = datetime.strptime(end_date, "%Y-%m-%d")
     results = []
@@ -88,12 +89,12 @@ def multiple_period_swap_comparison(pair, start_date, end_date, order_size,month
         sell_ratio = avg_sell / theory if theory != 0 else None
 
         results.append({
-            "期間": f"{current_start.strftime('%Y-%m-%d')} - {current_end.strftime('%Y-%m-%d')}",
-            "平均買いスワップ": avg_buy,
-            "平均売りスワップ": avg_sell,
-            "理論スワップ": theory,
-            "買いスワップ割合": buy_ratio,
-            "売りスワップ割合": sell_ratio
+            "period": current_start,  # ここをdatetimeオブジェクトに変更
+            "average_buy_swap": avg_buy,
+            "average_sell_swap": avg_sell,
+            "theory swap": theory,
+            "buy_swap_ratio": buy_ratio,
+            "sell_swap_ratio": sell_ratio
         })
 
         current_start = current_end
@@ -111,42 +112,46 @@ months_interval = 1
 comparison_df = multiple_period_swap_comparison(pair, start_date, end_date, order_size, months_interval)
 print(comparison_df)
 
+pair = pair.replace("/","")
 # 結果をCSVファイルとして保存
-comparison_df.to_csv(f"./kabu_compare_bis_intrestrate_and_oandascraping_{pair}_{start_date}_{end_date}_{months_interval}_results.csv", index=False, encoding='utf-8-sig')
+comparison_df.to_csv(f"./csv_dir/kabu_compare_bis_intrestrate_and_oandascraping_{pair}_{start_date}_{end_date}_{months_interval}_results.csv", index=False, encoding='utf-8-sig')
 
 # グラフを作成
 plt.figure(figsize=(10, 12))
 
 # スワップポイントグラフ
 plt.subplot(2, 1, 1)
-plt.plot(comparison_df['期間'], comparison_df['平均買いスワップ'], label='平均買いスワップ', marker='o')
-plt.plot(comparison_df['期間'], comparison_df['平均売りスワップ'], label='平均売りスワップ', marker='o')
-plt.plot(comparison_df['期間'], comparison_df['理論スワップ'], label='理論スワップ', marker='o')
+plt.plot(comparison_df['period'], comparison_df['average_buy_swap'], label='average_buy_swap', marker='o')
+plt.plot(comparison_df['period'], comparison_df['average_sell_swap'], label='average_sell_swap', marker='o')
+plt.plot(comparison_df['period'], comparison_df['theory swap'], label='theory swap', marker='o')
 
-plt.title(f"{pair}のスワップポイント比較")
-plt.xlabel("期間")
-plt.ylabel("スワップポイント")
+plt.title(f"comparison of swappoint of {pair}")
+plt.xlabel("period")
+plt.ylabel("swappoint")
 plt.xticks(rotation=45, ha='right')
+plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=3))  # 3ヶ月ごとに目盛りを設定
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
 plt.legend()
 plt.tight_layout()
 
-# グラフを保存
-plt.savefig(f"./kabu_compare_bis_intrestrate_and_oandascraping_{pair}_{start_date}_{end_date}_{months_interval}_graph.png")
 
 # 割合グラフ
 plt.subplot(2, 1, 2)
-plt.plot(comparison_df['期間'], comparison_df['買いスワップ割合'], label='買いスワップ割合', marker='o')
-plt.plot(comparison_df['期間'], comparison_df['売りスワップ割合'], label='売りスワップ割合', marker='o')
+plt.plot(comparison_df['period'], comparison_df['buy_swap_ratio'], label='buy_swap_ratio', marker='o')
+plt.plot(comparison_df['period'], comparison_df['sell_swap_ratio'], label='sell_swap_ratio', marker='o')
 
-plt.title(f"{pair}のスワップ割合比較")
-plt.xlabel("期間")
-plt.ylabel("割合")
+plt.title(f"comparison of swappoint ratio of {pair}")
+plt.xlabel("period")
+plt.ylabel("ratio")
 plt.xticks(rotation=45, ha='right')
+plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=3))  # 3ヶ月ごとに目盛りを設定
+plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
 plt.legend()
 plt.tight_layout()
 
 # 割合グラフを保存
-plt.savefig(f"./kabu_compare_bis_intrestrate_and_oandascraping_ratio_{pair}_{start_date}_{end_date}_{months_interval}_graph.png")
+plt.savefig(f"./png_dir/kabu_compare_bis_intrestrate_and_oandascraping_{pair}_{start_date}_{end_date}_{months_interval}_graph.png")
 
 # グラフを表示
 plt.show()
+#
