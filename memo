@@ -42,6 +42,7 @@ Modeling, forecasting and trading the EUR exchange rates with hybrid rolling gen
 https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/66df6ac1-189c-800e-ba55-fd18a8a7e128
 svrによって過去の為替レートから１日先の予測値を算出、GAでsvrのハイパーパラメータを調整。svrの入力データは教師データ：ARMAモデルやNNによって得られる１日先の予測値、教師ラベル：実際の１日先の値、として学習。GAの評価関数は、年率リターン-10*RMSE-0.001*(サポートベクターの数/トレーニングサンプル数)
 svrに含まれる正則化項Cによって過学習を抑えられる
+※為替データをそのまま与えるとoverfitしてしまうが、例えば移動平均線の値を与えると、入力データが平均化されていることで、overfitしにくくなるのではないか
 
 
 
@@ -68,3 +69,8 @@ The Probability of Backtest Overfitting (citation132)
 https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/66dba0a1-bcec-800e-9da5-89196b3a70b5
 cscv法によるPBOの計算によりoverfitを定量的に評価できる
 
+effective_margin+{(sharp_ratio-1)-effective_margin*max_draw_down}*effective_margin
+
+
+・kabu_backtestで通貨ペアの二カ国のいずれかの祝日に被っている日は決済できないので、それをposition closure processingに追加で実装せよ
+また、二カ国両方とも祝日の場合はどうなるか確認せよ
