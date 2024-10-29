@@ -83,7 +83,7 @@ def fetch_data_from_oanda(instrument, start_date, end_date, interval):
     else:
         print(f"No data available for {instrument} in the specified date range.")
 
-def generate_currency_pairs(currencies, base_currency='USD'):
+def generate_currency_pairs(currencies, base_currency='JPY'):
     """
     通貨リストから通貨ペアを生成し、USDを基軸として
     最小限の通貨ペアデータで他のペアも計算できるようにする関数。
@@ -112,11 +112,11 @@ def generate_currency_pairs(currencies, base_currency='USD'):
 
 # 使用例
 if __name__ == "__main__":
-    currencies = ['USD','ZAR','MXN','TRY']
+    currencies = ['JPY','ZAR','MXN','TRY','NZD','AUD','EUR','GBP','USD','CAD','NOK','SEK']
     pairs_to_download, pairs_to_calculate = generate_currency_pairs(currencies)
-    
+
     # テスト例
-    currency_pairs = pairs_to_download
+    currency_pairs = pairs_to_download[1:]
     
     for currency_pair in currency_pairs:
         currency_pair = currency_pair.replace('=X','')
