@@ -8,9 +8,25 @@ class SwapCalculator:
     NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
     NY_TIMEZONE = pytz.timezone("America/New_York")  # ニューヨーク時間帯
     original_timezone = pytz.utc
+    # 通貨ごとのタイムゾーンを定義
+    CURRENCY_TIMEZONES = {
+        'JPY': 'Asia/Tokyo',
+        'ZAR': 'Africa/Johannesburg',
+        'MXN': 'America/Mexico_City',
+        'TRY': 'Europe/Istanbul',
+        'NZD': 'Pacific/Auckland',
+        'AUD': 'Australia/Sydney',
+        'EUR': 'Europe/Berlin',
+        'GBP': 'Europe/London',
+        'USD': 'America/New_York',
+        'CAD': 'America/Toronto',
+        'NOK': 'Europe/Oslo',
+        'SEK': 'Europe/Stockholm',
+    }
     def __init__(self, swap_points, pair, interval="1d"):
         self.swap_points_dict = self._create_swap_dict(swap_points)
         self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000 #MINKABU
+        self.timezones = self.get_timezones_from_pair(pair)
         self.each_holidays = self.get_holidays_from_pair(pair)  # 祝日データをインスタンスに保持
         self.holiday_cache = {}  # 祝日判定結果のキャッシュ
 
@@ -28,6 +44,12 @@ class SwapCalculator:
             return float(value)
         except (ValueError, TypeError):
             return 0.0
+
+
+    def get_timezones_from_pair(self, pair):
+        currencies = pair.split('/')
+        return [self.CURRENCY_TIMEZONES.get(currency) for currency in currencies]
+
 
     def get_holidays_from_pair(self, pair):
         # 通貨ペアから"X"を削除し、通貨コードを抽出
@@ -74,7 +96,7 @@ class SwapCalculator:
         # 現在の日時をニューヨーク時間に変換
         #start_date = start_date.astimezone(self.NY_TIMEZONE)
 
-        business_day = start_date
+        current_date = start_date
         added_units = 0
 
         while added_units < num_units:
@@ -82,24 +104,27 @@ class SwapCalculator:
             #print(f"business_day:{business_day}, utc:{business_day.astimezone(self.original_timezone)}")
             # timeframe_minutesを日数に変換
 
-            business_day_before = business_day
+            current_date_before = current_date
 
             if interval == "1d":  # 日足の場合
-                business_day += timedelta(days=1)
+                current_date += timedelta(days=1)
             elif interval == "H1":
-                business_day += timedelta(hours=1)
+                current_date += timedelta(hours=1)
             elif interval == "M1":
-                business_day += timedelta(minutes=1)
+                current_date += timedelta(minutes=1)
             
 
             # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
-            if (business_day.weekday() < 5 and (not self.is_holiday(business_day)) or business_day in trading_days_set):
+            if (current_date.weekday() < 5 and 
+                (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0]))) and 
+                 not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])))) 
+                 or current_date in trading_days_set):
                 # NYクローズを跨いでいるかを判定
-                if not self.crossed_ny_close(business_day_before.astimezone(self.NY_TIMEZONE)) and self.crossed_ny_close(business_day.astimezone(self.NY_TIMEZONE)) or interval == "1d":
+                if not self.crossed_ny_close(current_date_before.astimezone(self.NY_TIMEZONE)) and self.crossed_ny_close(current_date.astimezone(self.NY_TIMEZONE)) or interval == "1d":
                     added_units += 1
 
         #print(f"return of business_day:{business_day}")
-        return business_day.astimezone(self.original_timezone)
+        return current_date.astimezone(self.original_timezone)
 
     # NYクローズを跨いだかを判定するメソッド
     def crossed_ny_close(self, dt):
