@@ -4,7 +4,6 @@ import oandapyV20.endpoints.instruments as instruments
 from dateutil import parser
 from datetime import timezone, timedelta
 import time
-#from kabu_calculate_range_sukumi import generate_currency_pairs
 
 # OANDA APIの設定
 api_token = "c2fad4cffcc5baabf88caeaf45c82d45-fe82c00081ebe4f61910e3160cce1e65"  # 自分のOANDA APIトークンに置き換えてください
@@ -36,35 +35,43 @@ def fetch_data_from_oanda(instrument, start_date, end_date, interval):
 
             r = instruments.InstrumentsCandles(instrument=instrument, params=params)
 
-            try:
-                client.request(r)
-                data = r.response['candles']
-                
-                # データをリストに追加
-                for candle in data:
-                    candle_info = {
-                        'time': candle['time'],
-                        'open': candle['mid']['o'],
-                        'high': candle['mid']['h'],
-                        'low': candle['mid']['c'],
-                        'close': candle['mid']['c'],
-                        'volume': candle['volume']
-                    }
-                    all_data.append(candle_info)
+            attempt = 0
+            success = False
+            max_attempts = 100  # 最大リトライ回数
+            retry_delay = 5    # リトライの待機時間（秒）
 
-                print(f"Fetched data for {instrument} from {from_time} to {to_time}.")
-                
-            except Exception as e:
-                error_message = str(e)
-                print(f"Error fetching data for {instrument}: {error_message}")
-                
-                # エラーが無効な通貨ペアに関するものである場合、通貨ペアの順序を逆にして再試行
-                if "Invalid value specified for 'instrument'" in error_message:
-                    instrument = instrument[4:] + "_" + instrument[:3]
-                    print(f"Retrying with reversed instrument: {instrument}")
-                else:
-                    time.sleep(1)
-                    continue
+            while not success and attempt < max_attempts:
+                try:
+                    client.request(r)
+                    data = r.response['candles']
+                    
+                    # データをリストに追加
+                    for candle in data:
+                        candle_info = {
+                            'time': candle['time'],
+                            'open': candle['mid']['o'],
+                            'high': candle['mid']['h'],
+                            'low': candle['mid']['l'],
+                            'close': candle['mid']['c'],
+                            'volume': candle['volume']
+                        }
+                        all_data.append(candle_info)
+
+                    print(f"Fetched data for {instrument} from {from_time} to {to_time}.")
+                    success = True  # 成功した場合はフラグを立てる
+                    
+                except Exception as e:
+                    error_message = str(e)
+                    print(f"Error fetching data for {instrument}: {error_message}")
+                    
+                    # エラーが無効な通貨ペアに関するものである場合、通貨ペアの順序を逆にして再試行
+                    if "Invalid value specified for 'instrument'" in error_message:
+                        instrument = instrument[4:] + "_" + instrument[:3]
+                        print(f"Retrying with reversed instrument: {instrument}")
+                    else:
+                        attempt += 1
+                        print(f"Retrying in {retry_delay} seconds... (Attempt {attempt}/{max_attempts})")
+                        time.sleep(retry_delay)  # 待機して再試行
 
     # データをDataFrameに変換
     df = pd.DataFrame(all_data)
@@ -105,15 +112,12 @@ def generate_currency_pairs(currencies, base_currency='USD'):
 
 # 使用例
 if __name__ == "__main__":
-    #currencies = ['AUD', 'NZD', 'USD', 'CHF', 'GBP', 'EUR', 'CAD', 'JPY','NOK','SEK','ZAR','MXN','TRY']
     currencies = ['USD','ZAR','MXN','TRY']
     pairs_to_download, pairs_to_calculate = generate_currency_pairs(currencies)
     
     # テスト例
     currency_pairs = pairs_to_download
     
-    #currency_pairs = currency_pairs[3:]
-
     for currency_pair in currency_pairs:
         currency_pair = currency_pair.replace('=X','')
         instrument = currency_pair[:3] + "_" + currency_pair[3:]
