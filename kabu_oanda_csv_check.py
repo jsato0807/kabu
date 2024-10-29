@@ -3,6 +3,11 @@ import glob
 import os
 from kabu_calculate_range_sukumi import generate_currency_pairs
 
+def get_business_days(start_date, end_date):
+    # 営業日を取得する（祝日は適宜設定）
+    business_days = pd.date_range(start=start_date, end=end_date, freq='B')
+    return business_days
+
 def check_missing_data_in_csv(directory, instrument, start_date, end_date, interval):
     # 特定のファイル名パターンにマッチするCSVファイルを取得
     directory = os.path.expanduser(directory)
@@ -21,10 +26,26 @@ def check_missing_data_in_csv(directory, instrument, start_date, end_date, inter
     # 欠損データを保存するためのリスト
     missing_data_summary = []
 
+    # 営業日を取得
+    business_days = get_business_days(start_date, end_date)
+
     for csv_file in csv_files:
         # CSVファイルを読み込み
-        df = pd.read_csv(csv_file)
+        df = pd.read_csv(csv_file)  # 最初はparse_datesを指定しない
         
+        # 日付列を自動的に識別
+        date_column = None
+        for col in df.columns:
+            if 'date' in col.lower():  # 日付を含む列を探す
+                date_column = col
+                break
+
+        if date_column is None:
+            print(f"No date column found in {csv_file}.")
+            continue
+
+        df[date_column] = pd.to_datetime(df[date_column])  # 見つけた日付列をdatetime型に変換
+
         # 欠損値があるかどうかを確認
         if df.isnull().values.any():
             print(f"Missing data found in {csv_file}:")
@@ -41,8 +62,13 @@ def check_missing_data_in_csv(directory, instrument, start_date, end_date, inter
                     missing_data_info["missing"][column] = missing_rows
 
             missing_data_summary.append(missing_data_info)
-        else:
-            print(f"No missing data in {csv_file}")
+
+        # 営業日にデータが存在しないか確認
+        missing_dates = business_days[~business_days.isin(df[date_column])]
+        if not missing_dates.empty:
+            print(f"No data for the following business days in {csv_file}:")
+            for date in missing_dates:
+                print(f" - {date.strftime('%Y-%m-%d')}")
 
     return missing_data_summary
 
