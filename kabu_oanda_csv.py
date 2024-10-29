@@ -4,7 +4,7 @@ import oandapyV20.endpoints.instruments as instruments
 from dateutil import parser
 from datetime import timezone, timedelta
 import time
-from kabu_calculate_range_sukumi import generate_currency_pairs
+#from kabu_calculate_range_sukumi import generate_currency_pairs
 
 # OANDA APIの設定
 api_token = "c2fad4cffcc5baabf88caeaf45c82d45-fe82c00081ebe4f61910e3160cce1e65"  # 自分のOANDA APIトークンに置き換えてください
@@ -76,12 +76,43 @@ def fetch_data_from_oanda(instrument, start_date, end_date, interval):
     else:
         print(f"No data available for {instrument} in the specified date range.")
 
+def generate_currency_pairs(currencies, base_currency='USD'):
+    """
+    通貨リストから通貨ペアを生成し、USDを基軸として
+    最小限の通貨ペアデータで他のペアも計算できるようにする関数。
+    """
+    pairs_to_download = []
+    pairs_to_calculate = []
+    
+    # USD基軸の通貨ペアを生成してダウンロードリストに追加
+    for currency in currencies:
+        if currency != base_currency:
+            pair = currency + base_currency + '=X'
+            pairs_to_download.append(pair)
+    
+    # 基軸通貨を使って構成できるペアを計算リストに追加
+    for i in range(len(currencies)):
+        for j in range(len(currencies)):
+            if i != j:
+                pair = currencies[i] + currencies[j] + '=X'
+                
+                # 基軸通貨が含まれないペアを計算リストに追加
+                if base_currency not in [currencies[i], currencies[j]]:
+                    pairs_to_calculate.append(pair)
+    
+    return pairs_to_download, pairs_to_calculate
+
+
 # 使用例
 if __name__ == "__main__":
-    currencies = ['AUD', 'NZD', 'USD', 'CHF', 'GBP', 'EUR', 'CAD', 'JPY']
-    currency_pairs = generate_currency_pairs(currencies)
-
-    currency_pairs = currency_pairs[3:]
+    #currencies = ['AUD', 'NZD', 'USD', 'CHF', 'GBP', 'EUR', 'CAD', 'JPY','NOK','SEK','ZAR','MXN','TRY']
+    currencies = ['USD','ZAR','MXN','TRY']
+    pairs_to_download, pairs_to_calculate = generate_currency_pairs(currencies)
+    
+    # テスト例
+    currency_pairs = pairs_to_download
+    
+    #currency_pairs = currency_pairs[3:]
 
     for currency_pair in currency_pairs:
         currency_pair = currency_pair.replace('=X','')
