@@ -14,6 +14,7 @@ class SwapCalculator:
         'ZAR': 'Africa/Johannesburg',
         'MXN': 'America/Mexico_City',
         'TRY': 'Europe/Istanbul',
+        'CHF': 'Europe/Zurich',
         'NZD': 'Pacific/Auckland',
         'AUD': 'Australia/Sydney',
         'EUR': 'Europe/Berlin',
