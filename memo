@@ -75,3 +75,5 @@ effective_margin+{(sharp_ratio-1)-effective_margin*max_draw_down}*effective_marg
 ・kabu_backtestで通貨ペアの二カ国のいずれかの祝日に被っている日は決済できないので、それをposition closure processingに追加で実装せよ
 また、二カ国両方とも祝日の場合はどうなるか確認せよ
 →swap pointの受け渡しができないだけで、祝日はfxの取引は通常通り行えるので、修正不要
+
+・kabu_swap.pyを、minkabuだけでなくoandaからもスワップポイントをスクレイピングできるようにしつつ、oandaのサイトには掲載がない2019年4月より前のデータに対しては比率を計算して、理論値を算出するように実装せよ。
