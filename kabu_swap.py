@@ -28,7 +28,7 @@ class SwapCalculator:
         self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000 #MINKABU
         self.timezones = self.get_timezones_from_pair(pair)
         self.each_holidays = self.get_holidays_from_pair(pair)  # 祝日データをインスタンスに保持
-        self.holiday_cache = {}  # 祝日判定結果のキャッシュ
+        self.holiday_cache = {currency: {} for currency in self.each_holidays.keys()}  # 通貨ごとの祝日判定結果のキャッシュ
 
     def _create_swap_dict(self, swap_points):
         swap_dict = {}
@@ -46,16 +46,25 @@ class SwapCalculator:
             return 0.0
 
 
+    def arrange_pair_format(self,pair):
+        if "=X" in pair:
+            currencies = pair.replace("=X","")
+        if "_" in pair:
+            currencies = currencies.split("_")
+        if "/" in pair:
+            currencies = pair.split('/')
+        if not "_" in pair and not "/" in pair:
+            currencies = [currencies[:3],currencies[3:]]
+        return currencies
+
+
     def get_timezones_from_pair(self, pair):
-        currencies = pair.split('/')
+        currencies = self.arrange_pair_format(pair)
         return [self.CURRENCY_TIMEZONES.get(currency) for currency in currencies]
 
 
     def get_holidays_from_pair(self, pair):
-        # 通貨ペアから"X"を削除し、通貨コードを抽出
-        pair = pair.replace("=X", "")
-        base_currency = pair[:2]  # 最初の通貨
-        quote_currency = pair[3:5]  # 次の通貨
+        currencies = self.arrange_pair_format(pair)
         
         # 例外処理（ユーロなど）
         exceptions = {
@@ -64,20 +73,20 @@ class SwapCalculator:
             "XAG": None    # 銀も同様
         }
 
-        # 祝日を保持するHolidayBaseオブジェクト
-        holidays_combined = holidays.HolidayBase()
+        # 祝日を保持する辞書
+        holidays_dict = {}
 
         # ベース通貨とクオート通貨それぞれの祝日を追加
-        for currency in [base_currency, quote_currency]:
+        for currency in currencies:
             # 例外処理をチェック
             country_code = exceptions.get(currency, currency[:2])
             if country_code:  # Noneの場合はスキップ
-                holidays_combined += holidays.CountryHoliday(country_code)
+                holidays_dict[currency] = holidays.CountryHoliday(country_code)
 
-        return holidays_combined
+        return holidays_dict
 
     # 祝日をチェックするメソッド
-    def is_holiday(self, date):
+    def is_holiday(self, date, currency):
         # 入力が時刻を含むかどうかを判断
         for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
             try:
@@ -87,21 +96,21 @@ class SwapCalculator:
             except ValueError:
                 continue  # 失敗したら次の形式を試す
 
-        if date not in self.holiday_cache:  # キャッシュに結果がない場合のみ計算
-            self.holiday_cache[date] = date in self.each_holidays
-        return self.holiday_cache[date]
+
+        if date not in self.holiday_cache[currency]:  # キャッシュに結果がない場合のみ計算
+            self.holiday_cache[currency][date] = date in self.each_holidays[currency]
+        return self.holiday_cache[currency][date]
 
     # 2営業日後の日付を計算するメソッド
-    def add_business_days(self, start_date, num_units, trading_days_set, interval):
+    def add_business_days(self, start_date, num_units, trading_days_set, interval, pair, swap_flag=True):
         # 現在の日時をニューヨーク時間に変換
         #start_date = start_date.astimezone(self.NY_TIMEZONE)
 
         current_date = start_date
         added_units = 0
 
+
         while added_units < num_units:
-            #print(f"added_units:{added_units}")
-            #print(f"business_day:{business_day}, utc:{business_day.astimezone(self.original_timezone)}")
             # timeframe_minutesを日数に変換
 
             current_date_before = current_date
@@ -115,15 +124,22 @@ class SwapCalculator:
             
 
             # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
-            if (current_date.weekday() < 5 and 
-                (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0]))) and 
-                 not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])))) 
-                 or current_date in trading_days_set):
-                # NYクローズを跨いでいるかを判定
-                if not self.crossed_ny_close(current_date_before.astimezone(self.NY_TIMEZONE)) and self.crossed_ny_close(current_date.astimezone(self.NY_TIMEZONE)) or interval == "1d":
-                    added_units += 1
+            if swap_flag:
+                if (current_date.weekday() < 5 and 
+                    (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),self.arrange_pair_format(pair)[0]) and 
+                     not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])),self.arrange_pair_format(pair)[1]))):
+                    # NYクローズを跨いでいるかを判定
+                    if not self.crossed_ny_close(current_date_before.astimezone(self.NY_TIMEZONE)) and self.crossed_ny_close(current_date.astimezone(self.NY_TIMEZONE)) or interval == "1d":
+                        added_units += 1
+            else:
+                if (current_date.weekday() < 5 and 
+                    (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),self.arrange_pair_format(pair)[0]) and 
+                     not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1]),self.arrange_pair_format(pair)[1]))) 
+                     or current_date in trading_days_set):
+                    # NYクローズを跨いでいるかを判定
+                    if not self.crossed_ny_close(current_date_before.astimezone(self.NY_TIMEZONE)) and self.crossed_ny_close(current_date.astimezone(self.NY_TIMEZONE)) or interval == "1d":
+                        added_units += 1
 
-        #print(f"return of business_day:{business_day}")
         return current_date.astimezone(self.original_timezone)
 
     # NYクローズを跨いだかを判定するメソッド
@@ -136,9 +152,9 @@ class SwapCalculator:
 
 
     # ロールオーバーの日数を計算するメソッド
-    def calculate_rollover_days(self, open_date, current_date, trading_days_set):
+    def calculate_rollover_days(self, open_date, current_date, trading_days_set, pair):
         try:
-            rollover_days = (self.add_business_days(current_date, 2, trading_days_set, "1d") - self.add_business_days(open_date, 2, trading_days_set, "1d")).days
+            rollover_days = (self.add_business_days(current_date, 2, trading_days_set, "1d", pair) - self.add_business_days(open_date, 2, trading_days_set, "1d", pair)).days
 
 
             open_date = open_date.astimezone(self.NY_TIMEZONE)
@@ -224,7 +240,7 @@ class SwapCalculator:
 
     def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
         trading_days_set = set(trading_days)
-        rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set)
+        rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set, pair)
         if pair not in self.swap_points_dict:
             return 0.0
 
@@ -302,8 +318,11 @@ if __name__ == "__main__":
     swap_points = parse_swap_points(html)
     swap_points = rename_swap_points(swap_points)
     calculator = SwapCalculator(swap_points, 'USDJPY=X',interval="M1")
-    
-    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 5, 28, 6, 1), datetime(2024, 9, 17, 6, 1), order_size, [])
+
+    start_date = datetime(2024, 9, 16, 6, 1)
+    end_date = datetime(2024, 9, 17, 6, 1)
+
+    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", start_date, end_date, order_size, [])
     print(total_swap_points)
 
     #a = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 4), datetime(2024, 6, 10), order_size, [])
