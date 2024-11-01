@@ -37,54 +37,66 @@ def scrape_from_oanda(pair, start_date, end_date):
     currency_pair = Select(driver.find_element(By.CLASS_NAME, 'st-Select'))
     currency_pair.select_by_visible_text(pair)  # 引数で指定された通貨ペアを選択
     
-    # 指定された日付範囲で月ごとのデータを取得
+    # 指定された日付範囲で日毎のデータを取得
     current_date = start
     while current_date <= end:
-        # 日付（年月）を文字列として取得
+        # 年月のテキストを作成
         year_month = current_date.strftime("%Y年%m月")
         
-        # 日付を選択
+        # 月の選択
         month_select = Select(driver.find_elements(By.CLASS_NAME, 'st-Select')[1])
         try:
-            month_select.select_by_visible_text(year_month)  # 引数で指定された年月を選択
+            month_select.select_by_visible_text(year_month)  # 指定された年月を選択
         except:
             print(f"{year_month} のデータは存在しません。")
-            current_date += timedelta(days=31)
-            current_date = current_date.replace(day=1)  # 次の月の1日に設定
+            current_date += timedelta(days=1)
             continue
         
         # データ取得のために少し待機
-        time.sleep(2)  # データがロードされるのを待つ
+        time.sleep(2)
         
         # テーブルを取得
-        swap_table = driver.find_element(By.CLASS_NAME, 'tr-SwapHistory_Table')
-        
-        # 各行からデータを抽出して保存
+        try:
+            swap_table = driver.find_element(By.CLASS_NAME, 'tr-SwapHistory_Table')
+        except:
+            print(f"{year_month} のテーブルが見つかりません。")
+            current_date += timedelta(days=1)
+            continue
+
+        # テーブルの行を取得し、該当する日付の行からデータを取得
         rows = swap_table.find_elements(By.TAG_NAME, 'tr')
         for row in rows[1:]:  # 最初の行はヘッダーなのでスキップ
-            # th要素とtd要素を取得
-            date_col = row.find_element(By.TAG_NAME, 'th')  # 日付を取得
-            data_cols = row.find_elements(By.TAG_NAME, 'td')  # td要素を取得
+            # 日付の列とデータの列を取得
+            date_col = row.find_element(By.TAG_NAME, 'th')
+            data_cols = row.find_elements(By.TAG_NAME, 'td')
 
+            print(date_col.text)
             
-            # 日付のテキストを取得し、曜日を削除
-            date_str = date_col.text
-            date_str = re.sub(r'（.*?）', '', date_str)  # 曜日を削除（例: 「月曜日」）
-            date_str = f"{current_date.year}-{current_date.month:02}-{date_str[:2]}"  # 年月日形式に変換
-
+            
+            # 日付がcurrent_dateと一致するか確認
+            date_text = re.sub(r'（.*?）', '', date_col.text)  # 曜日を除去
 
             # 各項目を辞書に保存
             if len(data_cols) == 3:  # 期待するデータ数を確認
                 sell_text = data_cols[0].text.strip()
                 buy_text = data_cols[1].text.strip()
                 days_text = data_cols[2].text.strip()
+
+                # 日付から「月」と「日」を除外し、日付部分を整数として取得
+                match = re.match(r'(\d{2})月(\d{2})日', date_text)
+                if match:
+                    day = int(match.group(2))  # 「日」の部分を整数に変換
+                    date_str = f"{current_date.year}-{current_date.month:02}-{day:02}"  # 年月日形式に変換
+                else:
+                    print("日付形式が不正です:", date_str)
+                    continue
                 
                 all_data[date_str] = {
                     'sell': float(sell_text) if sell_text else 0,
                     'buy': float(buy_text) if buy_text else 0,
                     'number_of_days': int(days_text) if days_text else 0
                 }
-        
+
         # 次の月へ進む
         current_date += timedelta(days=31)
         current_date = current_date.replace(day=1)  # 次の月の1日に設定
@@ -97,6 +109,7 @@ def scrape_from_oanda(pair, start_date, end_date):
 
 # 使用例
 if __name__ == "__main__":
-    data = scrape_from_oanda("USD/JPY", "2021-01-01", "2021-03-28")
+    data = scrape_from_oanda("USD/JPY", "2021-01-01", "2021-03-31")
+    print(len(data))
     for date, info in data.items():
         print(f"{date}: {info}")
