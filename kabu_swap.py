@@ -1,8 +1,16 @@
 from datetime import datetime, timedelta, time
+import time as time_module
 import holidays
 import requests
 from bs4 import BeautifulSoup
 import pytz
+import re
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import Select
+from webdriver_manager.chrome import ChromeDriverManager
 
 class SwapCalculator:
     NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
@@ -24,27 +32,22 @@ class SwapCalculator:
         'NOK': 'Europe/Oslo',
         'SEK': 'Europe/Stockholm',
     }
-    def __init__(self, swap_points, pair, interval="1d"):
-        self.swap_points_dict = self._create_swap_dict(swap_points)
-        self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000 #MINKABU
+    def __init__(self, website, pair, start_date, end_date, interval="1d"):
         self.timezones = self.get_timezones_from_pair(pair)
         self.each_holidays = self.get_holidays_from_pair(pair)  # 祝日データをインスタンスに保持
         self.holiday_cache = {currency: {} for currency in self.each_holidays.keys()}  # 通貨ごとの祝日判定結果のキャッシュ
+        self.website = website
 
-    def _create_swap_dict(self, swap_points):
-        swap_dict = {}
-        for point in swap_points:
-            pair = point.get('通貨名')
-            buy_swap = self._safe_float(point.get('買スワップ', 0))
-            sell_swap = self._safe_float(point.get('売スワップ', 0))
-            swap_dict[pair] = {'buy': buy_swap, 'sell': sell_swap}
-        return swap_dict
-
-    def _safe_float(self, value):
-        try:
-            return float(value)
-        except (ValueError, TypeError):
-            return 0.0
+        if website == "minkabu":
+            self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000 #MINKABU
+            self.fetcher = ScrapeFromMinkabu()
+        elif website == "oanda":
+            self.per_order_size = 100000 if pair in ['ZARJPY=X','HKDJPY=X'] else 10000
+            self.fetcher = ScrapeFromOanda(pair,start_date,end_date)
+        else:
+            raise ValueError("Invalid website specified")
+        
+        self.swap_points_dict = self.fetcher.swap_points_dict
 
 
     def arrange_pair_format(self,pair):
@@ -242,86 +245,254 @@ class SwapCalculator:
     def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
         trading_days_set = set(trading_days)
         rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set, pair)
-        if pair not in self.swap_points_dict:
+        
+        """
+        if self.website == "minkabu":
+            if pair not in self.swap_points_dict:
+                return 0.0
+            swap_value = self.fetcher.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
+            return swap_value * rollover_days * order_size / self.per_order_size
+        """
+        if self.website == "oanda":
+            data = self.swap_points_dict
+            # swap_value の初期化
+            swap_value = 0
+
+            # open_date から current_date までの日付をループ
+            current = open_date
+            while current <= current_date:
+                date_str = current.strftime("%Y-%m-%d")  # 文字列に変換
+                swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
+                current += timedelta(days=1)  # 次の日に進める
+
+            return swap_value * order_size / self.per_order_size
+
+
+
+class ScrapeFromMinkabu:
+    def __init__(self):
+        url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
+        self.html = self.get_html(url)
+        self.swap_points = self.parse_swap_points(self.html)
+        self.swap_points = self.rename_swap_points(self.swap_points)
+        self.swap_points_dict = self._create_swap_dict(self.swap_points)
+
+    def _create_swap_dict(self, swap_points):
+        swap_dict = {}
+        for point in swap_points:
+            pair = point.get('通貨名')
+            buy_swap = self._safe_float(point.get('買スワップ', 0))
+            sell_swap = self._safe_float(point.get('売スワップ', 0))
+            swap_dict[pair] = {'buy': buy_swap, 'sell': sell_swap}
+        return swap_dict
+    
+    def _safe_float(self, value):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
             return 0.0
 
-        swap_value = self.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
-        return swap_value * rollover_days * order_size / self.per_order_size
+    # URLからHTMLデータを取得する関数
+    def get_html(self,url):
+        response = requests.get(url)
+        response.raise_for_status()  # エラーが発生した場合、例外を発生させる
+        return response.text
 
-# URLからHTMLデータを取得する関数
-def get_html(url):
-    response = requests.get(url)
-    response.raise_for_status()  # エラーが発生した場合、例外を発生させる
-    return response.text
+    # 不換空白文字を削除する関数
+    def clean_text(self,text):
+        return text.replace('\xa0', '').replace('円', '').strip()
 
-# 不換空白文字を削除する関数
-def clean_text(text):
-    return text.replace('\xa0', '').replace('円', '').strip()
+    # HTMLを解析してスワップポイントを抽出する関数
+    def parse_swap_points(self, html):
+        soup = BeautifulSoup(html, 'html.parser')
+        swap_table = soup.find('table')  # スワップポイントのテーブルを特定
+        if not swap_table:
+            raise ValueError("スワップポイントのテーブルが見つかりません")
 
-# HTMLを解析してスワップポイントを抽出する関数
-def parse_swap_points(html):
-    soup = BeautifulSoup(html, 'html.parser')
-    swap_table = soup.find('table')  # スワップポイントのテーブルを特定
-    if not swap_table:
-        raise ValueError("スワップポイントのテーブルが見つかりません")
+        rows = swap_table.find_all('tr')
+
+        #headers = [clean_text(th.get_text(strip=True)) for th in rows[0].find_all('th')]
+        # 'clean_text'の処理をその場で行う
+        headers = [th.get_text(strip=True).replace('\xa0', '').replace('円', '').strip() for th in rows[0].find_all('th')]
+
+
+        swap_points = []
+        for row in rows[1:]:
+            cells = row.find_all(['th', 'td'])
+            if len(cells) != len(headers):
+                continue
+            swap_point = {headers[i]: self.clean_text(cells[i].get_text(strip=True)) for i in range(len(headers))}
+            swap_points.append(swap_point)
+
+        return swap_points
+
+    def rename_swap_points(self, swap_points):
+        for item in swap_points:
+            item['通貨名'] = self.convert_currency_name(item['通貨名'])
+        return swap_points
+
+    # 通貨名を変換する関数
+    def convert_currency_name(self,currency_name):
+        currency_mappings = {
+            '米ドル/カナダドル': 'USDCAD=X',
+            'ユーロ/米ドル': 'EURUSD=X',
+            '英ポンド/米ドル': 'GBPUSD=X',
+            '豪ドル/米ドル': 'AUDUSD=X',
+            'NZドル/米ドル': 'NZDUSD=X',
+            'ユーロ/英ポンド': 'EURGBP=X',
+            '豪ドル/NZドル': 'AUDNZD=X',
+            '米ドル/': 'USDJPY=X',
+            'ユーロ/': 'EURJPY=X',
+            '英ポンド/': 'GBPJPY=X',
+            '豪ドル/': 'AUDJPY=X',
+            'NZドル/': 'NZDJPY=X',
+            'カナダドル/': 'CADJPY=X',
+            '南アフリカランド/': 'ZARJPY=X',
+            'トルコリラ/': 'TRYJPY=X',
+            'メキシコペソ/': 'MXNJPY=X'
+        }
+        for key, value in currency_mappings.items():
+            if key in currency_name:
+                return value
+        return currency_name
     
-    rows = swap_table.find_all('tr')
+
+class ScrapeFromOanda:
+    def __init__(self,pair, start_date, end_date):
+       self.swap_points_dict =  self.scrape_from_oanda(pair,start_date,end_date)
+
+    def arrange_pair_format(self,pair):
+        if "=X" in pair:
+            pair = pair.replace("=X","")
+        if "_" in pair:
+            pair = pair.replace("/")
+        if "/" in pair:
+            pass
+        if not "_" in pair and not "/" in pair:
+            pair = pair[:3] + "/" + pair[3:]
+        return pair
     
-    #headers = [clean_text(th.get_text(strip=True)) for th in rows[0].find_all('th')]
-    # 'clean_text'の処理をその場で行う
-    headers = [th.get_text(strip=True).replace('\xa0', '').replace('円', '').strip() for th in rows[0].find_all('th')]
+    def scrape_from_oanda(self, pair, start_date, end_date):
+
+        pair = self.arrange_pair_format(pair)
+        
+        # 日付をdatetime形式に変換
+        # datetimeオブジェクトであるかチェック
+        if isinstance(start_date, datetime) and isinstance(end_date, datetime):
+            start_date = start_date.date().strftime("%Y-%m-%d")
+            start_date = datetime.strptime(start_date,"%Y-%m-%d")
+            end_date = end_date.date().strftime("%Y-%m-%d")
+            end_date = datetime.strptime(end_date,"%Y-%m-%d")
+
+        if isinstance(start_date, str) and isinstance(end_date, str):
+            start_date = datetime.strptime(start_date, "%Y-%m-%d")
+            end_date = datetime.strptime(end_date, "%Y-%m-%d")
 
 
-    swap_points = []
-    for row in rows[1:]:
-        cells = row.find_all(['th', 'td'])
-        if len(cells) != len(headers):
-            continue
-        swap_point = {headers[i]: clean_text(cells[i].get_text(strip=True)) for i in range(len(headers))}
-        swap_points.append(swap_point)
+        # データ取得の制限を確認
+        if start_date < datetime(2019, 4, 1):
+            print("2019年4月以前のデータはありません。")
+            start_date = datetime(2019, 4, 1)
+
+        # データを保存するための辞書
+        all_data = {}
+
+        # Chromeのオプションを設定
+        options = Options()
+        options.add_argument('--headless')  # ヘッドレスモード（ブラウザを表示せずに実行）
+
+        # WebDriverを初期化
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+
+        # スワップポイントの情報が掲載されているURL
+        url = "https://www.oanda.jp/course/ny4/swap"
+        driver.get(url)
+
+        # 通貨ペアを選択
+        currency_pair = Select(driver.find_element(By.CLASS_NAME, 'st-Select'))
+        currency_pair.select_by_visible_text(pair)  # 引数で指定された通貨ペアを選択
+
+        # 指定された日付範囲で日毎のデータを取得
+        current_date = start_date
+        while current_date <= end_date:
+            # 年月のテキストを作成
+            year_month = current_date.strftime("%Y年%m月")
+
+            # 月の選択
+            month_select = Select(driver.find_elements(By.CLASS_NAME, 'st-Select')[1])
+            try:
+                month_select.select_by_visible_text(year_month)  # 指定された年月を選択
+            except:
+                print(f"{year_month} のデータは存在しません。")
+                current_date += timedelta(days=1)
+                continue
+            
+            # データ取得のために少し待機
+            time_module.sleep(2)
+
+            # テーブルを取得
+            try:
+                swap_table = driver.find_element(By.CLASS_NAME, 'tr-SwapHistory_Table')
+            except:
+                print(f"{year_month} のテーブルが見つかりません。")
+                current_date += timedelta(days=1)
+                continue
+
+            # テーブルの行を取得し、該当する日付の行からデータを取得
+            rows = swap_table.find_elements(By.TAG_NAME, 'tr')
+            for row in rows[1:]:  # 最初の行はヘッダーなのでスキップ
+                # 日付の列とデータの列を取得
+                date_col = row.find_element(By.TAG_NAME, 'th')
+                data_cols = row.find_elements(By.TAG_NAME, 'td')
+
+
+                # 日付がcurrent_dateと一致するか確認
+                date_text = re.sub(r'（.*?）', '', date_col.text)  # 曜日を除去
+
+                # 各項目を辞書に保存
+                if len(data_cols) == 3:  # 期待するデータ数を確認
+                    sell_text = data_cols[0].text.strip()
+                    buy_text = data_cols[1].text.strip()
+                    days_text = data_cols[2].text.strip()
+
+                    # 日付から「月」と「日」を除外し、日付部分を整数として取得
+                    match = re.match(r'(\d{2})月(\d{2})日', date_text)
+                    if match:
+                        day = int(match.group(2))  # 「日」の部分を整数に変換
+                        date_str = f"{current_date.year}-{current_date.month:02}-{day:02}"  # 年月日形式に変換
+                    else:
+                        print("日付形式が不正です:", date_str)
+                        continue
+                    
+                    all_data[date_str] = {
+                        'sell': float(sell_text) if sell_text else 0,
+                        'buy': float(buy_text) if buy_text else 0,
+                        'number_of_days': int(days_text) if days_text else 0
+                    }
+
+            # 次の月へ進む
+            current_date += timedelta(days=31)
+            current_date = current_date.replace(day=1)  # 次の月の1日に設定
+
+        # WebDriverを終了
+        driver.quit()
+
+        # 取得したデータを返す
+        return all_data
+
+        
     
-    return swap_points
 
-def rename_swap_points(swap_points):
-    for item in swap_points:
-        item['通貨名'] = convert_currency_name(item['通貨名'])
-    return swap_points
 
-# 通貨名を変換する関数
-def convert_currency_name(currency_name):
-    currency_mappings = {
-        '米ドル/カナダドル': 'USDCAD=X',
-        'ユーロ/米ドル': 'EURUSD=X',
-        '英ポンド/米ドル': 'GBPUSD=X',
-        '豪ドル/米ドル': 'AUDUSD=X',
-        'NZドル/米ドル': 'NZDUSD=X',
-        'ユーロ/英ポンド': 'EURGBP=X',
-        '豪ドル/NZドル': 'AUDNZD=X',
-        '米ドル/': 'USDJPY=X',
-        'ユーロ/': 'EURJPY=X',
-        '英ポンド/': 'GBPJPY=X',
-        '豪ドル/': 'AUDJPY=X',
-        'NZドル/': 'NZDJPY=X',
-        'カナダドル/': 'CADJPY=X',
-        '南アフリカランド/': 'ZARJPY=X',
-        'トルコリラ/': 'TRYJPY=X',
-        'メキシコペソ/': 'MXNJPY=X'
-    }
-    for key, value in currency_mappings.items():
-        if key in currency_name:
-            return value
-    return currency_name
 
 if __name__ == "__main__":
     order_size = 1000
-    url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
-    html = get_html(url)
-    swap_points = parse_swap_points(html)
-    swap_points = rename_swap_points(swap_points)
-    calculator = SwapCalculator(swap_points, 'USDJPY=X',interval="M1")
 
     start_date = datetime(2024, 9, 16, 6, 1)
     end_date = datetime(2024, 9, 17, 6, 1)
+
+    calculator = SwapCalculator("oanda", 'USDJPY=X', start_date, end_date,interval="M1")
 
     total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", start_date, end_date, order_size, [])
     print(total_swap_points)

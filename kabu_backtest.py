@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import yfinance as yf
 from itertools import product
-from kabu_swap import SwapCalculator, get_html, parse_swap_points, rename_swap_points
+from kabu_swap import SwapCalculator
 from datetime import datetime, timedelta
 import re
 import gdown
@@ -1270,9 +1270,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 pair = 'AUDNZD=X'
 interval="1d"
-end_date = datetime.strptime("2024-09-30","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+website = "oanda" #minkabu or  oanda
+end_date = datetime.strptime("2020-01-15","%Y-%m-%d")#datetime.now() - timedelta(days=7)
 #start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-start_date = datetime.strptime("2014-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+start_date = datetime.strptime("2019-11-12","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 2000000
 grid_start = 1.02
 grid_end = 1.14
@@ -1291,12 +1292,8 @@ if __name__ == "__main__":
     num_traps_options = [100]
     profit_widths = [100]
     densities = [10]
-    url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
-    html = get_html(url)
-    #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
-    swap_points = parse_swap_points(html)
-    swap_points = rename_swap_points(swap_points)
-    calculator = SwapCalculator(swap_points,pair)
+
+    calculator = SwapCalculator(website,pair,start_date,end_date,interval=interval)
     
     results = []
     
