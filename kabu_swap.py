@@ -246,13 +246,13 @@ class SwapCalculator:
         trading_days_set = set(trading_days)
         rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set, pair)
         
-        """
+
         if self.website == "minkabu":
             if pair not in self.swap_points_dict:
                 return 0.0
             swap_value = self.fetcher.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
             return swap_value * rollover_days * order_size / self.per_order_size
-        """
+
         if self.website == "oanda":
             data = self.swap_points_dict
             # swap_value の初期化
@@ -365,7 +365,7 @@ class ScrapeFromOanda:
         if "=X" in pair:
             pair = pair.replace("=X","")
         if "_" in pair:
-            pair = pair.replace("/")
+            pair = pair.replace("_", "/")
         if "/" in pair:
             pass
         if not "_" in pair and not "/" in pair:
