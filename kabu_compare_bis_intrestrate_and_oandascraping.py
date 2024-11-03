@@ -5,6 +5,7 @@ from datetime import datetime
 from dateutil.relativedelta import relativedelta
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import os
 
 # Pandasの表示設定
 pd.set_option('display.max_columns', None)
@@ -29,13 +30,25 @@ def currency_code_to_country_name(currency_code):
         'NOK': 'Norway',
         'MXN': 'Mexico',
         'BRL': 'Brazil',
-        'ZAR': 'South Africa'
+        'ZAR': 'South Africa',
+        'TRY': 'Turkey'
     }
     return currency_map.get(currency_code, 'Unknown Country')
 
 def calculate_swap_averages(pair, start_date, end_date):
-    swap_data = scrape_from_oanda(pair, start_date, end_date)
+    directory = './csv_dir'
+    filename = 'kabu_oanda_swapscraping_from{start_date}_to{end_date}.csv'
+    file_path = os.path.join(directory, filename)
+
+    if os.path.isfile(file_path):
+        swap_data = pd.read_csv(f'./csv_dir/{filename}')
+        swap_data = swap_data.set_index('date').T.to_dict()
+
+    else:
+        swap_data = scrape_from_oanda(pair, start_date, end_date)
+
     total_sell_swap, total_buy_swap, total_days = 0, 0, 0
+
     
     for row in swap_data:
         try:
@@ -121,18 +134,30 @@ plt.figure(figsize=(10, 12))
 
 # スワップポイントグラフ
 plt.subplot(2, 1, 1)
-plt.plot(comparison_df['period'], comparison_df['average_buy_swap'], label='average_buy_swap', marker='o')
-plt.plot(comparison_df['period'], comparison_df['average_sell_swap'], label='average_sell_swap', marker='o')
-plt.plot(comparison_df['period'], comparison_df['theory swap'], label='theory swap', marker='o')
+ax1 = plt.gca()  # 現在のAxesを取得
+ax1.plot(comparison_df['period'], comparison_df['average_buy_swap'], label='average_buy_swap', marker='o')
+ax1.plot(comparison_df['period'], comparison_df['average_sell_swap'], label='average_sell_swap', marker='o')
 
-plt.title(f"comparison of swappoint of {pair}")
-plt.xlabel("period")
-plt.ylabel("swappoint")
-plt.xticks(rotation=45, ha='right')
-plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=3))  # 3ヶ月ごとに目盛りを設定
-plt.gca().xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
-plt.legend()
+# 理論値をプロットするための新しいy軸を作成
+ax2 = ax1.twinx()
+ax2.plot(comparison_df['period'], comparison_df['theory swap'], label='theory swap', marker='o', color='orange')
+
+# スワップポイントの軸の範囲を設定
+ax1.set_ylim(min(comparison_df['average_buy_swap'].min(), comparison_df['average_sell_swap'].min()) * 1.1, max(comparison_df['average_buy_swap'].max(), comparison_df['average_sell_swap'].max()) * 1.1)
+ax2.set_ylim(0, 2)  # 理論値の範囲を設定（適切に調整）
+
+plt.title(f"Comparison of Swap Points for {pair}")
+ax1.set_xlabel("Period")
+ax1.set_ylabel("Swap Points")
+ax2.set_ylabel("Theoretical Swap")
+plt.xticks(rotation=45, ha='right')  # 日付を斜めに表示
+ax1.xaxis.set_major_locator(mdates.MonthLocator(interval=3))  # 3ヶ月ごとに目盛りを設定
+ax1.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+ax1.legend(loc='upper left')
+ax2.legend(loc='upper right')
 plt.tight_layout()
+
+
 
 
 # 割合グラフ
