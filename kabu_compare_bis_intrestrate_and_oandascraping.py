@@ -42,21 +42,26 @@ class ScrapeSwap:
         pair_splits = pair.split("/")
         interest_rates = {}
         for currency in pair_splits:
-            country_name = self.currency_code_to_country_name(currency)
-
-            Directory = './csv_dir'
-            Filename = f"kabu_bis_intrestrate_{country_name}_from{self.start_date}_to{self.final_end}.csv"
-            File_path = os.path.join(Directory, Filename)
-
-            if os.path.isfile(File_path):
-                interest_rate = pd.read_csv(f'./csv_dir/{Filename}')
-
-            else:
-                interest_rate = filter_country_data(country_name, pd.to_datetime(self.start_date), pd.to_datetime(self.final_end))
-
+            interest_rate = self.download_interest_rate(currency)
             interest_rates[currency] = interest_rate
 
         self.interest_rates = interest_rates
+
+    def download_interest_rate(self,currency):
+        
+        country_name = self.currency_code_to_country_name(currency)
+
+        Directory = './csv_dir'
+        Filename = f"kabu_bis_intrestrate_{country_name}_from{self.start_date}_to{self.final_end}.csv"
+        File_path = os.path.join(Directory, Filename)
+
+        if os.path.isfile(File_path):
+            interest_rate = pd.read_csv(f'./csv_dir/{Filename}')
+
+        else:
+            interest_rate = filter_country_data(country_name, pd.to_datetime(self.start_date), pd.to_datetime(self.final_end))
+
+        return interest_rate
 
 
     def currency_code_to_country_name(self,currency_code):
@@ -155,22 +160,6 @@ class ScrapeSwap:
         return comparison_df
 
 
-
-    def download_interest_rate(self,currency):
-        
-        country_name = self.currency_code_to_country_name(currency)
-
-        Directory = './csv_dir'
-        Filename = f"kabu_bis_intrestrate_{country_name}_from{self.start_date}_to{self.final_end}.csv"
-        File_path = os.path.join(Directory, Filename)
-
-        if os.path.isfile(File_path):
-            interest_rate = pd.read_csv(f'./csv_dir/{Filename}')
-
-        else:
-            interest_rate = filter_country_data(country_name, pd.to_datetime(self.start_date), pd.to_datetime(self.final_end))
-
-        return interest_rate
 
 # 使用例
 pair = "USD/JPY"
