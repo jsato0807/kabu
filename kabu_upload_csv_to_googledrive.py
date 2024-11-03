@@ -36,17 +36,28 @@ def authenticate_drive():
     return creds
 
 def upload_csv_files(creds):
-    """CSVファイルをGoogle Driveにアップロードします。"""
     service = build('drive', 'v3', credentials=creds)
-    
     # CSVファイルを取得
     csv_files = glob.glob(csv_folder_path)
-    
+
     for csv_file in csv_files:
-        file_metadata = {'name': os.path.basename(csv_file)}
-        media = MediaFileUpload(csv_file, mimetype='text/csv')
-        service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        print(f'Uploaded {csv_file} to Google Drive.')
+        if csv_file.endswith('.csv'):
+            file_metadata = {'name': csv_file}
+            media = MediaFileUpload(f'{csv_file}', mimetype='text/csv')
+            
+            # リトライ機能付きアップロード
+            for attempt in range(5):  # 最大5回リトライ
+                try:
+                    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+                    print(f'Uploaded {csv_file} with file ID: {file.get("id")}')
+                    break  # 成功した場合ループを抜ける
+                except HttpError as error:
+                    print(f'Error uploading {csv_file}: {error}')
+                    if attempt < 4:
+                        print("Retrying...")
+                        time.sleep(2 ** attempt)  # 再試行前に指数バックオフを適用
+                    else:
+                        print("Failed to upload after multiple attempts.")
 
 if __name__ == '__main__':
     creds = authenticate_drive()
