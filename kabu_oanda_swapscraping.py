@@ -7,6 +7,7 @@ from selenium.webdriver.support.ui import Select
 from datetime import datetime, timedelta
 import time
 from webdriver_manager.chrome import ChromeDriverManager
+import pandas as pd
 
 def scrape_from_oanda(pair, start_date, end_date):
     # 日付をdatetime形式に変換
@@ -23,6 +24,7 @@ def scrape_from_oanda(pair, start_date, end_date):
     
     # Chromeのオプションを設定
     options = Options()
+    options.add_argument("user-agent=Your User Agent String")  # User-Agentを設定
     options.add_argument('--headless')  # ヘッドレスモード（ブラウザを表示せずに実行）
     
     # WebDriverを初期化
@@ -47,21 +49,24 @@ def scrape_from_oanda(pair, start_date, end_date):
         month_select = Select(driver.find_elements(By.CLASS_NAME, 'st-Select')[1])
         try:
             month_select.select_by_visible_text(year_month)  # 指定された年月を選択
-        except:
-            print(f"{year_month} のデータは存在しません。")
+        except Exception as e:
+            print(f"{year_month} のデータは存在しません。エラー: {e}")
             current_date += timedelta(days=1)
             continue
         
         # データ取得のために少し待機
-        time.sleep(2)
+        time.sleep(5)  # 待機時間を増やす
         
         # テーブルを取得
         try:
             swap_table = driver.find_element(By.CLASS_NAME, 'tr-SwapHistory_Table')
-        except:
-            print(f"{year_month} のテーブルが見つかりません。")
+        except Exception as e:
+            print(f"{year_month} のテーブルが見つかりません。エラー: {e}")
             current_date += timedelta(days=1)
             continue
+
+        # スクロール処理の追加
+        driver.execute_script("arguments[0].scrollIntoView();", swap_table)
 
         # テーブルの行を取得し、該当する日付の行からデータを取得
         rows = swap_table.find_elements(By.TAG_NAME, 'tr')
@@ -71,7 +76,6 @@ def scrape_from_oanda(pair, start_date, end_date):
             data_cols = row.find_elements(By.TAG_NAME, 'td')
 
             print(date_col.text)
-            
             
             # 日付がcurrent_dateと一致するか確認
             date_text = re.sub(r'（.*?）', '', date_col.text)  # 曜日を除去
@@ -104,12 +108,26 @@ def scrape_from_oanda(pair, start_date, end_date):
     # WebDriverを終了
     driver.quit()
 
+    #csv ファイルとして保存
+    dates = list(all_data.keys())
+    data = [value for value in all_data.values()]
+
+    df = pd.DataFrame(data, index=dates)
+    
+    df.reset_index(inplace=True)
+    df.rename(columns={'index': 'date'}, inplace=True)
+
+    pair = pair.replace("/","")
+
+    df.to_csv(f'./csv_dir/kabu_oanda_swapscraping_{pair}_from{start_date}_to{end_date}.csv', index=False, encoding='utf-8')
+    print(f"saved ./csv_dir/kabu_oanda_swapscraping_{pair}_from{start_date}_to{end_date}.csv")
+
     # 取得したデータを返す
     return all_data
 
 # 使用例
 if __name__ == "__main__":
-    data = scrape_from_oanda("USD/JPY", "2021-01-01", "2021-03-31")
+    data = scrape_from_oanda("USD/JPY", "2019-04-01", "2024-10-31")
     print(len(data))
     for date, info in data.items():
         print(f"{date}: {info}")

@@ -37,7 +37,8 @@ def currency_code_to_country_name(currency_code):
 
 def calculate_swap_averages(pair, start_date, end_date):
     directory = './csv_dir'
-    filename = 'kabu_oanda_swapscraping_from{start_date}_to{end_date}.csv'
+    rename_pair = pair.replace("/","")
+    filename = f'kabu_oanda_swapscraping_{rename_pair}_from{start_date}_to{end_date}.csv'
     file_path = os.path.join(directory, filename)
 
     if os.path.isfile(file_path):
@@ -128,6 +129,9 @@ print(comparison_df)
 pair = pair.replace("/","")
 # 結果をCSVファイルとして保存
 comparison_df.to_csv(f"./csv_dir/kabu_compare_bis_intrestrate_and_oandascraping_{pair}_{start_date}_{end_date}_{months_interval}_results.csv", index=False, encoding='utf-8-sig')
+print(min(comparison_df['average_buy_swap'].min(), comparison_df['average_sell_swap'].min()))
+print(max(comparison_df['average_buy_swap'].max(), comparison_df['average_sell_swap'].max()))
+exit()
 
 # グラフを作成
 plt.figure(figsize=(10, 12))
