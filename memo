@@ -79,6 +79,10 @@ effective_margin+{(sharp_ratio-1)-effective_margin*max_draw_down}*effective_marg
 ・kabu_swap.pyを、minkabuだけでなくoandaからもスワップポイントをスクレイピングできるようにしつつ、oandaのサイトには掲載がない2019年4月より前のデータに対しては比率を計算して、理論値を算出するように実装せよ。
 
 kabu_compare_intrestrate_and_oandascraping.py内で、calculate_swap_averages関数を呼び出す際に指定されるcurrent_startとcurrent_endの範囲で、kabu_oanda_swapscraping.pyで生成されるcsvファイルがあるかを判定してしまってる。
-範囲を修正せよ。
+範囲を修正せよ。→解決
 
 その後、average_buy_swap、average_sell_swapがそれぞれ０と２になってしまう原因を追求せよ
+→解決
+
+2024-11-03
+kabu_compare_intrestrate_and_oandascraping.pyでほぼ正しい結果が出たが、2021-12~2022-02にかけての平均スワップの値が飛んでしまっているので、計算エラーかを確認せよ。
