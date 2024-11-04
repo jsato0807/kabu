@@ -86,19 +86,25 @@ class ScrapeSwap:
         }
         return currency_map.get(currency_code, 'Unknown Country')
 
-    def get_data_until(self, data, current_end):
+    def get_data_range(self, data, current_start, current_end):
         result = {}
+        start_collecting = False
         for date, values in data.items():
-            result[date] = values
+            # 指定された開始日からデータの収集を開始
+            if date == current_start:
+                start_collecting = True
+            if start_collecting:
+                result[date] = values
+            # 指定された終了日でループを終了
             if date == current_end:
                 break
         return result
 
-    def calculate_swap_averages(self, current_end):
+    def calculate_swap_averages(self, current_start, current_end):
 
         total_sell_swap, total_buy_swap, total_days = 0, 0, 0
 
-        filtered_data = self.get_data_until(self.swap_data,current_end)
+        filtered_data = self.get_data_range(self.swap_data,current_start,current_end)
 
 
         for date, values in filtered_data.items():
@@ -127,7 +133,7 @@ class ScrapeSwap:
             if current_end > final_end:
                 current_end = final_end
 
-            avg_buy, avg_sell = self.calculate_swap_averages(current_end.strftime("%Y-%m-%d"))
+            avg_buy, avg_sell = self.calculate_swap_averages(current_start.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
 
 
             pair_splits = pair.split("/")
