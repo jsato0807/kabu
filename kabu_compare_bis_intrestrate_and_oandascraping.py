@@ -17,17 +17,34 @@ pd.set_option('display.max_rows', 100)
 class ScrapeSwap:
     def __init__(self,pair,start_date,final_end,order_size,months_interval):
         directory = './csv_dir'
-        rename_pair = pair.replace("/","")
-        filename = f'kabu_oanda_swapscraping_{rename_pair}_from{start_date}_to{final_end}.csv'
-        file_path = os.path.join(directory, filename)
+        rename_pair = pair.replace("/", "")
+        target_start = datetime.strptime(start_date, '%Y-%m-%d')
+        target_end = datetime.strptime(final_end, '%Y-%m-%d')
+        
+        # ファイル検索と条件に合致するファイルの選択
+        found_file = None
+        for filename in os.listdir(directory):
+            if filename.startswith(f'kabu_oanda_swapscraping_{rename_pair}_from'):
+                # ファイルの start と end 日付を抽出
+                try:
+                    file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d')
+                    file_end = datetime.strptime(filename.split('_to')[1].split('.csv')[0], '%Y-%m-%d')
+                    
+                    # start_date と final_end がファイルの範囲内か確認
+                    if file_start <= target_start and file_end >= target_end:
+                        found_file = filename
+                        break
+                except ValueError:
+                    continue  # 日付フォーマットが違うファイルは無視
 
-        if os.path.isfile(file_path):
-            print(f"hello os.path.isfile({file_path})")
-            swap_data = pd.read_csv(f'./csv_dir/{filename}')
+        # ファイルを読み込みまたはスクレイピング
+        if found_file:
+            print(f"Loading data from {found_file}")
+            file_path = os.path.join(directory, found_file)
+            swap_data = pd.read_csv(file_path)
             swap_data = swap_data.set_index('date').T.to_dict()
-
         else:
-            print(f"scrape_from_oanda({pair},{start_date},{final_end})")
+            print(f"scrape_from_oanda({pair}, {start_date}, {final_end})")
             swap_data = scrape_from_oanda(pair, start_date, final_end)
 
         self.swap_data = swap_data
