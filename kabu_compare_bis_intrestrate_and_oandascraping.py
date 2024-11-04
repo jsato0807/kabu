@@ -64,41 +64,58 @@ class ScrapeSwap:
 
         self.interest_rates = interest_rates
 
-    def download_interest_rate(self,currency):
-        
+    def download_interest_rate(self, currency):
         country_name = self.currency_code_to_country_name(currency)
+        directory = './csv_dir'
+        target_start = datetime.strptime(self.start_date, '%Y-%m-%d').date()
+        target_end = datetime.strptime(self.final_end, '%Y-%m-%d').date()
 
-        Directory = './csv_dir'
-        Filename = f"kabu_bis_intrestrate_{country_name}_from{self.start_date}_to{self.final_end}.csv"
-        File_path = os.path.join(Directory, Filename)
 
-        if os.path.isfile(File_path):
-            interest_rate = pd.read_csv(f'./csv_dir/{Filename}')
+        # 条件に合致するファイルの検索
+        found_file = None
+        for filename in os.listdir(directory):
+            if filename.startswith(f"kabu_bis_intrestrate_{country_name}_from"):
+                try:
+                    file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d').date()
+                    file_end = datetime.strptime(filename.split('_to')[1].split('.csv')[0], '%Y-%m-%d').date()
+                    
+                    # 指定範囲を包含するファイルがあるか確認
+                    if file_start <= target_start and file_end >= target_end:
+                        found_file = filename
+                        break
+                except ValueError:
+                    continue  # ファイルのフォーマットが異なる場合はスキップ
 
+        # データ読み込みまたは生成
+        if found_file:
+            print(f"Loading data from {found_file}")
+            file_path = os.path.join(directory, found_file)
+            interest_rate = pd.read_csv(file_path)
         else:
-            interest_rate = filter_country_data(country_name, pd.to_datetime(self.start_date), pd.to_datetime(self.final_end))
+            print(f"filter_country_data({country_name}, {target_start}, {target_end})")
+            interest_rate = filter_country_data(country_name, pd.to_datetime(target_start), pd.to_datetime(target_end))
 
         return interest_rate
 
 
     def currency_code_to_country_name(self,currency_code):
         currency_map = {
-            'USD': 'United States',
+            'USD': 'United_States',
             'JPY': 'Japan',
             'EUR': 'Eurozone',
-            'GBP': 'United Kingdom',
+            'GBP': 'United_Kingdom',
             'AUD': 'Australia',
             'CAD': 'Canada',
             'CHF': 'Switzerland',
-            'NZD': 'New Zealand',
+            'NZD': 'New_Zealand',
             'CNY': 'China',
-            'HKD': 'Hong Kong',
+            'HKD': 'Hong_Kong',
             'SGD': 'Singapore',
             'SEK': 'Sweden',
             'NOK': 'Norway',
             'MXN': 'Mexico',
             'BRL': 'Brazil',
-            'ZAR': 'South Africa',
+            'ZAR': 'South_Africa',
             'TRY': 'Turkey'
         }
         return currency_map.get(currency_code, 'Unknown Country')
@@ -124,6 +141,10 @@ class ScrapeSwap:
         filtered_data = self.get_data_range(self.swap_data,current_start,current_end)
 
 
+        # 最初に内容をクリアしてから追記
+        with open("kabu_compare_bis_interestrate_and_oandascraping_debug.txt", "w") as f:
+            f.write("初期化されたファイルです。\n")  # 最初の内容
+
         for date, values in filtered_data.items():
             try:
                 #total_buy_swap += buy_swap * days
@@ -131,6 +152,17 @@ class ScrapeSwap:
                 #total_sell_swap += sell_swap * days
                 total_sell_swap += values['sell']
                 total_days += values['number_of_days']
+
+                with open("kabu_compare_bis_interestrate_and_oandascraping_debug.txt","a") as f:
+                    f.write("date: {}\n".format(date))
+                    f.write("buy added: {}\n".format(values['buy']))
+                    f.write("total_buy_swap: {}\n".format(total_buy_swap))
+                    f.write("sell added: {}\n".format(values['sell']))
+                    f.write("total_sell_swap: {}\n".format(total_sell_swap))
+                    f.write("number_of_days added: {}\n".format(values['number_of_days']))
+                    f.write("total_days: {}\n".format(total_days))
+                    f.write("\n")
+
             except (ValueError, IndexError) as e:
                 print(f"Error processing row, {date}: {values}: {e}")
 
@@ -151,6 +183,7 @@ class ScrapeSwap:
                 current_end = final_end
 
             avg_buy, avg_sell = self.calculate_swap_averages(current_start.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
+            exit()
 
 
             pair_splits = pair.split("/")
@@ -186,8 +219,8 @@ class ScrapeSwap:
 
 # 使用例
 pair = "USD/JPY"
-start_date = "2019-04-01"
-end_date = "2024-10-31"
+start_date = "2021-12-01"
+end_date = "2022-3-31"
 order_size = 10000 if pair != "ZAR/JPY" and pair != "HKD/JPY" else 100000
 months_interval = 1
 

@@ -8,6 +8,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 import time
 from googleapiclient.errors import HttpError
+import ssl
 
 
 # アップロードするCSVファイルのパス
@@ -38,18 +39,20 @@ def authenticate_drive():
 def upload_csv_files(creds):
     service = build('drive', 'v3', credentials=creds)
     csv_files = glob.glob(csv_folder_path)
-    csv_files = csv_files[4:]
 
+    count = 0
     for csv_file in csv_files:
+        print(count)
         if csv_file.endswith('.csv'):
             file_metadata = {'name': os.path.basename(csv_file)}
             media = MediaFileUpload(csv_file, mimetype='text/csv', resumable=True)
             
-            request = service.files().create(body=file_metadata, media_body=media, fields='id')
-            
-            # リトライ機能付きでアップロード
+            # リトライ機能付きアップロード
             for attempt in range(5):  # 最大5回リトライ
                 try:
+                    # 再試行時に新しいリクエストを生成
+                    request = service.files().create(body=file_metadata, media_body=media, fields='id')
+                    
                     print(f'Starting upload of {csv_file} (Attempt {attempt + 1})')
                     response = None
                     while response is None:
@@ -62,16 +65,17 @@ def upload_csv_files(creds):
                     print(f'HttpError uploading {csv_file}: {error}')
                     if attempt < 4:
                         print("Retrying after HttpError...")
-                        time.sleep(2 ** attempt)  # 再試行前に指数バックオフを適用
-                    else:
-                        print("Failed to upload after multiple attempts due to HttpError.")
-                except TimeoutError as timeout_error:
-                    print(f'TimeoutError uploading {csv_file}: {timeout_error}')
-                    if attempt < 4:
-                        print("Retrying due to TimeoutError...")
                         time.sleep(2 ** attempt)
                     else:
-                        print("Failed to upload after multiple timeout attempts.")
+                        print("Failed to upload after multiple attempts due to HttpError.")
+                except ssl.SSLEOFError as ssl_error:
+                    print(f'SSLEOFError uploading {csv_file}: {ssl_error}')
+                    if attempt < 4:
+                        print("Retrying due to SSLEOFError...")
+                        time.sleep(2 ** attempt)
+                    else:
+                        print("Failed to upload after multiple attempts due to SSLEOFError.")
+        count += 1
 
 if __name__ == '__main__':
     creds = authenticate_drive()
