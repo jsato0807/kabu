@@ -37,27 +37,41 @@ def authenticate_drive():
 
 def upload_csv_files(creds):
     service = build('drive', 'v3', credentials=creds)
-    # CSVファイルを取得
     csv_files = glob.glob(csv_folder_path)
+    csv_files = csv_files[4:]
 
     for csv_file in csv_files:
         if csv_file.endswith('.csv'):
-            file_metadata = {'name': csv_file}
-            media = MediaFileUpload(f'{csv_file}', mimetype='text/csv')
+            file_metadata = {'name': os.path.basename(csv_file)}
+            media = MediaFileUpload(csv_file, mimetype='text/csv', resumable=True)
             
-            # リトライ機能付きアップロード
+            request = service.files().create(body=file_metadata, media_body=media, fields='id')
+            
+            # リトライ機能付きでアップロード
             for attempt in range(5):  # 最大5回リトライ
                 try:
-                    file = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-                    print(f'Uploaded {csv_file} with file ID: {file.get("id")}')
+                    print(f'Starting upload of {csv_file} (Attempt {attempt + 1})')
+                    response = None
+                    while response is None:
+                        status, response = request.next_chunk()
+                        if status:
+                            print(f"Uploaded {int(status.progress() * 100)}% of {csv_file}")
+                    print(f'Upload of {csv_file} completed with file ID: {response.get("id")}')
                     break  # 成功した場合ループを抜ける
                 except HttpError as error:
-                    print(f'Error uploading {csv_file}: {error}')
+                    print(f'HttpError uploading {csv_file}: {error}')
                     if attempt < 4:
-                        print("Retrying...")
+                        print("Retrying after HttpError...")
                         time.sleep(2 ** attempt)  # 再試行前に指数バックオフを適用
                     else:
-                        print("Failed to upload after multiple attempts.")
+                        print("Failed to upload after multiple attempts due to HttpError.")
+                except TimeoutError as timeout_error:
+                    print(f'TimeoutError uploading {csv_file}: {timeout_error}')
+                    if attempt < 4:
+                        print("Retrying due to TimeoutError...")
+                        time.sleep(2 ** attempt)
+                    else:
+                        print("Failed to upload after multiple timeout attempts.")
 
 if __name__ == '__main__':
     creds = authenticate_drive()
