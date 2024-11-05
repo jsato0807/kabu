@@ -123,7 +123,7 @@ class ScrapeSwap:
     def get_data_range(self, data, current_start, current_end):
         result = {}
         start_collecting = False
-        for date, values in data.items():
+        for date, values in data.items():            
             # 指定された開始日からデータの収集を開始
             if date == current_start:
                 start_collecting = True
@@ -141,10 +141,6 @@ class ScrapeSwap:
         filtered_data = self.get_data_range(self.swap_data,current_start,current_end)
 
 
-        # 最初に内容をクリアしてから追記
-        with open("kabu_compare_bis_interestrate_and_oandascraping_debug.txt", "w") as f:
-            f.write("初期化されたファイルです。\n")  # 最初の内容
-
         for date, values in filtered_data.items():
             try:
                 #total_buy_swap += buy_swap * days
@@ -152,16 +148,6 @@ class ScrapeSwap:
                 #total_sell_swap += sell_swap * days
                 total_sell_swap += values['sell']
                 total_days += values['number_of_days']
-
-                with open("kabu_compare_bis_interestrate_and_oandascraping_debug.txt","a") as f:
-                    f.write("date: {}\n".format(date))
-                    f.write("buy added: {}\n".format(values['buy']))
-                    f.write("total_buy_swap: {}\n".format(total_buy_swap))
-                    f.write("sell added: {}\n".format(values['sell']))
-                    f.write("total_sell_swap: {}\n".format(total_sell_swap))
-                    f.write("number_of_days added: {}\n".format(values['number_of_days']))
-                    f.write("total_days: {}\n".format(total_days))
-                    f.write("\n")
 
             except (ValueError, IndexError) as e:
                 print(f"Error processing row, {date}: {values}: {e}")
@@ -177,13 +163,12 @@ class ScrapeSwap:
         final_end = datetime.strptime(self.final_end, "%Y-%m-%d")
         results = []
         while current_start < final_end:
-            current_end = current_start + relativedelta(months=months_interval)
+            current_end = current_start + relativedelta(months=months_interval) + relativedelta(days=-1)
 
             if current_end > final_end:
                 current_end = final_end
 
             avg_buy, avg_sell = self.calculate_swap_averages(current_start.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
-            exit()
 
 
             pair_splits = pair.split("/")
@@ -210,7 +195,7 @@ class ScrapeSwap:
                 "buy_swap_ratio": buy_ratio,
                 "sell_swap_ratio": sell_ratio
             })
-            current_start = current_end
+            current_start = current_end + relativedelta(days=1)
 
         comparison_df = pd.DataFrame(results)
         return comparison_df
@@ -219,8 +204,8 @@ class ScrapeSwap:
 
 # 使用例
 pair = "USD/JPY"
-start_date = "2021-12-01"
-end_date = "2022-3-31"
+start_date = "2019-04-01"
+end_date = "2024-10-31"
 order_size = 10000 if pair != "ZAR/JPY" and pair != "HKD/JPY" else 100000
 months_interval = 1
 
