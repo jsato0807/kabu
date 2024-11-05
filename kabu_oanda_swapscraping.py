@@ -90,9 +90,14 @@ def scrape_from_oanda(pair, start_date, end_date):
                 match = re.match(r'(\d{2})月(\d{2})日', date_text)
                 if match:
                     day = int(match.group(2))  # 「日」の部分を整数に変換
-                    date_str = f"{current_date.year}-{current_date.month:02}-{day:02}"  # 年月日形式に変換
+                    try:
+                        date_str = f"{current_date.year}-{current_date.month:02}-{day:02}"  # 年月日形式に変換
+                        datetime.strptime(date_str, "%Y-%m-%d")  # 日付が正しいか確認
+                    except ValueError:
+                        print(f"不正な日付: {date_str}")
+                        continue          
                 else:
-                    print("日付形式が不正です:", date_str)
+                    print("日付形式が不正です:", date_text)
                     continue
                 
                 all_data[date_str] = {
