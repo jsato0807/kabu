@@ -15,7 +15,7 @@ pd.set_option('display.max_rows', 100)
 
 
 class ScrapeSwap:
-    def __init__(self,pair,start_date,final_end,order_size,months_interval,window_size):
+    def __init__(self,pair,start_date,final_end,order_size,months_interval,window_size=30,cumulative_period=1,cumulative_unit="month"):
         directory = './csv_dir'
         rename_pair = pair.replace("/", "")
         target_start = datetime.strptime(start_date, '%Y-%m-%d')
@@ -55,6 +55,8 @@ class ScrapeSwap:
         self.order_size = order_size
         self.months_interval = months_interval
         self.window_size = window_size
+        self.cumulative_period = cumulative_period
+        self.cumulative_unit = cumulative_unit
 
 
         pair_splits = pair.split("/")
@@ -141,30 +143,105 @@ class ScrapeSwap:
 
         filtered_data = self.get_data_range(self.swap_data,current_start,current_end)
 
+        buy_values = [data['buy'] for date, data in filtered_data.items()]
+        sell_values = [data['sell'] for date, data in filtered_data.items()]
 
-        for date, values in filtered_data.items():
-            try:
-                #total_buy_swap += buy_swap * days
-                total_buy_swap += values['buy']
-                #total_sell_swap += sell_swap * days
-                total_sell_swap += values['sell']
-                total_days += values['number_of_days']
-
-            except (ValueError, IndexError) as e:
-                print(f"Error processing row, {date}: {values}: {e}")
+        total_buy_swap = sum(buy_values)
+        total_sell_swap = sum(sell_values)
 
         average_buy_swap = total_buy_swap / total_days if total_days > 0 else 0
         average_sell_swap = total_sell_swap / total_days if total_days > 0 else 0
 
-        # 移動平均
-        moving_avg_buy = filtered_data['buy'].rolling(window=self.window_size).mean()
-        moving_avg_sell = filtered_data['sell'].rolling(window=self.window_size).mean()
 
-        # 累積平均
-        cumulative_avg_buy = filtered_data['buy'].expanding().mean()
-        cumulative_avg_sell = filtered_data['sell'].expanding().mean()
+        return average_buy_swap, average_sell_swap
 
-        return average_buy_swap, average_sell_swap, moving_avg_buy, moving_avg_sell, cumulative_avg_buy, cumulative_avg_sell
+
+    def calculate_swap_cumulative_averages(self):
+        start_date = datetime.strptime(self.start_date, "%Y-%m-%d")
+        current_end = start_date
+        final_end = datetime.strptime(self.final_end, "%Y-%m-%d")
+        results = []
+
+        while current_end < final_end:
+            if self.cumulative_unit == "month":
+                current_end += relativedelta(months=self.cumulative_period) + relativedelta(days=-1)
+            if self.cumulative_unit == "day":
+                current_end += relativedelta(days=self.cumulative_period)
+
+            filtered_data = self.get_data_range(self.swap_data,start_date,current_end)
+            buy_values = [data['buy'] for date, data in filtered_data.items()]
+            sell_values = [data['sell'] for date, data in filtered_data.items()]
+
+            # 累積平均
+            print(f"executing cumulative averages from {start_date} to {current_end}...")
+            cumulative_avg_buy = pd.Series(buy_values).expanding().mean()
+            cumulative_avg_sell = pd.Series(sell_values).expanding().mean()
+
+            print(f"executing theorys from {start_date} to {current_end}...")
+            theory = self.calculate_theory(start_date,current_end)
+
+            results.append({
+            "period": f"{start_date}~{current_end}",  # ここをdatetimeオブジェクトに変更
+            "cumulative_avg_buy":cumulative_avg_buy,
+            "cumulative_avg_sell":cumulative_avg_sell,
+            "theory":theory
+            })
+
+        results = pd.DataFrame(results)
+
+        return results
+
+
+    def calculate_swap_moving_averages(self):
+        start_date = self.start_date
+        final_end = self.final_end
+    
+        filtered_data = self.get_data_range(self.swap_data,start_date,final_end)
+        buy_values = [data['buy'] for date, data in filtered_data.items()]
+        sell_values = [data['sell'] for date, data in filtered_data.items()]
+
+        # スライディングウィンドウ
+        moving_avg_buy = pd.Series(buy_values).rolling(window=self.window_size).mean()
+        moving_avg_sell = pd.Series(sell_values).rolling(window=self.window_size).mean()
+
+        results = []
+
+        for i in range(len(moving_avg_buy)):
+            first_key = list(filtered_data.keys())[i]
+            last_key = list(filtered_data.keys())[i+self.window_size]
+            print(f"first_key:{first_key}")
+            print(f"last_key:{last_key}")
+
+            theory = self.calculate_theory(first_key,last_key)
+
+
+            results.append({
+                "period": f"{first_key}~{last_key}",  # ここをdatetimeオブジェクトに変更
+                "moving_avg_buy":moving_avg_buy,
+                "moving_avg_sell":moving_avg_sell,
+                "theory": theory
+                })
+
+        results = pd.DataFrame(results)
+
+        return results
+
+    def calculate_theory(self,current_start,current_end):
+        pair_splits = self.pair.split("/")
+        AVERAGES = []
+        for currency in pair_splits:
+            interest_rate = self.interest_rates[currency]
+            interest_rate['TIME_PERIOD:Time period or range'] = pd.to_datetime(interest_rate['TIME_PERIOD:Time period or range'])
+
+
+
+            filtered_interest_rate = interest_rate[(current_start <= interest_rate['TIME_PERIOD:Time period or range']) & (interest_rate['TIME_PERIOD:Time period or range'] <= current_end)]
+            average_interest = filtered_interest_rate['OBS_VALUE:Observation Value'].mean()
+            AVERAGES.append(average_interest)
+
+        theory = (AVERAGES[0] - AVERAGES[1]) * order_size / 100 * 1 / 365
+
+        return theory
 
     def multiple_period_swap_comparison(self):
     # 複数periodでのスワップポイント検証
@@ -177,38 +254,21 @@ class ScrapeSwap:
             if current_end > final_end:
                 current_end = final_end
 
-            avg_buy, avg_sell ,moving_avg_buy, moving_avg_sell, cumulative_avg_buy, cumulative_avg_sell = self.calculate_swap_averages(current_start.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
+            avg_buy, avg_sell = self.calculate_swap_averages(current_start.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
 
-
-            pair_splits = pair.split("/")
-            AVERAGES = []
-            for currency in pair_splits:
-                interest_rate = self.interest_rates[currency]
-                interest_rate['TIME_PERIOD:Time period or range'] = pd.to_datetime(interest_rate['TIME_PERIOD:Time period or range'])
-
-                current_end_str = current_end.strftime('%Y-%m-%d')
-
-                filtered_interest_rate = interest_rate[interest_rate['TIME_PERIOD:Time period or range'] <= current_end_str]
-                average_interest = filtered_interest_rate['OBS_VALUE:Observation Value'].mean()
-                AVERAGES.append(average_interest)
-
-            theory = (AVERAGES[0] - AVERAGES[1]) * order_size / 100 * 1 / 365
+            theory = self.calculate_theory(current_start,current_end)
 
             results.append({
                 "period": current_start,  # ここをdatetimeオブジェクトに変更
 
                 "average_buy_swap": avg_buy,
                 "average_sell_swap": avg_sell,
-                "theory swap": theory,
-                "moving_avg_buy": moving_avg_buy,
-                "moving_avg_sell": moving_avg_sell,
-                "cumulative_avg_buy": cumulative_avg_buy,
-                "cumulative_avg_sell": cumulative_avg_sell
+                "theory swap": theory
             })
             current_start = current_end + relativedelta(days=1)
 
         comparison_df = pd.DataFrame(results)
-        return comparison_df
+        return comparison_df 
 
 
 # グラフを作成
@@ -223,7 +283,7 @@ def makegraph(arg1, arg2, graphname):
 
     # 理論値をプロットするための新しいy軸を作成
     ax2 = ax1.twinx()
-    ax2.plot(comparison_df['period'], comparison_df['theory swap'], label='theory swap', marker='o', color='orange')
+    ax2.plot(comparison_df['period'], comparison_df['theory'], label='theory', marker='o', color='orange')
 
     # スワップポイントの軸の範囲を設定
     ax1.set_ylim(min(comparison_df[arg1].min(), comparison_df[arg2].min()) * 1.1, max(comparison_df[arg1].max(), comparison_df[arg2].max()) * 1.1)
@@ -247,8 +307,8 @@ def makegraph(arg1, arg2, graphname):
 
     # 割合グラフ
     plt.subplot(2, 1, 2)
-    plt.plot(comparison_df['period'], comparison_df[arg1]/comparison_df['theory'], label='buy_swap_ratio', marker='o')
-    plt.plot(comparison_df['period'], comparison_df[arg2]/comparison_df['theory'], label='sell_swap_ratio', marker='o')
+    plt.plot(comparison_df['period'], comparison_df[arg1]/comparison_df['theory swap'], label='buy_swap_ratio', marker='o')
+    plt.plot(comparison_df['period'], comparison_df[arg2]/comparison_df['theory swap'], label='sell_swap_ratio', marker='o')
 
     plt.title(f"comparison of swappoint ratio of {pair} by {graphname}")
     plt.xlabel("period")
@@ -273,12 +333,13 @@ if __name__ == "__main__":
     end_date = "2024-10-31"
     order_size = 10000 if pair != "ZAR/JPY" and pair != "HKD/JPY" else 100000
     months_interval = 1
-    window_size = 30
 
-    scrapeswap = ScrapeSwap(pair,start_date,end_date, order_size, months_interval, window_size)
+    scrapeswap = ScrapeSwap(pair,start_date,end_date, order_size, months_interval)
 
     comparison_df = scrapeswap.multiple_period_swap_comparison()
     print(comparison_df)
+    cumulative_averages = scrapeswap.calculate_swap_cumulative_averages()
+    moving_averages = scrapeswap.calculate_swap_moving_averages()
 
     pair = pair.replace("/","")
     # 結果をCSVファイルとして保存
