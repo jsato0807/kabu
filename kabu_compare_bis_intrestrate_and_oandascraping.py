@@ -307,8 +307,8 @@ def makegraph(arg1, arg2, graphname):
 
     # 割合グラフ
     plt.subplot(2, 1, 2)
-    plt.plot(comparison_df['period'], comparison_df[arg1]/comparison_df['theory swap'], label='buy_swap_ratio', marker='o')
-    plt.plot(comparison_df['period'], comparison_df[arg2]/comparison_df['theory swap'], label='sell_swap_ratio', marker='o')
+    plt.plot(comparison_df['period'], comparison_df[arg1]/comparison_df['theory'], label='buy_swap_ratio', marker='o')
+    plt.plot(comparison_df['period'], comparison_df[arg2]/comparison_df['theory'], label='sell_swap_ratio', marker='o')
 
     plt.title(f"comparison of swappoint ratio of {pair} by {graphname}")
     plt.xlabel("period")
