@@ -32,7 +32,7 @@ def scrape_from_oanda(pair, start_date, end_date):
     driver = webdriver.Chrome(service=service, options=options)
     
     # スワップポイントの情報が掲載されているURL
-    url = "https://www.oanda.jp/course/ny4/swap"
+    url = "https://www.oanda.jp/course/ty3/swap"
     driver.get(url)
 
     # 通貨ペアを選択
@@ -75,8 +75,6 @@ def scrape_from_oanda(pair, start_date, end_date):
             date_col = row.find_element(By.TAG_NAME, 'th')
             data_cols = row.find_elements(By.TAG_NAME, 'td')
 
-            print(date_col.text)
-            
             # 日付がcurrent_dateと一致するか確認
             date_text = re.sub(r'（.*?）', '', date_col.text)  # 曜日を除去
 
@@ -113,8 +111,12 @@ def scrape_from_oanda(pair, start_date, end_date):
     # WebDriverを終了
     driver.quit()
 
+    # スクレイピングで得た最初と最後の日付を取得
+    dates = sorted(all_data.keys())
+    actual_start_date = dates[0] if dates else start_date
+    actual_end_date = dates[-1] if dates else end_date
+
     #csv ファイルとして保存
-    dates = list(all_data.keys())
     data = [value for value in all_data.values()]
 
     df = pd.DataFrame(data, index=dates)
@@ -124,8 +126,8 @@ def scrape_from_oanda(pair, start_date, end_date):
 
     pair = pair.replace("/","")
 
-    df.to_csv(f'./csv_dir/kabu_oanda_swapscraping_{pair}_from{start_date}_to{end_date}.csv', index=False, encoding='utf-8')
-    print(f"saved ./csv_dir/kabu_oanda_swapscraping_{pair}_from{start_date}_to{end_date}.csv")
+    df.to_csv(f'./csv_dir/kabu_oanda_swapscraping_{pair}_from{actual_start_date}_to{actual_end_date}.csv', index=False, encoding='utf-8')
+    print(f"saved ./csv_dir/kabu_oanda_swapscraping_{pair}_from{actual_start_date}_to{actual_end_date}.csv")
 
     # 取得したデータを返す
     return all_data
