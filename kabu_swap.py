@@ -11,6 +11,8 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.support.ui import Select
 from webdriver_manager.chrome import ChromeDriverManager
+import os
+import pandas as pd
 
 class SwapCalculator:
     NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
@@ -359,7 +361,48 @@ class ScrapeFromMinkabu:
 
 class ScrapeFromOanda:
     def __init__(self,pair, start_date, end_date):
-       self.swap_points_dict =  self.scrape_from_oanda(pair,start_date,end_date)
+        
+        directory = './csv_dir'
+        rename_pair = pair.replace("/", "")
+        rename_pair = rename_pair.replace("=X","")
+        self.rename_pair = rename_pair
+        
+
+        try:
+            target_start = datetime.strptime(start_date, '%Y-%m-%d')
+            target_end = datetime.strptime(end_date, '%Y-%m-%d')
+        except:
+            target_start = start_date
+            target_end = end_date
+        
+        
+        # ファイル検索と条件に合致するファイルの選択
+        found_file = None
+        for filename in os.listdir(directory):
+            if filename.startswith(f'kabu_oanda_swapscraping_{rename_pair}_from'):
+                # ファイルの start と end 日付を抽出
+                try:
+                    file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d')
+                    file_end = datetime.strptime(filename.split('_to')[1].split('.csv')[0], '%Y-%m-%d')
+                    
+                    # start_date と final_end がファイルの範囲内か確認
+                    if file_start <= target_start and file_end >= target_end:
+                        found_file = filename
+                        break
+                except ValueError:
+                    continue  # 日付フォーマットが違うファイルは無視
+
+        # ファイルを読み込みまたはスクレイピング
+        if found_file:
+            print(f"Loading data from {found_file}")
+            file_path = os.path.join(directory, found_file)
+            swap_data = pd.read_csv(file_path)
+            swap_data_t = swap_data.T
+            self.swap_points_dict = swap_data_t.to_dict()
+        else:
+            print(f"scrape_from_oanda({pair}, {start_date}, {end_date})")
+            self.swap_points_dict = self.scrape_from_oanda(pair, start_date, end_date)
+
 
     def arrange_pair_format(self,pair):
         if "=X" in pair:
@@ -477,6 +520,14 @@ class ScrapeFromOanda:
 
         # WebDriverを終了
         driver.quit()
+
+
+        # スクレイピングで得た最初と最後の日付を取得
+        dates = sorted(all_data.keys())
+        actual_start_date = dates[0] if dates else start_date
+        actual_end_date = dates[-1] if dates else end_date
+        pd.DataFrame(all_data).to_csv(f'./csv_dir/kabu_oanda_swapscraping_{self.rename_pair}_from{actual_start_date}_to{actual_end_date}.csv', index=False, encoding='utf-8')
+        print(f"saved ./csv_dir/kabu_oanda_swapscraping_{self.rename_pair}_from{actual_start_date}_to{actual_end_date}.csv")
 
         # 取得したデータを返す
         return all_data
