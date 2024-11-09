@@ -86,3 +86,11 @@ kabu_compare_intrestrate_and_oandascraping.py内で、calculate_swap_averages関
 
 2024-11-03
 kabu_compare_intrestrate_and_oandascraping.pyでほぼ正しい結果が出たが、2021-12~2022-02にかけての平均スワップの値が飛んでしまっているので、計算エラーかを確認せよ。
+
+
+2024-11-09
+kabu_swap.pyの__init__内のif found_file以下が正常に動作するかをkabu_backtest.pyを走らせて確かめる(つまりwebsite="oanda",interval="M1",link=link)
+
+kabu_backtest.pyのlong_onlyのcheck swap　以下を修正したので、動作確認をする（つまり、website="minkabu",interval="1d"）
+
+website="oanda"でlong_onlyの時、計算が合わないようなので、確認（つまりまずはwebsite="minkabu",strategy="long_only"で動作確認）
