@@ -1,5 +1,10 @@
 import numpy as np
 from multiprocessing import Pool, Manager, Lock
+from itertools import product
+from kabu_swap import SwapCalculator
+from kabu_backtest import fetch_currency_data
+from datetime import datetime
+import pandas as pd
 
 def process_grid(date, grid, last_price, price, positions, order_size, required_margin_rate, required_margin, margin_maintenance_rate, order_margin, order_capacity_flag, margin_maintenance_flag, lock):
     """グリッドでの取引処理を行う関数"""
@@ -104,8 +109,8 @@ def process_losscut_parallel(margin_maintenance_flag, positions, price, effectiv
 
 
 def update_margin_maintenance_rate(effective_margin, required_margin):
-    if required_margin != 0:  
-        margin_maintenance_rate = (effective_margin / required_margin) * 100
+    if required_margin.value != 0:  
+        margin_maintenance_rate = (effective_margin.value / required_margin.value) * 100
     else:
         margin_maintenance_rate = np.inf
 
@@ -138,7 +143,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
         last_price = None
 
         for i in range(len(data)):
-            if margin_maintenance_flag.value or order_capacity_flag.value:
+            if margin_maintenance_flag.value or order_capacity_flag:
                 break
             date = data.index[i]
             price = data.iloc[i]
@@ -180,8 +185,8 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 
             # スワップ処理
-            effective_margin.value, num_positions.value, margin_maintenance_flag.value = process_swap_parallel(
-                positions, date, num_positions, effective_margin.value, margin_maintenance_flag.value, lock
+            effective_margin.value, num_positions.value, margin_maintenance_flag = process_swap_parallel(
+                positions, date, num_positions, effective_margin.value, margin_maintenance_flag, lock
             )
 
             
@@ -194,7 +199,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
             # ロスカット処理
             effective_margin, margin_deposit, realized_profit, required_margin, margin_maintenance_flag = process_losscut_parallel(
-                margin_maintenance_flag.value, positions, price, effective_margin, margin_deposit, realized_profit, required_margin, lock
+                margin_maintenance_flag, positions, price, effective_margin, margin_deposit, realized_profit, required_margin, lock
             )
             _, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)  
 
@@ -212,3 +217,29 @@ def check_min_max_effective_margin(effective_margin, effective_margin_max, effec
     effective_margin_max = max(effective_margin, effective_margin_max)
     effective_margin_min = min(effective_margin, effective_margin_min)
     return effective_margin_max, effective_margin_min
+
+
+if __name__ == "__main__":
+    pair = 'AUDNZD=X'
+    interval="1d"
+    website = "minkabu" #minkabu or  oanda
+    end_date = datetime.strptime("2020-01-15","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+    #start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+    start_date = datetime.strptime("2019-11-12","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+    initial_funds = 2000000
+    grid_start = 1.02
+    grid_end = 1.14
+    strategies = ['long_only']
+    entry_intervals = [0]  # エントリー間隔
+    total_thresholds = [10000]  # 全ポジション決済の閾値
+
+    order_sizes = [3000]
+    num_traps_options = [100]
+    profit_widths = [100]
+    densities = [10]
+
+    data = fetch_currency_data(pair, start_date, end_date,interval)
+    calculator =  SwapCalculator(website,pair,start_date,end_date,interval=interval)
+    for order_size, num_traps, profit_width, strategy, density, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, densities, entry_intervals, total_thresholds):
+        taple = traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None, strategy='standard', density=1)
+
