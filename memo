@@ -90,7 +90,14 @@ kabu_compare_intrestrate_and_oandascraping.pyでほぼ正しい結果が出た�
 
 2024-11-09
 kabu_swap.pyの__init__内のif found_file以下が正常に動作するかをkabu_backtest.pyを走らせて確かめる(つまりwebsite="oanda",interval="M1",link=link)
+→確認完了
 
 kabu_backtest.pyのlong_onlyのcheck swap　以下を修正したので、動作確認をする（つまり、website="minkabu",interval="1d"）
+→long_onlyのcheck swap以下にpos[8] += ...を追加し、check_min_max_effective_marginを追加したことで変わるのは、シャープレシオと最大ドローダウンだけなので、check totalの値と有効証拠金の値の一致不一致には関係ない
+動作確認は完了
 
 website="oanda"でlong_onlyの時、計算が合わないようなので、確認（つまりまずはwebsite="minkabu",strategy="long_only"で動作確認）
+→website="minkabu"では合うことを確認、website="oanda"では計算が合わないことを確認
+
+→おそらく原因は、スクレイピングで得たデータは日本の日付でのスワップデータなので、それを世界基準に直さないとスワップポイントの計算でずれが生まれるのではないか
+
