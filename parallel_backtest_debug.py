@@ -102,6 +102,19 @@ def process_losscut_parallel(margin_maintenance_flag, positions, price, effectiv
 
     return effective_margin, margin_deposit, realized_profit, required_margin, margin_maintenance_flag
 
+
+def update_margin_maintenance_rate(effective_margin, required_margin):
+    if required_margin != 0:  
+        margin_maintenance_rate = (effective_margin / required_margin) * 100
+    else:
+        margin_maintenance_rate = np.inf
+
+    if margin_maintenance_rate <= 100:
+        print(f"Margin maintenance rate is {margin_maintenance_rate}%, below threshold. Forced liquidation triggered.")
+        return True, margin_maintenance_rate  # フラグと値を返す
+    return False, margin_maintenance_rate  # フラグと値を返す
+
+
 def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, entry_interval=None, total_threshold=None, strategy='standard', density=1):
     """トラリピバックテストを実行する関数"""
     RETURN = []
@@ -132,32 +145,68 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
             if last_price is not None:
                 if price != last_price:
-                    order_margin.value, required_margin.value, positions, order_capacity_flag, margin_maintenance_flag = process_grids_parallel(
-                        positions, order_margin.value, required_margin.value, date, np.linspace(grid_start, grid_end, num=num_traps), last_price, price, order_size, required_margin_rate, margin_maintenance_rate, order_capacity_flag, margin_maintenance_flag, lock
-                    )
-                    
-                    if abs(required_margin.value) > 0:
-                        margin_maintenance_rate = effective_margin.value / required_margin.value * 100
-                        if margin_maintenance_rate <= 100:
-                            print("ロスカットを実行します。")
-                            margin_maintenance_flag.value = True
-                    else:
-                        margin_maintenance_rate = float('inf')
+                    margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin.value,required_margin.value)
+                    if margin_maintenance_flag:
+                        break
 
+                    order_capacity = effective_margin.value - (required_margin.value + order_margin.value)
+                    if order_capacity < 0:
+                        order_capacity_flag.value = True
+                        print(f'cannot order because of lack of order capacity')
+                        break
+
+                    if margin_maintenance_rate > 100 and order_capacity > 0:
+
+                        order_margin.value, required_margin.value, positions, order_capacity_flag, margin_maintenance_flag = process_grids_parallel(
+                            positions, order_margin.value, required_margin.value, date, np.linspace(grid_start, grid_end, num=num_traps), last_price, price, order_size, required_margin_rate, margin_maintenance_rate, order_capacity_flag, margin_maintenance_flag, lock
+                        )
+
+                        margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin.value, required_margin.value)
+                        if margin_maintenance_flag:
+                            print("executed loss cut in last_price <= grid < price")
+                            break                            
+
+            # ポジション処理
             positions, effective_margin, margin_deposit, realized_profit, required_margin, margin_maintenance_flag = process_positions_parallel(
                 positions, effective_margin, margin_deposit, realized_profit, required_margin, margin_maintenance_flag, price, profit_width, order_size, required_margin_rate, lock
             )
 
+            effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin.value, effective_margin_max, effective_margin_min)
+            
+            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin, required_margin)
+            if margin_maintenance_flag:
+                    print("executed loss cut in position closure")
+                    break
+
+
+            # スワップ処理
             effective_margin.value, num_positions.value, margin_maintenance_flag.value = process_swap_parallel(
                 positions, date, num_positions, effective_margin.value, margin_maintenance_flag.value, lock
             )
 
+            
+
+            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin, required_margin)
+            if margin_maintenance_flag:
+                    print("executed loss cut in check swap")
+                    break
+
+
+            # ロスカット処理
+            effective_margin, margin_deposit, realized_profit, required_margin, margin_maintenance_flag = process_losscut_parallel(
+                margin_maintenance_flag.value, positions, price, effective_margin, margin_deposit, realized_profit, required_margin, lock
+            )
+            _, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)  
+
+            
+            # 有効証拠金の最大・最小値を確認
             effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin.value, effective_margin_max, effective_margin_min)
 
         RETURN = (effective_margin.value, margin_deposit.value, realized_profit.value, required_margin.value)
         print(f'最終有効証拠金: {RETURN[0]}, マージンデポジット: {RETURN[1]}, 実現利益: {RETURN[2]}, 必要証拠金: {RETURN[3]}')
 
     return RETURN
+
 
 def check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min):
     effective_margin_max = max(effective_margin, effective_margin_max)
