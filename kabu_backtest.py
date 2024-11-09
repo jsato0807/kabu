@@ -1325,9 +1325,9 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 pair = 'AUDNZD=X'
 interval="M1"
 website = "oanda" #minkabu or  oanda
-end_date = datetime.strptime("2020-01-15","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+end_date = datetime.strptime("2019-11-15","%Y-%m-%d")#datetime.now() - timedelta(days=7)
 #start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-start_date = datetime.strptime("2019-11-12","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+start_date = datetime.strptime("2019-11-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 2000000
 grid_start = 1.02
 grid_end = 1.14
@@ -1404,6 +1404,10 @@ if __name__ == "__main__":
     # ユニークな組み合わせを取得
     unique_results = results_df.drop_duplicates(subset=['Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density', 'Entry Interval', 'Total Threshold', 'Sharp Ratio', 'Max Draw Down'])
     
+    # 各パラメータの初期の候補
+    print(f"pair: {pair}, interval: {interval}, website: {website}, start_date: {start_date}, end_date: {end_date}, initial_funds: {initial_funds}, grid_start: {grid_start}, grid_end: {grid_end}")
+    print(f"strategies: {strategies}, entry_intervals: {entry_intervals}, total_thresholds: {total_thresholds}, order_sizes: {order_sizes}, num_trap_options:{num_traps_options}, profit_widths: {profit_widths}, densities: {densities}")
+
     # Top 5 Results Based on Effective Margin
     print("上位5件の有効証拠金に基づく結果:")
     rank = 1
