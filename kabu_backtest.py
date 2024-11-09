@@ -82,7 +82,7 @@ def fetch_currency_data(pair, start, end, interval,link=None):
              if filename.startswith(f"{rename_pair}") and filename.endswith(f".csv"):
                 try:
                     file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d')
-                    file_end = datetime.strptime(filename.split('_to')[1].split('_')[0], '%Y-%m-%d')
+                    file_end = datetime.strptime(filename.split('_to')[1].split(f'_{interval}')[0], '%Y-%m-%d')
 
                     # start_date と final_end がファイルの範囲内か確認
                     if file_start <= target_start and file_end >= target_end:
@@ -134,7 +134,6 @@ def fetch_currency_data(pair, start, end, interval,link=None):
         df = get_data_range(df, start, end)
         print(f"Fetched data length: {len(df)}")
 
-        #df = df[:1440*7]
         #print(df.head())
         #exit()
         
@@ -145,9 +144,9 @@ def get_data_range(data, current_start, current_end):
     #pay attention to data type; we should change the data type of current_start and current_end to strftime.
     result = {}
     start_collecting = False
+    current_start = pd.Timestamp(current_start).tz_localize('UTC')
+    current_end = pd.Timestamp(current_end).tz_localize('UTC')
     for date, values in data.items():
-        if type(date) != type(current_start):
-            date = date.to_pydatetime()
 
         # 指定された開始日からデータの収集を開始
         if date == current_start:
@@ -157,6 +156,11 @@ def get_data_range(data, current_start, current_end):
         # 指定された終了日でループを終了
         if date == current_end:
             break
+
+    # 辞書をSeriesに変換し、列名を'Close'に指定
+    result = pd.Series(result, name='Close')
+    result.index.name = 'Date'
+
     return result
 
 
@@ -1319,7 +1323,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 
 pair = 'AUDNZD=X'
-interval="1d"
+interval="M1"
 website = "oanda" #minkabu or  oanda
 end_date = datetime.strptime("2020-01-15","%Y-%m-%d")#datetime.now() - timedelta(days=7)
 #start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
