@@ -7,6 +7,7 @@ from kabu_swap import SwapCalculator
 from datetime import datetime, timedelta
 import re
 import gdown
+import os
 
 """
 def check_totalscore(margin_deposit, position_value, swap_value, effective_margin,i,date,realized_profit):
@@ -70,28 +71,56 @@ def fetch_currency_data(pair, start, end, interval,link=None):
         return data
     
     else:
-        file_id = get_file_id(link)
-        url = f"https://drive.google.com/uc?id={file_id}"
+        directory = "./csv_dir"
+        target_start = start
+        target_end = end
+        found_file = None
+        rename_pair = pair.replace("=X","")
+        rename_pair = rename_pair[:3] + "_" + rename_pair[3:]
+
+        for filename in os.listdir(directory):
+             if filename.startswith(f"{rename_pair}") and filename.endswith(f".csv"):
+                try:
+                    file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d')
+                    file_end = datetime.strptime(filename.split('_to')[1].split('_')[0], '%Y-%m-%d')
+
+                    # start_date と final_end がファイルの範囲内か確認
+                    if file_start <= target_start and file_end >= target_end:
+                        found_file = filename
+                        break
+                except ValueError:
+                    continue  # 日付フォーマットが違うファイルは無視
+
+
+        if found_file:
+            print(f"Loading data from {found_file}")
+            file_path = os.path.join(directory, found_file)
+            df = pd.read_csv(file_path)
+
+        else:
+            file_id = get_file_id(link)
+            url = f"https://drive.google.com/uc?id={file_id}"
 
 
 
-        # Google Driveの共有リンクからファイルIDを取得
-        # 共有リンクは通常この形式: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+            # Google Driveの共有リンクからファイルIDを取得
+            # 共有リンクは通常この形式: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
 
-        pair = pair.replace('=X','')
+            pair = pair.replace('=X','')
 
-        pair = pair[:3] + "_" + pair[3:]
-        start = str(start).split(' ')[0]
-        end = str(end).split(' ')[0]
+            pair = pair[:3] + "_" + pair[3:]
+            start = str(start).split(' ')[0]
+            end = str(end).split(' ')[0]
 
-        filename = '{}_from{}_to{}_{}.csv'.format(pair, start, end, interval)
+            filename = '{}_from{}_to{}_{}.csv'.format(pair, start, end, interval)
 
 
-        # CSVファイルをダウンロード
-        gdown.download(url, filename, quiet=False)
+            # CSVファイルをダウンロード
+            gdown.download(url, filename, quiet=False)
 
-        # pandasを使ってCSVファイルをDataFrameに読み込む
-        df = pd.read_csv(filename)
+            # pandasを使ってCSVファイルをDataFrameに読み込む
+            df = pd.read_csv(filename)             
+
         # time列をdatetime型に変換
         df['time'] = pd.to_datetime(df['time'])
 
@@ -102,6 +131,7 @@ def fetch_currency_data(pair, start, end, interval,link=None):
         df.set_index('Date', inplace=True)
         df.drop(columns=['time'], inplace=True)
         df = df['close']
+        df = get_data_range(df, start, end)
         print(f"Fetched data length: {len(df)}")
 
         #df = df[:1440*7]
@@ -109,6 +139,25 @@ def fetch_currency_data(pair, start, end, interval,link=None):
         #exit()
         
         return df
+
+
+def get_data_range(data, current_start, current_end):
+    #pay attention to data type; we should change the data type of current_start and current_end to strftime.
+    result = {}
+    start_collecting = False
+    for date, values in data.items():
+        if type(date) != type(current_start):
+            date = date.to_pydatetime()
+
+        # 指定された開始日からデータの収集を開始
+        if date == current_start:
+            start_collecting = True
+        if start_collecting:
+            result[date] = values
+        # 指定された終了日でループを終了
+        if date == current_end:
+            break
+    return result
 
 
 def check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min):
@@ -238,8 +287,9 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             num_positions = 0
             for pos in positions:
                 if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval,pair) == date and data.index[pos[1]] != pos[6]): #last condition acts when a position is opend and closed in intraday
-
                     effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                    effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
                         pos[6] = date
@@ -1284,8 +1334,8 @@ total_thresholds = [10000]  # 全ポジション決済の閾値
 if __name__ == "__main__":
     # データの取得
     link="https://drive.google.com/file/d/1XQhYNS5Q72nEqCz9McF5yizFxhadAaRT/view?usp=drive_link"    #the link of AUDNZD
-    #data = fetch_currency_data(pair, start_date, end_date,interval,link=link)
-    data = fetch_currency_data(pair, start_date, end_date,interval)
+    data = fetch_currency_data(pair, start_date, end_date,interval,link=link)
+    #data = fetch_currency_data(pair, start_date, end_date,interval)
     # パラメータ設定
     #order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
     order_sizes = [3000]
