@@ -193,6 +193,8 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 calculator, pair, order_size, data, positions, date, num_positions.value, effective_margin.value, margin_maintenance_flag.value, lock
             )
 
+            effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin.value, effective_margin_max, effective_margin_min)
+
             
 
             margin_maintenance_flag.value, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin.value, required_margin.value)
@@ -211,8 +213,26 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             # 有効証拠金の最大・最小値を確認
             effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin.value, effective_margin_max, effective_margin_min)
 
-        RETURN = (effective_margin.value, margin_deposit.value, realized_profit.value, required_margin.value)
-        print(f'最終有効証拠金: {RETURN[0]}, マージンデポジット: {RETURN[1]}, 実現利益: {RETURN[2]}, 必要証拠金: {RETURN[3]}')
+        
+            # Calculate position value
+        
+        if positions:
+            position_value += sum(size * (data.iloc[-1] - grid) if 'Buy' in status and not status.endswith('Closed') else
+                         -size * (data.iloc[-1] - grid) if 'Sell'  in status and not status.endswith('Closed') else
+                         0 for size, _, status, grid, _, _, _, _, _ in positions)
+        else:
+            position_value = 0
+
+        # Calculate swap values  
+        #"""
+        if positions:
+            swap_value += sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size,data.index) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') or 'Forced' in status else
+                          0 for size, index, status, _, _, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],calculator.add_business_days(swap_day,1,data.index,interval,pair),size,data.index) if 'Closed' in status and calculator.add_business_days(swap_day,1,data.index,interval,pair) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day,_ ,_ in positions)
+        else:
+            swap_value = 0
+
+            RETURN = (effective_margin.value, margin_deposit.value, position_value, swap_value, realized_profit.value, required_margin.value)
+        print(f'最終有効証拠金: {RETURN[0]}, 預託証拠金: {RETURN[1]}, ポジション損益: {RETURN[2]} スワップ損益{RETURN[3]}, 実現利益: {RETURN[2]}, 必要証拠金: {RETURN[3]}')
 
     return RETURN
 
