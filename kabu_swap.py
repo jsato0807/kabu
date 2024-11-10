@@ -258,7 +258,8 @@ class SwapCalculator:
                 return 0.0
             swap_value = self.fetcher.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
             if not "JPY" in pair:
-                return swap_value / self.modified_pair_data * rollover_days * order_size / self.per_order_size
+                end_date = open_date + timedelta(days=rollover_days)
+                return sum(swap_value / self.modified_pair_data[open_date:end_date] * order_size / self.per_order_size)
             else:
                 return swap_value * rollover_days * order_size / self.per_order_size
 
