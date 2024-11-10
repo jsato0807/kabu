@@ -13,6 +13,7 @@ from selenium.webdriver.support.ui import Select
 from webdriver_manager.chrome import ChromeDriverManager
 import os
 import pandas as pd
+from kabu_library import fetch_currency_data
 
 class SwapCalculator:
     NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
@@ -34,7 +35,7 @@ class SwapCalculator:
         'NOK': 'Europe/Oslo',
         'SEK': 'Europe/Stockholm',
     }
-    def __init__(self, website, pair, start_date, end_date, interval="1d"):
+    def __init__(self, website, pair, start_date, end_date, interval="1d",link=None):
         self.timezones = self.get_timezones_from_pair(pair)
         self.each_holidays = self.get_holidays_from_pair(pair)  # 祝日データをインスタンスに保持
         self.holiday_cache = {currency: {} for currency in self.each_holidays.keys()}  # 通貨ごとの祝日判定結果のキャッシュ
@@ -43,6 +44,9 @@ class SwapCalculator:
         if website == "minkabu":
             self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000 #MINKABU
             self.fetcher = ScrapeFromMinkabu()
+            if not "JPY" in pair:
+                modified_pair = self.arrange_pair_format(pair)[1] + "JPY=X"
+                self.modified_pair_data = fetch_currency_data(modified_pair,start_date, end_date, interval,link=link)
         elif website == "oanda":
             self.per_order_size = 100000 if pair in ['ZARJPY=X','HKDJPY=X'] else 10000
             self.fetcher = ScrapeFromOanda(pair,start_date,end_date)
@@ -253,7 +257,10 @@ class SwapCalculator:
             if pair not in self.swap_points_dict:
                 return 0.0
             swap_value = self.fetcher.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
-            return swap_value * rollover_days * order_size / self.per_order_size
+            if not "JPY" in pair:
+                return swap_value / self.modified_pair_data * rollover_days * order_size / self.per_order_size
+            else:
+                return swap_value * rollover_days * order_size / self.per_order_size
 
         if self.website == "oanda":
             data = self.swap_points_dict
