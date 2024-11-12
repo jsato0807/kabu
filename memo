@@ -101,3 +101,18 @@ website="oanda"でlong_onlyの時、計算が合わないようなので、確�
 
 →おそらく原因は、スクレイピングで得たデータは日本の日付でのスワップデータなので、それを世界基準に直さないとスワップポイントの計算でずれが生まれるのではないか
 
+
+oanda証券のスワップカレンダーに記載されているスワップポイントの単位を調べよ
+
+2024-11-10
+kabu_swap.pyの以下の部分を追加で実装せよ
+
+        # データ取得の制限を確認
+        if start_date < datetime(2019, 4, 1):
+            print("2019年4月以前のデータはありません。")
+            start_date = datetime(2019, 4, 1)
+
+2024-11-12
+2024-11-09での確認結果と異なり、websiteやpairの値に関わらず計算が合わない場合があることを確認
+Nov 2, 9のコミットでは、Nov 10とは異なり、計算が一致
+Nov 9、でEURGBP website=oandaの時のみ計算の不一致を確認（初期条件はinterval=1d,initial_funds=2000000, grid_start=0.84, grid_end=0.94, ordersize=3000, num_traps_options = 100, profit_width=100）この条件では強制ロスカットが作動するが、website=oandaの時のみ計算が合わない

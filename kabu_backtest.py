@@ -5,7 +5,9 @@ import yfinance as yf
 from itertools import product
 from kabu_swap import SwapCalculator
 from datetime import datetime, timedelta
-from kabu_library import fetch_currency_data
+import re
+import gdown
+import os
 
 """
 def check_totalscore(margin_deposit, position_value, swap_value, effective_margin,i,date,realized_profit):
@@ -38,6 +40,128 @@ def calc_swap_value(positions,data,date,pair,calculator):
                   0 for size, index, status, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],calculator.add_business_days(swap_day,1,data.index,interval,pair),size,data.index) if 'Closed' in status and calculator.add_business_days(swap_day,1,data.index,interval,pair) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day in positions)
     return swap_value
 """
+
+def get_file_id(url):
+    # 正規表現パターン
+    pattern = r'/d/([a-zA-Z0-9_-]+)'
+    
+    # パターンにマッチする部分を抽出
+    match = re.search(pattern, url)
+    
+    if match:
+        return match.group(1)  # マッチした部分の最初のグループ（ファイルID）を返す
+    else:
+        return None
+
+def fetch_currency_data(pair, start, end, interval,link=None):
+    if link is None:
+        # Yahoo Financeからデータを取得
+        data = yf.download(pair, start=start, end=end, interval=interval)
+        # DateにUTC 0時0分を追加 (既にdate部分は0時で保存されている)
+        data.index = pd.to_datetime(data.index)
+        data.index = data.index.tz_localize('UTC').tz_convert('UTC')  # UTCにローカライズ
+
+        # UTCの0時0分を表示するためにインデックスを更新
+        data.index = data.index + pd.Timedelta(hours=0)  # 明示的に0時0分を設定
+
+        data = data['Close']
+        print(f"Fetched data length: {len(data)}")
+        print(data.head())
+
+        return data
+    
+    else:
+        directory = "./csv_dir"
+        target_start = start
+        target_end = end
+        found_file = None
+        rename_pair = pair.replace("=X","")
+        rename_pair = rename_pair[:3] + "_" + rename_pair[3:]
+
+        for filename in os.listdir(directory):
+             if filename.startswith(f"{rename_pair}") and filename.endswith(f".csv"):
+                try:
+                    file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d')
+                    file_end = datetime.strptime(filename.split('_to')[1].split(f'_{interval}')[0], '%Y-%m-%d')
+
+                    # start_date と final_end がファイルの範囲内か確認
+                    if file_start <= target_start and file_end >= target_end:
+                        found_file = filename
+                        break
+                except ValueError:
+                    continue  # 日付フォーマットが違うファイルは無視
+
+
+        if found_file:
+            print(f"Loading data from {found_file}")
+            file_path = os.path.join(directory, found_file)
+            df = pd.read_csv(file_path)
+
+        else:
+            file_id = get_file_id(link)
+            url = f"https://drive.google.com/uc?id={file_id}"
+
+
+
+            # Google Driveの共有リンクからファイルIDを取得
+            # 共有リンクは通常この形式: https://drive.google.com/file/d/FILE_ID/view?usp=sharing
+
+            pair = pair.replace('=X','')
+
+            pair = pair[:3] + "_" + pair[3:]
+            start = str(start).split(' ')[0]
+            end = str(end).split(' ')[0]
+
+            filename = '{}_from{}_to{}_{}.csv'.format(pair, start, end, interval)
+
+
+            # CSVファイルをダウンロード
+            gdown.download(url, filename, quiet=False)
+
+            # pandasを使ってCSVファイルをDataFrameに読み込む
+            df = pd.read_csv(filename)             
+
+        # time列をdatetime型に変換
+        df['time'] = pd.to_datetime(df['time'])
+
+        # Date列をtime列の値に更新
+        df['Date'] = df['time']
+
+        # Dateをインデックスに設定し、time列を削除
+        df.set_index('Date', inplace=True)
+        df.drop(columns=['time'], inplace=True)
+        df = df['close']
+        df = get_data_range(df, start, end)
+        print(f"Fetched data length: {len(df)}")
+
+        #print(df.head())
+        #exit()
+        
+        return df
+
+
+def get_data_range(data, current_start, current_end):
+    #pay attention to data type; we should change the data type of current_start and current_end to strftime.
+    result = {}
+    start_collecting = False
+    current_start = pd.Timestamp(current_start).tz_localize('UTC')
+    current_end = pd.Timestamp(current_end).tz_localize('UTC')
+    for date, values in data.items():
+
+        # 指定された開始日からデータの収集を開始
+        if date == current_start:
+            start_collecting = True
+        if start_collecting:
+            result[date] = values
+        # 指定された終了日でループを終了
+        if date == current_end:
+            break
+
+    # 辞書をSeriesに変換し、列名を'Close'に指定
+    result = pd.Series(result, name='Close')
+    result.index.name = 'Date'
+
+    return result
 
 
 def check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min):
@@ -1200,10 +1324,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 pair = 'AUDNZD=X'
 interval="M1"
-website = "minkabu" #minkabu or  oanda
-end_date = datetime.strptime("2019-11-15","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+website = "oanda" #minkabu or  oanda
+end_date = datetime.strptime("2020-01-15","%Y-%m-%d")#datetime.now() - timedelta(days=7)
 #start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-start_date = datetime.strptime("2019-11-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+start_date = datetime.strptime("2019-11-12","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 2000000
 grid_start = 1.02
 grid_end = 1.14
@@ -1213,9 +1337,9 @@ total_thresholds = [10000]  # 全ポジション決済の閾値
 
 if __name__ == "__main__":
     # データの取得
-    link = None
     link="https://drive.google.com/file/d/1XQhYNS5Q72nEqCz9McF5yizFxhadAaRT/view?usp=drive_link"    #the link of AUDNZD
     data = fetch_currency_data(pair, start_date, end_date,interval,link=link)
+    #data = fetch_currency_data(pair, start_date, end_date,interval)
     # パラメータ設定
     #order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
     order_sizes = [3000]
@@ -1223,7 +1347,7 @@ if __name__ == "__main__":
     profit_widths = [100]
     densities = [10]
 
-    calculator = SwapCalculator(website,pair,start_date,end_date,interval=interval,link=link)
+    calculator = SwapCalculator(website,pair,start_date,end_date,interval=interval)
     
     results = []
     
@@ -1280,10 +1404,6 @@ if __name__ == "__main__":
     # ユニークな組み合わせを取得
     unique_results = results_df.drop_duplicates(subset=['Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density', 'Entry Interval', 'Total Threshold', 'Sharp Ratio', 'Max Draw Down'])
     
-    # 各パラメータの初期の候補
-    print(f"pair: {pair}, interval: {interval}, website: {website}, start_date: {start_date}, end_date: {end_date}, initial_funds: {initial_funds}, grid_start: {grid_start}, grid_end: {grid_end}")
-    print(f"strategies: {strategies}, entry_intervals: {entry_intervals}, total_thresholds: {total_thresholds}, order_sizes: {order_sizes}, num_trap_options:{num_traps_options}, profit_widths: {profit_widths}, densities: {densities}")
-
     # Top 5 Results Based on Effective Margin
     print("上位5件の有効証拠金に基づく結果:")
     rank = 1
