@@ -116,3 +116,15 @@ kabu_swap.pyの以下の部分を追加で実装せよ
 2024-11-09での確認結果と異なり、websiteやpairの値に関わらず計算が合わない場合があることを確認
 Nov 2, 9のコミットでは、Nov 10とは異なり、計算が一致
 Nov 9、でEURGBP website=oandaの時のみ計算の不一致を確認（初期条件はinterval=1d,initial_funds=2000000, grid_start=0.84, grid_end=0.94, ordersize=3000, num_traps_options = 100, profit_width=100）この条件では強制ロスカットが作動するが、website=oandaの時のみ計算が合わない
+→kabu_swap.pyのget_total_swap_pointsのif self.website==oanda以下のwhile current <= current_dateの部分で、イコールが不要でさらにopen_dateからcurrent_dateまでの営業日数分だけスワップポイントを取得して足し合わせる必要がある。よってwhile current < open_date+timedelta(days=rollover_days) とするのが適切。この修正により、初期条件は(start_date=2021-01-04 end_date=2021-04-01,interval=1d,initial_funds=100000, grid_start=0.86, grid_end=0.91, ordersize=3000, num_traps_options = 100, profit_width=100) この初期条件で強制ロスカットが作動するが計算が一致することを確認
+→while current < open_date+timedelta(days=rollover_days)　ではスワップポイントが０になってしまうので不適
+
+Nov 9の時点で、
+    website=oandaでかつM1のデータの場合に、ロスカットする場合もそうでない場合も計算が一致することを確認せよ→次に記す初期条件で強制ロスカット時も計算が合うことを確認(pair="EURGBP=X" interval=M1 website=oanda start_date=2021-01-04 end_date=2021-02-01 initial_funds=100000 grid_start=0.86 grid_end=0.91 strategies=long_only order_sizes=10000 num_traps_options=100 profit_width=100)
+    →website=oandaでかつM1のデータの場合に、ロスカットする場合は計算が一致することを確認（interval=1dでも確認）
+    kabu_swap.pyのif self.website == oanda以下の、返り値の部分で、oanda証券のサイトにはロールオーバーを考慮したスワップポイントが記載されているため、サイトにデータのある2019/04以降のデータでは、返り値はこの値で良いが、2019/04以前のデータはないため、自分でスワップポイントを計算する際はrollover_daysをかけないとだめ
+    get_data_rangeメソッドで、dateとcurrent_startが完全に一致しないとstart_collectingフラグがTrueにならないので、たとえばEURGBPの2021/01/01のデータはないので、current_startをその日にするとダメ、修正せよ
+
+
+2024-11-14
+get_holidays_from_pairメソッド内でholidays.CountryHolidaysで指定した国の祝日をdict型に収納し、__init__以下でself.each_holidaysに保有させているが、祝日が日本語になってしまうため、multiprocessingによるpickle化ができない。よって、CountryHoliday().keys()のみをholidays_dictに保有させることで、祝日の名前を除外して日付のみを保有でき問題が解決する
