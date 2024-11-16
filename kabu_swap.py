@@ -447,7 +447,7 @@ class ScrapeFromOanda:
         driver = webdriver.Chrome(service=service, options=options)
 
         # スワップポイントの情報が掲載されているURL
-        url = "https://www.oanda.jp/course/ny4/swap"
+        url = "https://www.oanda.jp/course/ty3/swap"
         driver.get(url)
 
         # 通貨ペアを選択
@@ -479,6 +479,9 @@ class ScrapeFromOanda:
                 print(f"{year_month} のテーブルが見つかりません。")
                 current_date += timedelta(days=1)
                 continue
+
+            # スクロール処理の追加
+            driver.execute_script("arguments[0].scrollIntoView();", swap_table)
 
             # テーブルの行を取得し、該当する日付の行からデータを取得
             rows = swap_table.find_elements(By.TAG_NAME, 'tr')
@@ -524,11 +527,19 @@ class ScrapeFromOanda:
         dates = sorted(all_data.keys())
         actual_start_date = dates[0] if dates else start_date
         actual_end_date = dates[-1] if dates else end_date
-        pd.DataFrame(all_data).to_csv(f'./csv_dir/kabu_oanda_swapscraping_{self.rename_pair}_from{actual_start_date}_to{actual_end_date}.csv', index=False, encoding='utf-8')
-        print(f"saved ./csv_dir/kabu_oanda_swapscraping_{self.rename_pair}_from{actual_start_date}_to{actual_end_date}.csv")
+        #csv ファイルとして保存
+        data = [value for value in all_data.values()]
 
+        df = pd.DataFrame(data, index=dates)
+
+        df.reset_index(inplace=True)
+        df.rename(columns={'index': 'date'}, inplace=True)
+
+        pair = pair.replace("/","")
+
+        df.to_csv(f'./csv_dir/kabu_oanda_swapscraping_{pair}_from{actual_start_date}_to{actual_end_date}.csv', index=False, encoding='utf-8')
         # 取得したデータを返す
-        return all_data
+        return df
 
         
     
