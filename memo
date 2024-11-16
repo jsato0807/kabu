@@ -128,3 +128,8 @@ Nov 9の時点で、
 
 2024-11-14
 get_holidays_from_pairメソッド内でholidays.CountryHolidaysで指定した国の祝日をdict型に収納し、__init__以下でself.each_holidaysに保有させているが、祝日が日本語になってしまうため、multiprocessingによるpickle化ができない。よって、CountryHoliday().keys()のみをholidays_dictに保有させることで、祝日の名前を除外して日付のみを保有でき問題が解決する
+
+2024-11-16
+改めてkabu_swap.pyのget_total_swap_points内のwhile文を修正し、interval="1d"の時はwebsite="oanda"で計算が一致することを確認
+→interval="M1"でロスカットが起こる場合(pair="EURGBP=X" interval=M1 website=oanda start_date=2021-01-04 end_date=2021-04-01 initial_funds=100000 grid_start=0.86 grid_end=0.91 strategies=long_only order_sizes=10000 num_traps_options=100 profit_width=100)に計算が一致するか確認中
+ またロスカットが起きない場合も確認(pair="EURGBP=X" interval=M1 website=oanda start_date=2021-01-04 end_date=2021-02-01 initial_funds=10000000 grid_start=0.86 grid_end=0.91 strategies=long_only order_sizes=1000 num_traps_options=100 profit_width=100)
