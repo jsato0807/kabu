@@ -37,7 +37,7 @@ class SwapCalculator:
     def __init__(self, website, pair, start_date, end_date, interval="1d"):
         self.timezones = self.get_timezones_from_pair(pair)
         self.each_holidays = self.get_holidays_from_pair(pair)  # 祝日データをインスタンスに保持
-        self.holiday_cache = {currency: {} for currency in self.each_holidays.keys()}  # 通貨ごとの祝日判定結果のキャッシュ
+        self.holiday_cache = {currency: {} for currency in self.each_holidays}  # 通貨ごとの祝日判定結果のキャッシュ
         self.website = website
 
         if website == "minkabu":
@@ -87,7 +87,7 @@ class SwapCalculator:
             # 例外処理をチェック
             country_code = exceptions.get(currency, currency[:2])
             if country_code:  # Noneの場合はスキップ
-                holidays_dict[currency] = holidays.CountryHoliday(country_code)
+                holidays_dict[currency] = holidays.CountryHoliday(country_code).keys()
 
         return holidays_dict
 
@@ -262,12 +262,12 @@ class SwapCalculator:
 
             # open_date から current_date までの日付をループ
             current = open_date
-            while current <= current_date:
+            while current < open_date+timedelta(days=rollover_days):
                 date_str = current.strftime("%Y-%m-%d")  # 文字列に変換
                 swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
                 current += timedelta(days=1)  # 次の日に進める
 
-            return swap_value * order_size / self.per_order_size
+            return swap_value * order_size / self.per_order_size    #2019年4月以降はoanda証券のサイトにあるデータはrollover込みの値なのでこれで良いが、それ以前はないので、スワップポイントを計算で求めないといけないので、rollover_daysを掛け合わせないといけない
 
 
 
@@ -397,8 +397,8 @@ class ScrapeFromOanda:
             print(f"Loading data from {found_file}")
             file_path = os.path.join(directory, found_file)
             swap_data = pd.read_csv(file_path)
-            swap_data_t = swap_data.T
-            self.swap_points_dict = swap_data_t.to_dict()
+            self.swap_points_dict = swap_data.set_index('date').to_dict('index')
+            print(self.swap_points_dict)
         else:
             print(f"scrape_from_oanda({pair}, {start_date}, {end_date})")
             self.swap_points_dict = self.scrape_from_oanda(pair, start_date, end_date)
