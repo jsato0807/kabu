@@ -93,17 +93,15 @@ class SwapCalculator:
 
     # 祝日をチェックするメソッド
     def is_holiday(self, date, currency):
-        # 入力が時刻を含むかどうかを判断
+        if isinstance(date, str) and '+' in date:
+            date = date.split('+')[0].strip()  # タイムゾーン部分を除去
         for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
             try:
-                # 試行して日付を解析
                 date = datetime.strptime(str(date), fmt).date()
-                break  # 成功したらループを抜ける
+                break
             except ValueError:
-                continue  # 失敗したら次の形式を試す
-
-
-        if date not in self.holiday_cache[currency]:  # キャッシュに結果がない場合のみ計算
+                continue
+        if date not in self.holiday_cache[currency]:
             self.holiday_cache[currency][date] = date in self.each_holidays[currency]
         return self.holiday_cache[currency][date]
 
@@ -262,7 +260,7 @@ class SwapCalculator:
 
             # open_date から current_date までの日付をループ
             current = open_date
-            while current < open_date+timedelta(days=rollover_days):
+            while current < current_date:
                 date_str = current.strftime("%Y-%m-%d")  # 文字列に変換
                 swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
                 current += timedelta(days=1)  # 次の日に進める
