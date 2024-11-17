@@ -220,7 +220,12 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 # Check if price has crossed any grid between last_price and price
                     grid_crossed_bool = (min(last_price, price) <= grids) & (grids <= max(last_price, price))
                     crossed_grids = grids[grid_crossed_bool]
-                    for grid in crossed_grids:
+
+                    if len(crossed_grids) == 0:
+                        last_price = price
+                        continue
+                    else:
+                        for grid in crossed_grids:
                             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                             if margin_maintenance_flag:
                                 break
@@ -309,6 +314,8 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
            # 強制ロスカットのチェック
             if margin_maintenance_flag:
+                with open("./txt_dir/kabu_backtest_long_only_forced_losscut.txt","w") as f:
+                    pass
                 for pos in positions:
                     if pos[2] == 'Buy':
                         profit = (price - pos[3]) * order_size  # 現在の損失計算
@@ -321,6 +328,8 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         pos[5] = 0
                         pos[2] = "Buy-Forced-Closed"
                         print(f"Forced Closed at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
+                        with open("./txt_dir/kabu_backtest_long_only_forced_losscut.txt","a") as f:
+                             f.write(f"{pos}")
                         _, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)   
             #position_value = calc_position_value(positions,price)
             #swap_value = calc_swap_value(positions,data,date,pair,calculator)
@@ -353,7 +362,12 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 # Check if price has crossed any grid between last_price and price
                     grid_crossed_bool = (min(last_price, price) <= grids) & (grids <= max(last_price, price))
                     crossed_grids = grids[grid_crossed_bool]
-                    for grid in crossed_grids:
+                    
+                    if len(crossed_grids) == 0:
+                        last_price = price
+                        continue
+                    else:
+                        for grid in crossed_grids:
                             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                             if margin_maintenance_flag:
                                 break
@@ -489,7 +503,12 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 if price <= half_point:
                     grid_bottom_crossed_bool = (min(last_price, price) <= grids_bottom) & (grids_bottom <= max(last_price, price))
                     crossed_grids_bottom = grids_bottom[grid_bottom_crossed_bool]
-                    for grid in crossed_grids_bottom:
+
+                    if len(crossed_grids_bottom) == 0:
+                        last_price = price
+                        continue
+                    else:
+                        for grid in crossed_grids_bottom:
                                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                                 if margin_maintenance_flag:
                                     break
@@ -518,7 +537,12 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 if price > half_point:
                     grid_top_crossed_bool = (min(last_price, price) <= grids_top) & (grids_top <= max(last_price, price))
                     crossed_grids_top = grids_top[grid_top_crossed_bool]
-                    for grid in crossed_grids_top:
+
+                    if len(crossed_grids_top) == 0:
+                        last_price = price
+                        continue
+                    else:
+                        for grid in crossed_grids_top:
                                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                                 if margin_maintenance_flag:
                                     break
@@ -710,7 +734,12 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                     concate_grids_under = np.concatenate([grids_bottom, grids_lower_center])
                     grid_under_crossed_bool = (min(last_price, price) <= concate_grids_under) & (concate_grids_under <= max(last_price, price))
                     crossed_grids_under = concate_grids_under[grid_under_crossed_bool]
-                    for grid in crossed_grids_under:
+                        
+                    if len(crossed_grids_under) == 0:
+                        last_price = price
+                        continue
+                    else:
+                        for grid in crossed_grids_under:
                                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                                 if margin_maintenance_flag:
                                     break
@@ -741,7 +770,12 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                     concate_grids_over = np.concatenate([grids_top, grids_upper_center])
                     grid_over_crossed_bool = (min(last_price, price) <= concate_grids_over) & (concate_grids_over <= max(last_price, price))
                     crossed_grids_over = concate_grids_over[grid_over_crossed_bool]
-                    for grid in crossed_grids_over:
+
+                    if len(crossed_grids_over) == 0:
+                        last_price = price
+                        continue
+                    else:
+                        for grid in crossed_grids_over:
                                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                                 if margin_maintenance_flag:
                                     break
@@ -1306,11 +1340,19 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     else:
         swap_value = 0
 
-    # Calculate sharp ratio
-    if np.std(RETURN) > 0:
-        sharp_ratio = np.mean(RETURN)/np.std(RETURN)
-    else:
-        sharp_ratio = 0
+    try:# Calculate sharp ratio
+        if np.std(RETURN) > 0:
+            sharp_ratio = np.mean(RETURN)/np.std(RETURN)
+        else:
+            sharp_ratio = 0
+    except RuntimeWarning:
+        # 警告が出た場合の処理
+        print("Warning: Insufficient data or invalid values encountered.")
+        sharp_ratio =  np.nan
+    except Exception as e:
+        # その他のエラーが発生した場合の処理
+        print(f"Error: {e}")
+        sharp_ratio = np.nan
 
     #Calculate max draw down
     max_draw_down = (effective_margin_max - effective_margin_min) / effective_margin_max * 100
@@ -1323,12 +1365,12 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 
 pair = 'AUDNZD=X'
-interval="M1"
-website = "oanda" #minkabu or  oanda
-end_date = datetime.strptime("2020-01-15","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+interval="1d"
+website = "minkabu" #minkabu or  oanda
+end_date = datetime.strptime("2019-11-30","%Y-%m-%d")#datetime.now() - timedelta(days=7)
 #start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-start_date = datetime.strptime("2019-11-12","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-initial_funds = 2000000
+start_date = datetime.strptime("2019-11-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+initial_funds = 100000000
 grid_start = 1.02
 grid_end = 1.14
 strategies = ['long_only']
@@ -1337,14 +1379,15 @@ total_thresholds = [10000]  # 全ポジション決済の閾値
 
 if __name__ == "__main__":
     # データの取得
-    link="https://drive.google.com/file/d/1XQhYNS5Q72nEqCz9McF5yizFxhadAaRT/view?usp=drive_link"    #the link of AUDNZD
+    #link="https://drive.google.com/file/d/1XQhYNS5Q72nEqCz9McF5yizFxhadAaRT/view?usp=drive_link"    #the link of AUDNZD
+    link=None
     data = fetch_currency_data(pair, start_date, end_date,interval,link=link)
     #data = fetch_currency_data(pair, start_date, end_date,interval)
     # パラメータ設定
     #order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
-    order_sizes = [3000]
+    order_sizes = [1000]
     num_traps_options = [100]
-    profit_widths = [100]
+    profit_widths = [0.01]
     densities = [10]
 
     calculator = SwapCalculator(website,pair,start_date,end_date,interval=interval)
@@ -1404,6 +1447,7 @@ if __name__ == "__main__":
     # ユニークな組み合わせを取得
     unique_results = results_df.drop_duplicates(subset=['Order Size', 'Num Traps', 'Profit Width', 'Strategy', 'Density', 'Entry Interval', 'Total Threshold', 'Sharp Ratio', 'Max Draw Down'])
     
+    print(f"pair: {pair}, interval: {interval}, website:{website}, start_date:{start_date}, end_date:{end_date}, initial_funds:{initial_funds}, grid_start:{grid_start}, grid_end:{grid_end}, strategies:{strategies}, entry_intervals:{entry_intervals}, total_thresholds:{total_thresholds}, order_sizes:{order_sizes},num_trap_options:{num_traps_options}, profit_widths:{profit_widths}, densities:{densities}")
     # Top 5 Results Based on Effective Margin
     print("上位5件の有効証拠金に基づく結果:")
     rank = 1
