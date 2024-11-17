@@ -133,3 +133,8 @@ get_holidays_from_pairメソッド内でholidays.CountryHolidaysで指定した�
 改めてkabu_swap.pyのget_total_swap_points内のwhile文を修正し、interval="1d"の時はwebsite="oanda"で計算が一致することを確認
 →interval="M1"でロスカットが起こる場合(pair="EURGBP=X" interval=M1 website=oanda start_date=2021-01-04 end_date=2021-04-01 initial_funds=100000 grid_start=0.86 grid_end=0.91 strategies=long_only order_sizes=10000 num_traps_options=100 profit_width=100)に計算が一致するか確認中
  またロスカットが起きない場合も確認(pair="EURGBP=X" interval=M1 website=oanda start_date=2021-01-04 end_date=2021-02-01 initial_funds=10000000 grid_start=0.86 grid_end=0.91 strategies=long_only order_sizes=1000 num_traps_options=100 profit_width=100)
+
+ website="oanda"の時は日付が日本になっているので、現地時間に直す必要がある
+
+ 2024-11-17
+ kabu_backtest.pyで次の初期条件で計算の不一致を確認(pair: "AUDNZD=X", interval: 1d, website:minkabu, start_date:2019-11-01 00:00:00, end_date:2019-11-30 00:00:00, initial_funds:100000000, grid_start:1.02, grid_end:1.14, strategies:['long_only'], entry_intervals:[0], total_thresholds:[10000], order_sizes:[1000],num_trap_options:[100], profit_widths:[0.01], densities:[10])
