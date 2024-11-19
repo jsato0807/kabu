@@ -151,7 +151,7 @@ def process_losscut(margin_maintenance_flag, index, positions, price, effective_
                 required_margin.value -= pos[5]
             pos[7] += profit
             pos[5] = 0
-            pos[2] = "Buy-Closed"
+            pos[2] = "Buy-Forced-Closed"
             #trades.append((date, price, 'Forced Closed'))
             print(f"Forced Closed at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
 
@@ -273,6 +273,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
         position_value = 0
         swap_value = 0
         print(positions)
+        print(date)
         if positions:
             position_value += sum(size * (data.iloc[-1] - grid) if 'Buy' in status and not status.endswith('Closed') else
                          -size * (data.iloc[-1] - grid) if 'Sell'  in status and not status.endswith('Closed') else
@@ -305,15 +306,15 @@ if __name__ == "__main__":
     website = "minkabu" #minkabu or  oanda
     end_date = datetime.strptime("2019-11-30","%Y-%m-%d")#datetime.now() - timedelta(days=7)
     #start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-    start_date = datetime.strptime("2019-11-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-    initial_funds = 100000000
+    start_date = datetime.strptime("2019-11-02","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+    initial_funds = 100000
     grid_start = 1.02
     grid_end = 1.14
     strategies = ['long_only']
     entry_intervals = [0]  # エントリー間隔
     total_thresholds = [10000]  # 全ポジション決済の閾値
 
-    order_sizes = [1000]
+    order_sizes = [10000]
     num_traps_options = [100]
     profit_widths = [0.01]
     densities = [10]
