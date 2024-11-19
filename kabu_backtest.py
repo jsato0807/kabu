@@ -66,7 +66,8 @@ def fetch_currency_data(pair, start, end, interval,link=None):
 
         data = data['Close']
         print(f"Fetched data length: {len(data)}")
-        print(data.head())
+
+        print(data.tail())
 
         return data
     
@@ -198,7 +199,6 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     order_capacity_flag = False
 
 
-
     if strategy == 'long_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
         order_margin = sum(order_size * grid * required_margin_rate for grid in grids)
@@ -210,7 +210,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
         last_price = None  # Variable to store the last processed price
 
         for i in range(len(data)):
-            if margin_maintenance_flag or order_capacity_flag:
+            if margin_maintenance_flag:
                 break
             date = data.index[i]
             price = data.iloc[i]
@@ -302,7 +302,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
                     num_positions += 1
 
-                        
+                     
                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin, required_margin)
                 if margin_maintenance_flag:
                         print("executed loss cut in check swap")
@@ -1346,8 +1346,8 @@ interval="1d"
 website = "minkabu" #minkabu or  oanda
 end_date = datetime.strptime("2019-11-30","%Y-%m-%d")#datetime.now() - timedelta(days=7)
 #start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-start_date = datetime.strptime("2019-11-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-initial_funds = 100000000
+start_date = datetime.strptime("2019-11-02","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+initial_funds = 100000
 grid_start = 1.02
 grid_end = 1.14
 strategies = ['long_only']
@@ -1362,7 +1362,7 @@ if __name__ == "__main__":
     #data = fetch_currency_data(pair, start_date, end_date,interval)
     # パラメータ設定
     #order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
-    order_sizes = [1000]
+    order_sizes = [10000]
     num_traps_options = [100]
     profit_widths = [0.01]
     densities = [10]
