@@ -138,3 +138,7 @@ get_holidays_from_pairメソッド内でholidays.CountryHolidaysで指定した�
 
  2024-11-17
  kabu_backtest.pyで次の初期条件で計算の不一致を確認(pair: "AUDNZD=X", interval: 1d, website:minkabu, start_date:2019-11-01 00:00:00, end_date:2019-11-30 00:00:00, initial_funds:100000000, grid_start:1.02, grid_end:1.14, strategies:['long_only'], entry_intervals:[0], total_thresholds:[10000], order_sizes:[1000],num_trap_options:[100], profit_widths:[0.01], densities:[10])
+
+ 2024-11-19
+ kabu_backtest.pyで上記の初期条件でinitial_fund=100000にすると計算エラーが発生することを確認
+ →check swapをコメントアウトすると計算が一致することからスワップポイントの計算が原因であることがわかった
