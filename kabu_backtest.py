@@ -218,13 +218,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
             if last_price is not None and price != last_price:
                 # Check if price has crossed any grid between last_price and price
-                    grid_crossed_bool = (min(last_price, price) <= grids) & (grids <= max(last_price, price))
-                    crossed_grids = grids[grid_crossed_bool]
+                        grid_crossed_bool = (min(last_price, price) <= grids) & (grids <= max(last_price, price))
+                        crossed_grids = grids[grid_crossed_bool]
 
-                    if len(crossed_grids) == 0:
-                        last_price = price
-                        continue
-                    else:
+
                         for grid in crossed_grids:
                             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                             if margin_maintenance_flag:
@@ -360,13 +357,9 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
             if last_price is not None and price != last_price:
                 # Check if price has crossed any grid between last_price and price
-                    grid_crossed_bool = (min(last_price, price) <= grids) & (grids <= max(last_price, price))
-                    crossed_grids = grids[grid_crossed_bool]
+                        grid_crossed_bool = (min(last_price, price) <= grids) & (grids <= max(last_price, price))
+                        crossed_grids = grids[grid_crossed_bool]
                     
-                    if len(crossed_grids) == 0:
-                        last_price = price
-                        continue
-                    else:
                         for grid in crossed_grids:
                             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                             if margin_maintenance_flag:
@@ -501,13 +494,9 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             if last_price is not None and price != last_price:
                 # Check bottom half area
                 if price <= half_point:
-                    grid_bottom_crossed_bool = (min(last_price, price) <= grids_bottom) & (grids_bottom <= max(last_price, price))
-                    crossed_grids_bottom = grids_bottom[grid_bottom_crossed_bool]
+                        grid_bottom_crossed_bool = (min(last_price, price) <= grids_bottom) & (grids_bottom <= max(last_price, price))
+                        crossed_grids_bottom = grids_bottom[grid_bottom_crossed_bool]
 
-                    if len(crossed_grids_bottom) == 0:
-                        last_price = price
-                        continue
-                    else:
                         for grid in crossed_grids_bottom:
                                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                                 if margin_maintenance_flag:
@@ -535,13 +524,9 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
                 # Check top half area
                 if price > half_point:
-                    grid_top_crossed_bool = (min(last_price, price) <= grids_top) & (grids_top <= max(last_price, price))
-                    crossed_grids_top = grids_top[grid_top_crossed_bool]
+                        grid_top_crossed_bool = (min(last_price, price) <= grids_top) & (grids_top <= max(last_price, price))
+                        crossed_grids_top = grids_top[grid_top_crossed_bool]
 
-                    if len(crossed_grids_top) == 0:
-                        last_price = price
-                        continue
-                    else:
                         for grid in crossed_grids_top:
                                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                                 if margin_maintenance_flag:
@@ -731,14 +716,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             if last_price is not None and price != last_price:
                 # Check bottom two areas
                 if price <= half_point:
-                    concate_grids_under = np.concatenate([grids_bottom, grids_lower_center])
-                    grid_under_crossed_bool = (min(last_price, price) <= concate_grids_under) & (concate_grids_under <= max(last_price, price))
-                    crossed_grids_under = concate_grids_under[grid_under_crossed_bool]
+                        concate_grids_under = np.concatenate([grids_bottom, grids_lower_center])
+                        grid_under_crossed_bool = (min(last_price, price) <= concate_grids_under) & (concate_grids_under <= max(last_price, price))
+                        crossed_grids_under = concate_grids_under[grid_under_crossed_bool]
                         
-                    if len(crossed_grids_under) == 0:
-                        last_price = price
-                        continue
-                    else:
                         for grid in crossed_grids_under:
                                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                                 if margin_maintenance_flag:
@@ -767,14 +748,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
                 # Check top two areas
                 if price >= half_point:
-                    concate_grids_over = np.concatenate([grids_top, grids_upper_center])
-                    grid_over_crossed_bool = (min(last_price, price) <= concate_grids_over) & (concate_grids_over <= max(last_price, price))
-                    crossed_grids_over = concate_grids_over[grid_over_crossed_bool]
+                        concate_grids_over = np.concatenate([grids_top, grids_upper_center])
+                        grid_over_crossed_bool = (min(last_price, price) <= concate_grids_over) & (concate_grids_over <= max(last_price, price))
+                        crossed_grids_over = concate_grids_over[grid_over_crossed_bool]
 
-                    if len(crossed_grids_over) == 0:
-                        last_price = price
-                        continue
-                    else:
                         for grid in crossed_grids_over:
                                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                                 if margin_maintenance_flag:
