@@ -53,8 +53,8 @@ def get_file_id(url):
     else:
         return None
 
-def fetch_currency_data(pair, start, end, interval,link=None):
-    if link is None:
+def fetch_currency_data(pair, start, end, interval):
+    if interval=="1d":
         # Yahoo Financeからデータを取得
         data = yf.download(pair, start=start, end=end, interval=interval)
         # DateにUTC 0時0分を追加 (既にdate部分は0時で保存されている)
@@ -99,6 +99,7 @@ def fetch_currency_data(pair, start, end, interval,link=None):
             df = pd.read_csv(file_path)
 
         else:
+            link="https://drive.google.com/file/d/1XQhYNS5Q72nEqCz9McF5yizFxhadAaRT/view?usp=drive_link"    #the link of AUDNZD
             file_id = get_file_id(link)
             url = f"https://drive.google.com/uc?id={file_id}"
 
@@ -243,7 +244,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                                 if margin_maintenance_flag:
                                         print("executed loss cut in last_price <= grid < price")
-                                        break
+                                        continue
                                 
 
           # Position closure processing
@@ -1313,7 +1314,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     #"""
     if positions:
         swap_value += sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size,data.index) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') or 'Forced' in status else
-                      0 for size, index, status, _, _, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],calculator.add_business_days(swap_day,1,data.index,interval,pair),size,data.index) if 'Closed' in status and calculator.add_business_days(swap_day,1,data.index,interval,pair) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day,_ ,_ in positions)
+                      0 for size, index, status, _, _, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],calculator.add_business_days(swap_day,1,data.index,interval,pair),size,data.index) if 'Closed' in status and not 'Forced' in status and calculator.add_business_days(swap_day,1,data.index,interval,pair) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day,_ ,_ in positions)
     else:
         swap_value = 0
 
@@ -1336,35 +1337,32 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
     # Calculate margin deposit
     #margin_deposit = initial_funds + realized_profit
-
+    swap_value = 0
     return effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min
 
 
 
-pair = 'AUDNZD=X'
+pair = 'EURGBP=X'
 interval="1d"
-website = "minkabu" #minkabu or  oanda
-end_date = datetime.strptime("2019-11-30","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+website = "oanda" #minkabu or  oanda
+end_date = datetime.strptime("2021-04-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
 #start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-start_date = datetime.strptime("2019-11-02","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+start_date = datetime.strptime("2021-01-04","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 100000
-grid_start = 1.02
-grid_end = 1.14
+grid_start = 0.86
+grid_end = 0.91
 strategies = ['long_only']
 entry_intervals = [0]  # エントリー間隔
 total_thresholds = [10000]  # 全ポジション決済の閾値
 
 if __name__ == "__main__":
     # データの取得
-    #link="https://drive.google.com/file/d/1XQhYNS5Q72nEqCz9McF5yizFxhadAaRT/view?usp=drive_link"    #the link of AUDNZD
-    link=None
-    data = fetch_currency_data(pair, start_date, end_date,interval,link=link)
-    #data = fetch_currency_data(pair, start_date, end_date,interval)
+    data = fetch_currency_data(pair, start_date, end_date,interval)
     # パラメータ設定
     #order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
     order_sizes = [10000]
     num_traps_options = [100]
-    profit_widths = [0.01]
+    profit_widths = [100]
     densities = [10]
 
     calculator = SwapCalculator(website,pair,start_date,end_date,interval=interval)
