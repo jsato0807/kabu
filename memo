@@ -142,3 +142,12 @@ get_holidays_from_pairメソッド内でholidays.CountryHolidaysで指定した�
  2024-11-19
  kabu_backtest.pyで上記の初期条件でinitial_fund=100000にすると計算エラーが発生することを確認
  →check swapをコメントアウトすると計算が一致することからスワップポイントの計算が原因であることがわかった
+ →結局は、swapではなく、なぜかlong_onlyの時だけfor i in range(len(data))の次の、if margin_maintenance_flagの部分が、if margin_maintenance_flag or order_capacity_flag:になっていた。
+  これだと、order_marginが０以下になったときに、ここでbreakしてしまうことで為替の変動に伴って発生する、すでに保有しているポジションの価格変動やスワップポイントの変動もしないままになるので、結果が合わなくなる
+
+以上を踏まえて以前試した、計算結果が一致しない条件で再度確認(EURGBP=X, interval: M1, website:oanda, start_date:2021-01-04 00:00:00, end_date:2021-04-01 00:00:00, initial_funds:100000, grid_start:0.86, grid_end:0.91, strategies:['long_only'], entry_intervals:[0], total_thresholds:[1000], order_sizes:[10000],num_trap_options:[100], profit_widths:[100], densities:[10])
+
+2024-11-21
+上記の条件で確認したところ、不一致が確認された。なお2021-01-04 17:55:00 でロスカットされる。
+試しに、check swapの部分をコメントアウトし、最後のswap_valueの計算を0としたところ、ロスカットが実行されていても一致
+→ロスカットが実行された場合の、最後のswap_valueの計算が間違っているのではないか。
