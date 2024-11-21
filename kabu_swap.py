@@ -245,27 +245,30 @@ class SwapCalculator:
     def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
         trading_days_set = set(trading_days)
         rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set, pair)
+
+        if rollover_days == 0:
+            return 0
         
+        elif rollover_days >= 1:
+            if self.website == "minkabu":
+                if pair not in self.swap_points_dict:
+                    return 0.0
+                swap_value = self.fetcher.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
+                return swap_value * rollover_days * order_size / self.per_order_size
 
-        if self.website == "minkabu":
-            if pair not in self.swap_points_dict:
-                return 0.0
-            swap_value = self.fetcher.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
-            return swap_value * rollover_days * order_size / self.per_order_size
+            if self.website == "oanda":
+                data = self.swap_points_dict
+                # swap_value の初期化
+                swap_value = 0
 
-        if self.website == "oanda":
-            data = self.swap_points_dict
-            # swap_value の初期化
-            swap_value = 0
+                # open_date から current_date までの日付をループ
+                current = open_date
+                while current < current_date:
+                    date_str = current.strftime("%Y-%m-%d")  # 文字列に変換
+                    swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
+                    current += timedelta(days=1)  # 次の日に進める
 
-            # open_date から current_date までの日付をループ
-            current = open_date
-            while current < current_date:
-                date_str = current.strftime("%Y-%m-%d")  # 文字列に変換
-                swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
-                current += timedelta(days=1)  # 次の日に進める
-
-            return swap_value * order_size / self.per_order_size    #2019年4月以降はoanda証券のサイトにあるデータはrollover込みの値なのでこれで良いが、それ以前はないので、スワップポイントを計算で求めないといけないので、rollover_daysを掛け合わせないといけない
+                return swap_value * order_size / self.per_order_size    #2019年4月以降はoanda証券のサイトにあるデータはrollover込みの値なのでこれで良いが、それ以前はないので、スワップポイントを計算で求めないといけないので、rollover_daysを掛け合わせないといけない
 
 
 
@@ -396,7 +399,6 @@ class ScrapeFromOanda:
             file_path = os.path.join(directory, found_file)
             swap_data = pd.read_csv(file_path)
             self.swap_points_dict = swap_data.set_index('date').to_dict('index')
-            print(self.swap_points_dict)
         else:
             print(f"scrape_from_oanda({pair}, {start_date}, {end_date})")
             self.swap_points_dict = self.scrape_from_oanda(pair, start_date, end_date)
