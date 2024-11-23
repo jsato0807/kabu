@@ -17,6 +17,7 @@ import pandas as pd
 class SwapCalculator:
     NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
     NY_TIMEZONE = pytz.timezone("America/New_York")  # ニューヨーク時間帯
+    JP_TIMEZONE = pytz.timezone("Asia/Tokyo")
     original_timezone = pytz.utc
     # 通貨ごとのタイムゾーンを定義
     CURRENCY_TIMEZONES = {
@@ -105,10 +106,29 @@ class SwapCalculator:
             self.holiday_cache[currency][date] = date in self.each_holidays[currency]
         return self.holiday_cache[currency][date]
 
+    def is_ny_business_day(self, date):
+        """
+        ニューヨーク時間で、日曜日17:00〜金曜日16:59の間であればTrue、それ以外はFalseを返す関数。
+        """
+
+        # 日曜日17:00以降、または月〜木曜日、金曜日17:00前は営業日
+        if date.weekday() == 6 and date.hour >= 17:  # 日曜日17:00以降
+            return True
+        elif date.weekday() in [0, 1, 2, 3]:  # 月〜木曜日
+            return True
+        elif date.weekday() == 4 and date.hour < 17:  # 金曜日17:00前
+            return True
+        elif date.weekday() == 4 and date.hour >= 17:  # 金曜日17:00以降
+            return False
+
+        # その他（営業日外）
+        return False
+
+
     # 2営業日後の日付を計算するメソッド
     def add_business_days(self, start_date, num_units, trading_days_set, interval, pair, swap_flag=True):
         # 現在の日時をニューヨーク時間に変換
-        #start_date = start_date.astimezone(self.NY_TIMEZONE)
+        start_date = start_date.astimezone(self.NY_TIMEZONE)
 
         current_date = start_date
         added_units = 0
@@ -125,23 +145,23 @@ class SwapCalculator:
                 current_date += timedelta(hours=1)
             elif interval == "M1":
                 current_date += timedelta(minutes=1)
-            
 
+            
             # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
             if swap_flag:
-                if (current_date.weekday() < 5 and 
+                if (self.is_ny_business_day(current_date) and 
                     (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),self.arrange_pair_format(pair)[0]) and 
                      not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])),self.arrange_pair_format(pair)[1]))):
                     # NYクローズを跨いでいるかを判定
-                    if not self.crossed_ny_close(current_date_before.astimezone(self.NY_TIMEZONE)) and self.crossed_ny_close(current_date.astimezone(self.NY_TIMEZONE)) or interval == "1d":
+                    if not self.crossed_ny_close(current_date_before) and self.crossed_ny_close(current_date) or interval == "1d":
                         added_units += 1
             else:
-                if (current_date.weekday() < 5 and 
+                if (self.is_ny_business_day(current_date) and 
                     (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),self.arrange_pair_format(pair)[0]) and 
                      not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1]),self.arrange_pair_format(pair)[1]))) 
                      or current_date in trading_days_set):
                     # NYクローズを跨いでいるかを判定
-                    if not self.crossed_ny_close(current_date_before.astimezone(self.NY_TIMEZONE)) and self.crossed_ny_close(current_date.astimezone(self.NY_TIMEZONE)) or interval == "1d":
+                    if not self.crossed_ny_close(current_date_before) and self.crossed_ny_close(current_date) or interval == "1d":
                         added_units += 1
 
         return current_date.astimezone(self.original_timezone)
@@ -264,7 +284,7 @@ class SwapCalculator:
                 # open_date から current_date までの日付をループ
                 current = open_date
                 while current < current_date:
-                    date_str = current.strftime("%Y-%m-%d")  # 文字列に変換
+                    date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
                     swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
                     current += timedelta(days=1)  # 次の日に進める
 
@@ -385,6 +405,8 @@ class ScrapeFromOanda:
                 try:
                     file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d')
                     file_end = datetime.strptime(filename.split('_to')[1].split('.csv')[0], '%Y-%m-%d')
+                    file_start = pytz.utc.localize(file_start)
+                    file_end = pytz.utc.localize(file_end)
                     
                     # start_date と final_end がファイルの範囲内か確認
                     if file_start <= target_start and file_end >= target_end:
@@ -551,8 +573,18 @@ class ScrapeFromOanda:
 if __name__ == "__main__":
     order_size = 1000
 
-    start_date = datetime(2024, 9, 16, 6, 1)
-    end_date = datetime(2024, 9, 17, 6, 1)
+    #this time is utc
+    start_date = datetime(2024, 9, 18, 20, 59, tzinfo=pytz.UTC)
+    end_date = datetime(2024, 9, 18, 21, 1, tzinfo=pytz.UTC)
+    NY_TIMEZONE = pytz.timezone("America/New_York") 
+    JP_TIMEZONE = pytz.timezone("Asia/Tokyo")
+
+    print("ny_timezone and jp_timezone")
+    print(start_date.astimezone(NY_TIMEZONE))
+    print(start_date.astimezone(JP_TIMEZONE))
+    print(end_date.astimezone(NY_TIMEZONE))
+    print(end_date.astimezone(JP_TIMEZONE))
+    print("\n")
 
     calculator = SwapCalculator("oanda", 'USDJPY=X', start_date, end_date,interval="M1")
 
