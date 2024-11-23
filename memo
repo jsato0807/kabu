@@ -159,3 +159,6 @@ get_holidays_from_pairメソッド内でholidays.CountryHolidaysで指定した�
 if rollover_days== 0 と if rollover_days >= 1を追加して、0の時はそもそも計算などせずに0を返すようにkabu_swap.pyを修正した
 しかし、その修正前に起きた計算の不一致の本質的な解決にはおそらくなっていない。つまり、特定の条件下でのみ計算の不一致が生じる問題の解決にはなっていない。
 →とりあえず、修正したkabu_swap.pyで2024-11-19の最期に記した初期条件で、計算が一致するか確認
+
+2024-11-23
+kabu_swap.pyで、ロールオーバーの計算はadd_business_daysメソッドにより、ニューヨーク時間に直してから計算してるが、get_total_swap_pointsでwebsite=oandaの時に、self.swap_points_dictからスワップポイントのデータを取得する際に元となっているoanda証券のサイトでは、日付が日本になっているため、齟齬が生じる
