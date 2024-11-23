@@ -15,8 +15,9 @@ import os
 import pandas as pd
 
 class SwapCalculator:
-    NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
-    NY_TIMEZONE = pytz.timezone("America/New_York")  # ニューヨーク時間帯
+    #NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
+    NY_CLOSE_TIME = time(3, 0)  # NYクローズの時刻は午後5時で、それを日本時間に直すと14時間後の午前３時、oanda証券のスワップカレンダーが日本時間を基準としているので日本時間で計算すべし
+    #NY_TIMEZONE = pytz.timezone("America/New_York")  # ニューヨーク時間帯
     JP_TIMEZONE = pytz.timezone("Asia/Tokyo")
     original_timezone = pytz.utc
     # 通貨ごとのタイムゾーンを定義
@@ -108,17 +109,17 @@ class SwapCalculator:
 
     def is_ny_business_day(self, date):
         """
-        ニューヨーク時間で、日曜日17:00〜金曜日16:59の間であればTrue、それ以外はFalseを返す関数。
+        ニューヨーク時間で、日曜日17:00〜金曜日16:59の間（日本時間では日曜日3:00~金曜日2:59）であればTrue、それ以外はFalseを返す関数。
         """
 
         # 日曜日17:00以降、または月〜木曜日、金曜日17:00前は営業日
-        if date.weekday() == 6 and date.hour >= 17:  # 日曜日17:00以降
+        if date.weekday() == 6 and date.time() >= self.NY_CLOSE_TIME:  # 日曜日17:00以降
             return True
         elif date.weekday() in [0, 1, 2, 3]:  # 月〜木曜日
             return True
-        elif date.weekday() == 4 and date.hour < 17:  # 金曜日17:00前
+        elif date.weekday() == 4 and date.time() < self.NY_CLOSE_TIME:  # 金曜日17:00前
             return True
-        elif date.weekday() == 4 and date.hour >= 17:  # 金曜日17:00以降
+        elif date.weekday() == 4 and date.time() >= self.NY_CLOSE_TIME:  # 金曜日17:00以降
             return False
 
         # その他（営業日外）
@@ -128,7 +129,7 @@ class SwapCalculator:
     # 2営業日後の日付を計算するメソッド
     def add_business_days(self, start_date, num_units, trading_days_set, interval, pair, swap_flag=True):
         # 現在の日時をニューヨーク時間に変換
-        start_date = start_date.astimezone(self.NY_TIMEZONE)
+        #start_date = start_date.astimezone(self.NY_TIMEZONE)
 
         current_date = start_date
         added_units = 0
@@ -164,7 +165,7 @@ class SwapCalculator:
                     if not self.crossed_ny_close(current_date_before) and self.crossed_ny_close(current_date) or interval == "1d":
                         added_units += 1
 
-        return current_date.astimezone(self.original_timezone)
+        return current_date
 
     # NYクローズを跨いだかを判定するメソッド
     def crossed_ny_close(self, dt):
@@ -181,8 +182,8 @@ class SwapCalculator:
             rollover_days = (self.add_business_days(current_date, 2, trading_days_set, "1d", pair) - self.add_business_days(open_date, 2, trading_days_set, "1d", pair)).days
 
 
-            open_date = open_date.astimezone(self.NY_TIMEZONE)
-            current_date = current_date.astimezone(self.NY_TIMEZONE)
+            #open_date = open_date.astimezone(self.NY_TIMEZONE)
+            #current_date = current_date.astimezone(self.NY_TIMEZONE)
             open_time = open_date.time()
             current_time = current_date.time()
 
@@ -284,13 +285,41 @@ class SwapCalculator:
                 # open_date から current_date までの日付をループ
                 current = open_date
                 while current < current_date:
-                    date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
+                    #date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
+                    date_str = self.get_reference_date(current).strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
                     swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
                     current += timedelta(days=1)  # 次の日に進める
 
                 return swap_value * order_size / self.per_order_size    #2019年4月以降はoanda証券のサイトにあるデータはrollover込みの値なのでこれで良いが、それ以前はないので、スワップポイントを計算で求めないといけないので、rollover_daysを掛け合わせないといけない
 
 
+    def get_reference_date(self,dt_jst):
+        """
+        指定された日時に対して、3:00～翌日2:59の範囲で対応する基準日を返す。
+
+        Args:
+            dt (datetime): 処理対象の日時（タイムゾーン付き）
+
+        Returns:
+            datetime.date: 基準日の日付
+        """
+        # 日本時間（JST）のタイムゾーンを設定
+        #jst = pytz.timezone("Asia/Tokyo")
+
+        # 入力日時を日本時間に変換（念のためタイムゾーンを揃える）
+        if dt_jst.tzinfo is None:
+            raise ValueError("入力日時にはタイムゾーンが必要です。")
+        #dt_jst = dt.astimezone(jst)
+
+        # 時刻を判定して基準日を計算
+        if dt_jst.hour < 3:
+            # 3:00未満の場合は前日が基準日
+            reference_date = dt_jst.date()
+        else:
+            # 3:00以降の場合は当日が基準日
+            reference_date = (dt_jst + timedelta(days=1)).date()
+
+        return reference_date
 
 class ScrapeFromMinkabu:
     def __init__(self):
@@ -574,8 +603,9 @@ if __name__ == "__main__":
     order_size = 1000
 
     #this time is utc
-    start_date = datetime(2024, 9, 18, 20, 59, tzinfo=pytz.UTC)
-    end_date = datetime(2024, 9, 18, 21, 1, tzinfo=pytz.UTC)
+    jst = pytz.timezone("Asia/Tokyo")
+    start_date = datetime(2024, 9, 18, 2, 59, tzinfo=jst)
+    end_date = datetime(2024, 9, 18, 3, 1, tzinfo=jst)
     NY_TIMEZONE = pytz.timezone("America/New_York") 
     JP_TIMEZONE = pytz.timezone("Asia/Tokyo")
 
