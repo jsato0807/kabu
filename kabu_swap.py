@@ -38,8 +38,7 @@ class SwapCalculator:
     }
     def __init__(self, website, pair, start_date, end_date, interval="1d"):
         self.timezones = self.get_timezones_from_pair(pair)
-        self.each_holidays = self.get_holidays_from_pair(pair)  # 祝日データをインスタンスに保持
-        self.holiday_cache = {currency: {} for currency in self.each_holidays}  # 通貨ごとの祝日判定結果のキャッシュ
+        self.each_holidays = self.get_holidays_from_pair(pair,start_date,end_date)  # 祝日データをインスタンスに保持
         self.website = website
 
         if website == "minkabu":
@@ -71,7 +70,7 @@ class SwapCalculator:
         return [self.CURRENCY_TIMEZONES.get(currency) for currency in currencies]
 
 
-    def get_holidays_from_pair(self, pair):
+    def get_holidays_from_pair(self, pair,start_date,end_date):
         currencies = self.arrange_pair_format(pair)
         
         # 例外処理（ユーロなど）
@@ -83,44 +82,36 @@ class SwapCalculator:
 
         # 祝日を保持する辞書
         holidays_dict = {}
+        years = list(range(start_date.year, end_date.year + 1))
 
         # ベース通貨とクオート通貨それぞれの祝日を追加
         for currency in currencies:
             # 例外処理をチェック
             country_code = exceptions.get(currency, currency[:2])
             if country_code:  # Noneの場合はスキップ
-                holidays_dict[currency] = holidays.CountryHoliday(country_code).keys()
+                holidays_dict[currency] = sorted(holidays.CountryHoliday(country_code,years=years).keys())
 
         return holidays_dict
 
     # 祝日をチェックするメソッド
     def is_holiday(self, date, currency):
-        if isinstance(date, str) and '+' in date:
-            date = date.split('+')[0].strip()  # タイムゾーン部分を除去
-        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
-            try:
-                date = datetime.strptime(str(date), fmt).date()
-                break
-            except ValueError:
-                continue
-        if date not in self.holiday_cache[currency]:
-            self.holiday_cache[currency][date] = date in self.each_holidays[currency]
-        return self.holiday_cache[currency][date]
+        date = date.date()
+        return date in self.each_holidays[currency]
 
     def is_ny_business_day(self, date):
         """
         ニューヨーク時間で、日曜日17:00〜金曜日16:59の間（日本時間では日曜日3:00~金曜日2:59）であればTrue、それ以外はFalseを返す関数。
         """
 
-        # 日曜日17:00以降、または月〜木曜日、金曜日17:00前は営業日
-        if date.weekday() == 6 and date.time() >= self.NY_CLOSE_TIME:  # 日曜日17:00以降
-            return True
-        elif date.weekday() in [0, 1, 2, 3]:  # 月〜木曜日
-            return True
-        elif date.weekday() == 4 and date.time() < self.NY_CLOSE_TIME:  # 金曜日17:00前
-            return True
-        elif date.weekday() == 4 and date.time() >= self.NY_CLOSE_TIME:  # 金曜日17:00以降
+        # 月曜日3:00以降、または月〜金曜日、土曜日3:00前は営業日
+        if date.weekday() == 0 and date.time() < self.NY_CLOSE_TIME: # 月曜日の3:00前
             return False
+        elif date.weekday() == 0 and date.time() >= self.NY_CLOSE_TIME:
+            return True
+        elif date.weekday() in [1, 2, 3, 4]:  # 月〜金曜日
+            return True
+        elif date.weekday() == 5 and date.time() < self.NY_CLOSE_TIME:  # 土曜日3:00前
+            return True
 
         # その他（営業日外）
         return False
@@ -139,6 +130,7 @@ class SwapCalculator:
             # timeframe_minutesを日数に変換
 
             current_date_before = current_date
+            #print(current_date_before)
 
             if interval == "1d":  # 日足の場合
                 current_date += timedelta(days=1)
@@ -159,7 +151,7 @@ class SwapCalculator:
             else:
                 if (self.is_ny_business_day(current_date) and 
                     (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),self.arrange_pair_format(pair)[0]) and 
-                     not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1]),self.arrange_pair_format(pair)[1]))) 
+                     not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])),self.arrange_pair_format(pair)[1])) 
                      or current_date in trading_days_set):
                     # NYクローズを跨いでいるかを判定
                     if not self.crossed_ny_close(current_date_before) and self.crossed_ny_close(current_date) or interval == "1d":
@@ -284,7 +276,7 @@ class SwapCalculator:
 
                 # open_date から current_date までの日付をループ
                 current = open_date
-                while current < current_date:
+                while self.get_reference_date(current) < self.get_reference_date(current_date):
                     #date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
                     date_str = self.get_reference_date(current).strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
                     swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
@@ -314,10 +306,10 @@ class SwapCalculator:
         # 時刻を判定して基準日を計算
         if dt_jst.hour < 3:
             # 3:00未満の場合は前日が基準日
-            reference_date = dt_jst.date()
+            reference_date = (dt_jst - timedelta(days=1)).date()
         else:
             # 3:00以降の場合は当日が基準日
-            reference_date = (dt_jst + timedelta(days=1)).date()
+            reference_date = dt_jst.date()
 
         return reference_date
 
@@ -603,9 +595,12 @@ if __name__ == "__main__":
     order_size = 1000
 
     #this time is utc
+    # 日本時間のタイムゾーン設定
     jst = pytz.timezone("Asia/Tokyo")
-    start_date = datetime(2024, 9, 18, 2, 59, tzinfo=jst)
-    end_date = datetime(2024, 9, 18, 3, 1, tzinfo=jst)
+    
+    # 日本時間で日時を設定（タイムゾーンを正しく設定）
+    start_date = jst.localize(datetime(2024, 9, 18, 3, 2))
+    end_date = jst.localize(datetime(2024, 9, 19, 3, 1))
     NY_TIMEZONE = pytz.timezone("America/New_York") 
     JP_TIMEZONE = pytz.timezone("Asia/Tokyo")
 
