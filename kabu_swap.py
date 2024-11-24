@@ -256,6 +256,14 @@ class SwapCalculator:
         return rollover_days
 
     def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
+        try:
+            jst = pytz.timezone("Asia/Tokyo")
+            # 日本時間で日時を設定（タイムゾーンを正しく設定）
+            open_date = jst.localize(open_date)
+            current_date = jst.localize(current_date)
+        except:
+            pass
+
         trading_days_set = set(trading_days)
         rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set, pair)
 
@@ -416,6 +424,12 @@ class ScrapeFromOanda:
         except:
             target_start = start_date
             target_end = end_date
+
+        try:
+            target_start = pytz.utc.localize(target_start)
+            target_end = pytz.utc.localize(target_end)
+        except:
+            pass
         
         
         # ファイル検索と条件に合致するファイルの選択
@@ -593,6 +607,7 @@ class ScrapeFromOanda:
 
 if __name__ == "__main__":
     order_size = 1000
+    pair = "AUDNZD=X"
 
     #this time is utc
     # 日本時間のタイムゾーン設定
@@ -611,9 +626,9 @@ if __name__ == "__main__":
     print(end_date.astimezone(JP_TIMEZONE))
     print("\n")
 
-    calculator = SwapCalculator("oanda", 'USDJPY=X', start_date, end_date,interval="M1")
+    calculator = SwapCalculator("oanda", pair, start_date, end_date,interval="M1")
 
-    total_swap_points = calculator.get_total_swap_points('USDJPY=X', "Buy", start_date, end_date, order_size, [])
+    total_swap_points = calculator.get_total_swap_points(pair, "Buy", start_date, end_date, order_size, [])
     print(total_swap_points)
 
     #a = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 4), datetime(2024, 6, 10), order_size, [])
