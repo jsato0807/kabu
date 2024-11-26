@@ -51,7 +51,8 @@ class HolidayProcessor:
         ny_timezone = pytz.timezone("America/New_York")
         local_timezone = pytz.timezone(timezone_str)
 
-        ny_start = ny_timezone.localize(datetime.combine(holiday_date, datetime.min.time()) + timedelta(hours=17))
+        ny_start = ny_timezone.localize(datetime.combine(holiday_date, datetime.min.time()) + timedelta(hours=17)) - timedelta(days=1)
+
         local_start = ny_start.astimezone(local_timezone)
 
         local_end = local_start + timedelta(hours=23, minutes=59)
