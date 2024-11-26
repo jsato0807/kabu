@@ -1,6 +1,7 @@
 import pytz
 from datetime import datetime, timedelta
 import holidays
+import pandas as pd
 
 class HolidayProcessor:
     timezone_dict = {
@@ -77,14 +78,127 @@ class HolidayProcessor:
         return holiday_times
 
 
+from datetime import datetime, timedelta
+
+class BusinessDayCalculatorWithHolidayProcessor:
+    NY_CLOSE_TIME = datetime.strptime("07:00:00", "%H:%M:%S").time()  # 日本時間でNYクローズ
+    # 通貨ごとのタイムゾーンを定義
+    CURRENCY_TIMEZONES = {
+        'JPY': 'Asia/Tokyo',
+        'ZAR': 'Africa/Johannesburg',
+        'MXN': 'America/Mexico_City',
+        'TRY': 'Europe/Istanbul',
+        'CHF': 'Europe/Zurich',
+        'NZD': 'Pacific/Auckland',
+        'AUD': 'Australia/Sydney',
+        'EUR': 'Europe/Berlin',
+        'GBP': 'Europe/London',
+        'USD': 'America/New_York',
+        'CAD': 'America/Toronto',
+        'NOK': 'Europe/Oslo',
+        'SEK': 'Europe/Stockholm',
+    }
+
+
+    def __init__(self, holiday_processor):
+        """
+        営業日計算クラスの初期化
+        :param holiday_processor: HolidayProcessor のインスタンス
+        """
+        self.holiday_processor = holiday_processor
+        self.timezones = self.get_timezones_from_pair(pair)
+
+
+    def arrange_pair_format(self,pair):
+        if "=X" in pair:
+            currencies = pair.replace("=X","")
+        if "_" in pair:
+            currencies = currencies.split("_")
+        if "/" in pair:
+            currencies = pair.split('/')
+        if not "_" in pair and not "/" in pair:
+            currencies = [currencies[:3],currencies[3:]]
+        return currencies
+
+    def get_timezones_from_pair(self, pair):
+        currencies = self.arrange_pair_format(pair)
+        return [self.CURRENCY_TIMEZONES.get(currency) for currency in currencies]
+
+    def is_ny_business_day(self, date):
+        """
+        ニューヨーク時間で営業日を判定
+        :param date: datetime オブジェクト（日本時間基準）
+        :return: 営業日なら True、非営業日なら False
+        """
+        if date.weekday() == 0 and date.time() < self.NY_CLOSE_TIME:  # 月曜日の7:00前
+            return False
+        elif date.weekday() == 0 and date.time() >= self.NY_CLOSE_TIME:
+            return True
+        elif date.weekday() in [1, 2, 3, 4]:  # 火〜金曜日
+            return True
+        elif date.weekday() == 5 and date.time() < self.NY_CLOSE_TIME:  # 土曜日の7:00前
+            return True
+        return False
+
+    def generate_business_days(self, pair, start_date, end_date):
+        """
+        営業日をリスト形式で生成
+        :param pair: 通貨ペア (例: "USD/JPY")
+        :param start_date: 開始日 (datetime.date)
+        :param end_date: 終了日 (datetime.date)
+        :return: 営業日のリスト
+        """
+        # 通貨ペアの祝日を取得
+        holiday_times = self.holiday_processor.get_holiday_times(pair, start_date, end_date)
+
+        # 通貨ペアの2国分の祝日時間を分ける
+        currencies = self.arrange_pair_format(pair)
+        holiday_time_ranges = {
+            currencies[0]: [
+                (info["start"], info["end"]) for info in holiday_times.values() if currencies[0] in holiday_times.keys()
+            ],
+            currencies[1]: [
+                (info["start"], info["end"]) for info in holiday_times.values() if currencies[1] in holiday_times.keys()
+            ]
+        }
+
+        # 全体の日時範囲を作成（start_date から end_date まで）
+        start_datetime = datetime.combine(start_date, datetime.min.time())
+        end_datetime = datetime.combine(end_date, datetime.max.time())
+
+        # 全体の日時リスト（1分単位で全ての日付）
+        all_dates = pd.date_range(start=start_datetime, end=end_datetime, freq='min').to_pydatetime().tolist()
+
+        # 祝日と休日の日時を除外
+        business_days = []
+        for date in all_dates:
+            # 祝日や休日の時間範囲に含まれていない場合
+            if not any(holiday_start <= date.astimezone(pytz.timezone(self.timezones[0])) <= holiday_end for holiday_start, holiday_end in holiday_time_ranges[currencies[0]]):
+                if not any(holiday_start <= date.astimezone(pytz.timezone(self.timezones[1])) <= holiday_end for holiday_start, holiday_end in holiday_time_ranges[currencies[1]]):
+
+                    # ニューヨーク時間基準で営業日かつ祝日でない場合
+                    if self.is_ny_business_day(date.astimezone(pytz.timezone('Asia/Tokyo'))):
+                        business_days.append(date)
+
+        return business_days
+
+
 # 実行例
 holiday_processor = HolidayProcessor()
-pair = "USD/JPY"  # 通貨ペア
-start_date = datetime(2024, 1, 1)
-end_date = datetime(2024, 12, 31)
+pair = "AUD/NZD"  # 通貨ペア
+start_date = datetime(2019, 1, 1,tzinfo=pytz.utc)
+end_date = datetime(2024, 12, 31,tzinfo=pytz.utc)
 
 holiday_times = holiday_processor.get_holiday_times(pair, start_date, end_date)
 
 # 結果を表示
 for holiday, times in holiday_times.items():
     print(f"Holiday: {holiday} | Start: {times['start']} | End: {times['end']}")
+
+
+# 使用例
+calculator = BusinessDayCalculatorWithHolidayProcessor(holiday_processor)
+
+business_days = calculator.generate_business_days(pair, start_date, end_date)
+
+print(f"営業日数: {(business_days)}")
