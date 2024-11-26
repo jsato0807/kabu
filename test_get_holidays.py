@@ -80,6 +80,10 @@ class HolidayProcessor:
 
 from datetime import datetime, timedelta
 
+import pytz
+from datetime import datetime, timedelta
+import pandas as pd
+
 class BusinessDayCalculatorWithHolidayProcessor:
     NY_CLOSE_TIME = datetime.strptime("07:00:00", "%H:%M:%S").time()  # 日本時間でNYクローズ
     # 通貨ごとのタイムゾーンを定義
@@ -99,25 +103,27 @@ class BusinessDayCalculatorWithHolidayProcessor:
         'SEK': 'Europe/Stockholm',
     }
 
-
-    def __init__(self, holiday_processor):
+    def __init__(self, holiday_processor, pair, start_date, end_date):
         """
         営業日計算クラスの初期化
         :param holiday_processor: HolidayProcessor のインスタンス
+        :param pair: 通貨ペア (例: "USD/JPY")
+        :param start_date: 開始日 (datetime.date)
+        :param end_date: 終了日 (datetime.date)
         """
         self.holiday_processor = holiday_processor
         self.timezones = self.get_timezones_from_pair(pair)
+        self.business_days = self.generate_business_days(pair, start_date, end_date)
 
-
-    def arrange_pair_format(self,pair):
+    def arrange_pair_format(self, pair):
         if "=X" in pair:
-            currencies = pair.replace("=X","")
+            currencies = pair.replace("=X", "")
         if "_" in pair:
             currencies = currencies.split("_")
         if "/" in pair:
             currencies = pair.split('/')
         if not "_" in pair and not "/" in pair:
-            currencies = [currencies[:3],currencies[3:]]
+            currencies = [pair[:3], pair[3:]]
         return currencies
 
     def get_timezones_from_pair(self, pair):
@@ -182,11 +188,32 @@ class BusinessDayCalculatorWithHolidayProcessor:
 
         return business_days
 
+    def add_business_days(self, start_datetime, num_units, interval="1d"):
+        """
+        任意の営業日単位で日付を進める
+        :param start_datetime: 開始日時
+        :param add_unit: 進めたい営業日数
+        :param interval: 進める単位（例："1d"は1日, "1h"は1時間）
+        :return: 進めた営業日
+        """
+        current_datetime = start_datetime
+        added_units = 0
+
+        while added_units < num_units:
+            current_datetime += pd.Timedelta(interval)
+
+            # 次の日付が営業日であればカウント
+            if current_datetime in self.business_days:
+                added_units += 1
+
+        return current_datetime
+
+
 
 # 実行例
 holiday_processor = HolidayProcessor()
 pair = "AUD/NZD"  # 通貨ペア
-start_date = datetime(2019, 1, 1,tzinfo=pytz.utc)
+start_date = datetime(2024, 1, 1,tzinfo=pytz.utc)
 end_date = datetime(2024, 12, 31,tzinfo=pytz.utc)
 
 holiday_times = holiday_processor.get_holiday_times(pair, start_date, end_date)
@@ -197,8 +224,8 @@ for holiday, times in holiday_times.items():
 
 
 # 使用例
-calculator = BusinessDayCalculatorWithHolidayProcessor(holiday_processor)
+calculator = BusinessDayCalculatorWithHolidayProcessor(holiday_processor, pair, start_date, end_date)
 
-business_days = calculator.generate_business_days(pair, start_date, end_date)
-
-print(f"営業日数: {(business_days)}")
+start_datetime = datetime(2024, 11, 5, 9, 0)  # 任意の開始日時
+new_datetime = calculator.add_business_days(start_datetime, 1, "1m")
+print(f"新しい営業日: {new_datetime}")
