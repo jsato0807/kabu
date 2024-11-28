@@ -60,22 +60,19 @@ class HolidayProcessor:
 
         return local_start, local_end
 
-    def get_holiday_times(self, pair, start_date, end_date):
-        """祝日を特定し、各通貨の現地時間で表示"""
+    def get_holiday_time_ranges(self, pair, start_date, end_date):
+        """祝日を特定し、各通貨の現地時間でholiday_time_rangesを生成"""
         holidays_dict = self.get_holidays_from_pair(pair, start_date, end_date)
 
-        holiday_times = {}
+        holiday_time_ranges = {}
         for currency, holidays in holidays_dict.items():
             timezone = self.timezone_dict.get(currency)
 
             for holiday_date in holidays:
                 start_time, end_time = self.convert_ny_close_to_local(holiday_date, timezone)
-                holiday_times[f"{currency} Holiday ({holiday_date})"] = {
-                    "start": start_time,
-                    "end": end_time
-                }
+                holiday_time_ranges[currency] = holiday_time_ranges.get(currency, []) + [(start_time, end_time)]
 
-        return holiday_times
+        return holiday_time_ranges
 
 
 from datetime import datetime, timedelta
@@ -111,6 +108,11 @@ class BusinessDayCalculatorWithHolidayProcessor:
         :param start_date: 開始日 (datetime.date)
         :param end_date: 終了日 (datetime.date)
         """
+        try:
+            start_date = start_date.astimezone(pytz.utc)
+            end_date = end_date.astimezone(pytz.utc)
+        except:
+            pass
         self.holiday_processor = holiday_processor
         self.timezones = self.get_timezones_from_pair(pair)
         self.business_days = self.generate_business_days(pair, start_date, end_date)
@@ -155,25 +157,17 @@ class BusinessDayCalculatorWithHolidayProcessor:
         :return: 営業日のリスト
         """
         # 通貨ペアの祝日を取得
-        holiday_times = self.holiday_processor.get_holiday_times(pair, start_date, end_date)
-
+        holiday_time_ranges = self.holiday_processor.get_holiday_time_ranges(pair, start_date, end_date)
+        
         # 通貨ペアの2国分の祝日時間を分ける
         currencies = self.arrange_pair_format(pair)
-        holiday_time_ranges = {
-            currencies[0]: [
-                (info["start"], info["end"]) for info in holiday_times.values() if currencies[0] in holiday_times.keys()
-            ],
-            currencies[1]: [
-                (info["start"], info["end"]) for info in holiday_times.values() if currencies[1] in holiday_times.keys()
-            ]
-        }
 
         # 全体の日時範囲を作成（start_date から end_date まで）
         start_datetime = datetime.combine(start_date, datetime.min.time())
         end_datetime = datetime.combine(end_date, datetime.max.time())
 
         # 全体の日時リスト（1分単位で全ての日付）
-        all_dates = pd.date_range(start=start_datetime, end=end_datetime, freq='min').to_pydatetime().tolist()
+        all_dates = pd.date_range(start=start_datetime, end=end_datetime, freq='min',tz=pytz.UTC).to_pydatetime().tolist()
 
         # 祝日と休日の日時を除外
         business_days = []
@@ -196,6 +190,10 @@ class BusinessDayCalculatorWithHolidayProcessor:
         :param interval: 進める単位（例："1d"は1日, "1h"は1時間）
         :return: 進めた営業日
         """
+        try:
+            start_datetime = start_datetime.astimezone(pytz.utc)
+        except:
+            pass
         current_datetime = start_datetime
         added_units = 0
 
@@ -212,20 +210,28 @@ class BusinessDayCalculatorWithHolidayProcessor:
 
 # 実行例
 holiday_processor = HolidayProcessor()
-pair = "AUD/NZD"  # 通貨ペア
-start_date = datetime(2024, 1, 1,tzinfo=pytz.utc)
-end_date = datetime(2024, 12, 31,tzinfo=pytz.utc)
+pair = "USD/JPY"  # 通貨ペア
+start_date = datetime(2024, 9, 1,tzinfo=pytz.utc)
+end_date = datetime(2024, 9, 30,tzinfo=pytz.utc)
 
-holiday_times = holiday_processor.get_holiday_times(pair, start_date, end_date)
+holiday_times = holiday_processor.get_holiday_time_ranges(pair, start_date, end_date)
 
 # 結果を表示
-for holiday, times in holiday_times.items():
-    print(f"Holiday: {holiday} | Start: {times['start']} | End: {times['end']}")
+for key, value in holiday_times.items():
+    print(f"{key}: {value}")
 
 
 # 使用例
 calculator = BusinessDayCalculatorWithHolidayProcessor(holiday_processor, pair, start_date, end_date)
 
-start_datetime = datetime(2024, 11, 5, 9, 0)  # 任意の開始日時
-new_datetime = calculator.add_business_days(start_datetime, 1, "1m")
-print(f"新しい営業日: {new_datetime}")
+#start_datetime = datetime(2024, 11, 5, 9, 0, tzinfo=pytz.utc)  # 任意の開始日時
+japan_tz = pytz.timezone('Asia/Tokyo')
+start_datetime = japan_tz.localize(datetime(2024, 9, 18, 6, 59))
+end_datetime = japan_tz.localize(datetime(2024, 9 ,19, 7, 0))
+#new_datetime = calculator.add_business_days(start_datetime, 1, "1m")
+#new_datetime = calculator.add_business_days(start_datetime, 1, "1d")
+rollover_days = calculator.add_business_days(end_datetime, 2, "1d") - calculator.add_business_days(start_datetime, 2, "1d")
+print(rollover_days)
+print(calculator.add_business_days(end_datetime, 2, "1d").astimezone(pytz.timezone('Asia/Tokyo')))
+print(calculator.add_business_days(start_datetime, 2, "1d").astimezone(pytz.timezone('Asia/Tokyo')))
+#print(f"新しい営業日: {new_datetime.astimezone(pytz.timezone('Asia/Tokyo'))}")
