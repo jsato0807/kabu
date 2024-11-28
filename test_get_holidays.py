@@ -149,38 +149,32 @@ class BusinessDayCalculatorWithHolidayProcessor:
         return False
 
     def generate_business_days(self, pair, start_date, end_date):
-        """
-        営業日をリスト形式で生成
-        :param pair: 通貨ペア (例: "USD/JPY")
-        :param start_date: 開始日 (datetime.date)
-        :param end_date: 終了日 (datetime.date)
-        :return: 営業日のリスト
-        """
         # 通貨ペアの祝日を取得
         holiday_time_ranges = self.holiday_processor.get_holiday_time_ranges(pair, start_date, end_date)
         
         # 通貨ペアの2国分の祝日時間を分ける
         currencies = self.arrange_pair_format(pair)
-
+    
         # 全体の日時範囲を作成（start_date から end_date まで）
         start_datetime = datetime.combine(start_date, datetime.min.time())
         end_datetime = datetime.combine(end_date, datetime.max.time())
-
+    
         # 全体の日時リスト（1分単位で全ての日付）
-        all_dates = pd.date_range(start=start_datetime, end=end_datetime, freq='min',tz=pytz.UTC).to_pydatetime().tolist()
-
-        # 祝日と休日の日時を除外
-        business_days = []
+        all_dates = pd.date_range(start=start_datetime, end=end_datetime, freq='min', tz=pytz.UTC).to_pydatetime().tolist()
+    
+        # 祝日と休日の日時を除外して辞書に格納
+        business_days_dict = {}
         for date in all_dates:
             # 祝日や休日の時間範囲に含まれていない場合
             if not any(holiday_start <= date.astimezone(pytz.timezone(self.timezones[0])) <= holiday_end for holiday_start, holiday_end in holiday_time_ranges[currencies[0]]):
                 if not any(holiday_start <= date.astimezone(pytz.timezone(self.timezones[1])) <= holiday_end for holiday_start, holiday_end in holiday_time_ranges[currencies[1]]):
-
+                
                     # ニューヨーク時間基準で営業日かつ祝日でない場合
                     if self.is_ny_business_day(date.astimezone(pytz.timezone('Asia/Tokyo'))):
-                        business_days.append(date)
+                        business_days_dict[date] = True
+    
+        return business_days_dict
 
-        return business_days
 
     def add_business_days(self, start_datetime, num_units, interval="1d"):
         """
