@@ -14,9 +14,20 @@ from webdriver_manager.chrome import ChromeDriverManager
 import os
 import pandas as pd
 
+
+def timing_decorator(func):
+    def wrapper(*args, **kwargs):
+        start_time = time_module.time()
+        result = func(*args, **kwargs)
+        elapsed_time = time_module.time() - start_time
+        print(f"Method {func.__name__}: {elapsed_time:.6f} seconds")
+        return result
+    return wrapper
+
+
 class SwapCalculator:
-    #NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
-    NY_CLOSE_TIME = time(3, 0)  # NYクローズの時刻は午後5時で、それを日本時間に直すと14時間後の午前３時、oanda証券のスワップカレンダーが日本時間を基準としているので日本時間で計算すべし
+    #self.NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
+    NY_CLOSE_TIME = time(7, 0)  # NYクローズの時刻は午後5時で、それを日本時間に直すと14時間後の午前7時、oanda証券のスワップカレンダーが日本時間を基準としているので日本時間で計算すべし
     #NY_TIMEZONE = pytz.timezone("America/New_York")  # ニューヨーク時間帯
     JP_TIMEZONE = pytz.timezone("Asia/Tokyo")
     original_timezone = pytz.utc
@@ -52,6 +63,7 @@ class SwapCalculator:
         
         self.swap_points_dict = self.fetcher.swap_points_dict
 
+        self.business_days = self.generate_business_days(pair, start_date, end_date)
 
     def arrange_pair_format(self,pair):
         if "=X" in pair:
@@ -64,11 +76,9 @@ class SwapCalculator:
             currencies = [currencies[:3],currencies[3:]]
         return currencies
 
-
     def get_timezones_from_pair(self, pair):
         currencies = self.arrange_pair_format(pair)
         return [self.CURRENCY_TIMEZONES.get(currency) for currency in currencies]
-
 
     def get_holidays_from_pair(self, pair,start_date,end_date):
         currencies = self.arrange_pair_format(pair)
@@ -100,78 +110,114 @@ class SwapCalculator:
 
     def is_ny_business_day(self, date):
         """
-        ニューヨーク時間で、日曜日17:00〜金曜日16:59の間（日本時間では日曜日3:00~金曜日2:59）であればTrue、それ以外はFalseを返す関数。
+        ニューヨーク時間で、日曜日17:00〜金曜日16:59の間（日本時間では月曜日7:00~土曜日6:59）であればTrue、それ以外はFalseを返す関数。
         """
 
-        # 月曜日3:00以降、または月〜金曜日、土曜日3:00前は営業日
-        if date.weekday() == 0 and date.time() < self.NY_CLOSE_TIME: # 月曜日の3:00前
+        # 月曜日7:00以降、または月〜金曜日、土曜日7:00前は営業日
+        if date.weekday() == 0 and date.time() < self.NY_CLOSE_TIME: # 月曜日の7:00前
             return False
         elif date.weekday() == 0 and date.time() >= self.NY_CLOSE_TIME:
             return True
         elif date.weekday() in [1, 2, 3, 4]:  # 月〜金曜日
             return True
-        elif date.weekday() == 5 and date.time() < self.NY_CLOSE_TIME:  # 土曜日3:00前
+        elif date.weekday() == 5 and date.time() < self.NY_CLOSE_TIME:  # 土曜日7:00前
             return True
 
         # その他（営業日外）
         return False
 
+    def convert_ny_close_to_local(self, holiday_date, timezone_str):
+        """ニューヨーク時間17:00を指定されたタイムゾーンに変換"""
+        local_timezone = pytz.timezone(timezone_str)
+
+        # UTC基準でのNYクローズ（17:00または18:00）
+        utc_start = pytz.utc.localize(datetime.combine(holiday_date, datetime.min.time()))
+
+        # UTC基準で、NYクローズ時間（17:00 EST or 18:00 EDT）を設定
+        ny_close_utc = utc_start + timedelta(hours=22)
+
+        # 現地タイムゾーンに変換
+        local_start = ny_close_utc.astimezone(local_timezone)
+
+        local_end = local_start + timedelta(hours=23, minutes=59)
+
+        return local_start, local_end
+
+    def get_holiday_time_ranges(self, pair, start_date, end_date):
+        """祝日を特定し、各通貨の現地時間でholiday_time_rangesを生成"""
+        holidays_dict = self.get_holidays_from_pair(pair, start_date, end_date)
+
+        holiday_time_ranges = {}
+        for currency, holidays in holidays_dict.items():
+            timezone = self.CURRENCY_TIMEZONES.get(currency)
+
+            for holiday_date in holidays:
+                start_time, end_time = self.convert_ny_close_to_local(holiday_date, timezone)
+                holiday_time_ranges[currency] = holiday_time_ranges.get(currency, []) + [(start_time, end_time)]
+
+        return holiday_time_ranges
 
     # 2営業日後の日付を計算するメソッド
-    def add_business_days(self, start_date, num_units, trading_days_set, interval, pair, swap_flag=True):
-        # 現在の日時をニューヨーク時間に変換
-        #start_date = start_date.astimezone(self.NY_TIMEZONE)
+    def generate_business_days(self, pair, start_date, end_date):
+        # 通貨ペアの祝日を取得
+        holiday_time_ranges = self.get_holiday_time_ranges(pair, start_date, end_date)
+        
+        # 通貨ペアの2国分の祝日時間を分ける
+        currencies = self.arrange_pair_format(pair)
+    
+        # 全体の日時範囲を作成（start_date から end_date まで）
+        start_datetime = datetime.combine(start_date, datetime.min.time())
+        end_datetime = datetime.combine(end_date, datetime.max.time())
+    
+        # 全体の日時リスト（1分単位で全ての日付）
+        all_dates = pd.date_range(start=start_datetime, end=end_datetime, freq='min', tz=pytz.UTC).to_pydatetime().tolist()
+    
+        # 祝日と休日の日時を除外して辞書に格納
+        business_days_dict = {}
+        for date in all_dates:
+            # 祝日や休日の時間範囲に含まれていない場合
+            if not any(holiday_start <= date.astimezone(pytz.timezone(self.timezones[0])) <= holiday_end for holiday_start, holiday_end in holiday_time_ranges[currencies[0]]):
+                if not any(holiday_start <= date.astimezone(pytz.timezone(self.timezones[1])) <= holiday_end for holiday_start, holiday_end in holiday_time_ranges[currencies[1]]):
+                
+                    # ニューヨーク時間基準で営業日かつ祝日でない場合
+                    if self.is_ny_business_day(date.astimezone(pytz.timezone('Asia/Tokyo'))):
+                        business_days_dict[date] = True
+    
+        return business_days_dict
 
-        current_date = start_date
+
+    def add_business_days(self, start_datetime, num_units, trading_days_set, interval="1d", swap_flag=True):
+        """
+        任意の営業日単位で日付を進める
+        :param start_datetime: 開始日時
+        :param add_unit: 進めたい営業日数
+        :param interval: 進める単位（例："1d"は1日, "1h"は1時間）
+        :return: 進めた営業日
+        """
+        try:
+            start_datetime = start_datetime.astimezone(pytz.utc)
+        except:
+            pass
+        current_datetime = start_datetime
         added_units = 0
 
-
         while added_units < num_units:
-            # timeframe_minutesを日数に変換
+            current_datetime += pd.Timedelta(interval)
 
-            current_date_before = current_date
-            #print(current_date_before)
+            # 次の日付が営業日であればカウント
+            if swap_flag and current_datetime in self.business_days:
+                added_units += 1
+            elif not swap_flag and (current_datetime in self.business_days and trading_days_set in self.business_days):
+                added_units += 1
 
-            if interval == "1d":  # 日足の場合
-                current_date += timedelta(days=1)
-            elif interval == "H1":
-                current_date += timedelta(hours=1)
-            elif interval == "M1":
-                current_date += timedelta(minutes=1)
-
-            
-            # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
-            if swap_flag:
-                if (self.is_ny_business_day(current_date) and 
-                    (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),self.arrange_pair_format(pair)[0]) and 
-                     not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])),self.arrange_pair_format(pair)[1]))):
-                    # NYクローズを跨いでいるかを判定
-                    if not self.crossed_ny_close(current_date_before) and self.crossed_ny_close(current_date) or interval == "1d":
-                        added_units += 1
-            else:
-                if (self.is_ny_business_day(current_date) and 
-                    (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),self.arrange_pair_format(pair)[0]) and 
-                     not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])),self.arrange_pair_format(pair)[1])) 
-                     or current_date in trading_days_set):
-                    # NYクローズを跨いでいるかを判定
-                    if not self.crossed_ny_close(current_date_before) and self.crossed_ny_close(current_date) or interval == "1d":
-                        added_units += 1
-
-        return current_date
-
-    # NYクローズを跨いだかを判定するメソッド
-    def crossed_ny_close(self, dt):
-
-        # 夏時間・冬時間を考慮しつつ午後5時を跨いでいればTrueを返す
-        if dt.time() >= self.NY_CLOSE_TIME:
-            return True
-        return False
+        return current_datetime
 
 
     # ロールオーバーの日数を計算するメソッド
-    def calculate_rollover_days(self, open_date, current_date, trading_days_set, pair):
+    def calculate_rollover_days(self, open_date, current_date, trading_days_set):
         try:
-            rollover_days = (self.add_business_days(current_date, 2, trading_days_set, "1d", pair) - self.add_business_days(open_date, 2, trading_days_set, "1d", pair)).days
+            rollover_days = (self.add_business_days(current_date, 2, trading_days_set, "1d") - self.add_business_days(open_date, 2, trading_days_set, "1d")).days
+            print(rollover_days)
 
 
             #open_date = open_date.astimezone(self.NY_TIMEZONE)
@@ -265,7 +311,7 @@ class SwapCalculator:
             pass
 
         trading_days_set = set(trading_days)
-        rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set, pair)
+        rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set)
 
         if rollover_days == 0:
             return 0
@@ -295,7 +341,7 @@ class SwapCalculator:
 
     def get_reference_date(self,dt_jst):
         """
-        指定された日時に対して、3:00～翌日2:59の範囲で対応する基準日を返す。
+        指定された日時に対して、7:00～翌日6:59の範囲で対応する基準日を返す。
 
         Args:
             dt (datetime): 処理対象の日時（タイムゾーン付き）
@@ -305,6 +351,10 @@ class SwapCalculator:
         """
         # 日本時間（JST）のタイムゾーンを設定
         #jst = pytz.timezone("Asia/Tokyo")
+        try:
+            dt_jst = dt_jst.astimezone(pytz.timezone('Asia/Tokyo'))
+        except:
+            pass
 
         # 入力日時を日本時間に変換（念のためタイムゾーンを揃える）
         if dt_jst.tzinfo is None:
@@ -312,11 +362,11 @@ class SwapCalculator:
         #dt_jst = dt.astimezone(jst)
 
         # 時刻を判定して基準日を計算
-        if dt_jst.hour < 3:
-            # 3:00未満の場合は前日が基準日
+        if dt_jst.time() < self.NY_CLOSE_TIME:
+            # 7:00未満の場合は前日が基準日
             reference_date = (dt_jst - timedelta(days=1)).date()
         else:
-            # 3:00以降の場合は当日が基準日
+            # 7:00以降の場合は当日が基準日
             reference_date = dt_jst.date()
 
         return reference_date
@@ -459,7 +509,6 @@ class ScrapeFromOanda:
         else:
             print(f"scrape_from_oanda({pair}, {start_date}, {end_date})")
             self.swap_points_dict = self.scrape_from_oanda(pair, start_date, end_date)
-
 
     def arrange_pair_format(self,pair):
         if "=X" in pair:
@@ -607,15 +656,15 @@ class ScrapeFromOanda:
 
 if __name__ == "__main__":
     order_size = 1000
-    pair = "AUDNZD=X"
+    pair = "USDJPY=X"
 
     #this time is utc
     # 日本時間のタイムゾーン設定
     jst = pytz.timezone("Asia/Tokyo")
     
     # 日本時間で日時を設定（タイムゾーンを正しく設定）
-    start_date = jst.localize(datetime(2024, 9, 18, 3, 2))
-    end_date = jst.localize(datetime(2024, 9, 19, 3, 1))
+    start_date = jst.localize(datetime(2024, 9, 24, 7, 2))
+    end_date = jst.localize(datetime(2024, 9, 25, 7, 2))
     NY_TIMEZONE = pytz.timezone("America/New_York") 
     JP_TIMEZONE = pytz.timezone("Asia/Tokyo")
 
