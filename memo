@@ -162,3 +162,6 @@ if rollover_days== 0 と if rollover_days >= 1を追加して、0の時はそも
 
 2024-11-23
 kabu_swap.pyで、ロールオーバーの計算はadd_business_daysメソッドにより、ニューヨーク時間に直してから計算してるが、get_total_swap_pointsでwebsite=oandaの時に、self.swap_points_dictからスワップポイントのデータを取得する際に元となっているoanda証券のサイトでは、日付が日本になっているため、齟齬が生じる
+
+2024-11-28
+kabu_swap.pyをtest_get_holidays.pyに基づいて大幅に修正したが、正常に動作しないのでデバッグせよ
