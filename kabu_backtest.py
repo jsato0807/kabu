@@ -136,8 +136,6 @@ def fetch_currency_data(pair, start, end, interval):
         df = get_data_range(df, start, end)
         print(f"Fetched data length: {len(df)}")
 
-        #print(df.head())
-        #exit()
         
         return df
 
@@ -185,6 +183,25 @@ def update_margin_maintenance_rate(effective_margin, required_margin):
         return True, margin_maintenance_rate  # フラグと値を返す
     return False, margin_maintenance_rate  # フラグと値を返す
 
+"""
+def #save_positions(margin_maintenance_flag,pos,file_path):
+    if margin_maintenance_flag:
+        with open(f"{file_path}","a") as f:
+             f.write(f"{pos}\n")
+         
+def #delete_file(file_path):
+    #指定したファイルを消去する関数。
+    #:param file_path: 消去するファイルのパス
+    if os.path.exists(file_path):  # ファイルが存在するか確認
+        try:
+            os.remove(file_path)  # ファイルを削除
+            print(f"File deleted: {file_path}")
+        except Exception as e:
+            print(f"An error occurred while deleting the file: {e}")
+    else:
+        print(f"The file does not exist: {file_path}")
+     
+"""
 
 def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, interval, entry_interval=None, total_threshold=None,strategy='standard', density=1,realized_profit=0, required_margin=0, position_value=0, swap_value=0, effective_margin_max = -np.inf, effective_margin_min = np.inf):
     """
@@ -198,6 +215,11 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     positions = []
     margin_maintenance_flag = False
     order_capacity_flag = False
+    #delete_file(f"./txt_dir/{pair}_{data.index[0]}_{data.index[-1]}_{interval}_after_grid_process.txt")
+    #delete_file(f"./txt_dir/{pair}_{data.index[0]}_{data.index[-1]}_{interval}_after_position_process.txt")
+    #delete_file(f"./txt_dir/{pair}_{data.index[0]}_{data.index[-1]}_{interval}_after_swap_process.txt")
+    #delete_file(f"./txt_dir/{pair}_{data.index[0]}_{data.index[-1]}_{interval}_after_losscut_process.txt")
+
 
 
     if strategy == 'long_only':
@@ -244,6 +266,8 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)
                                 if margin_maintenance_flag:
                                         print("executed loss cut in last_price <= grid < price")
+                                        file_path = f"./txt_dir/{pair}_{data.index[0]}_{data.index[-1]}_{interval}_after_grid_process.txt"
+                                        #save_positions(margin_maintenance_flag,positions,file_path)
                                         continue
                                 
 
@@ -265,6 +289,8 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin, required_margin)
                         if margin_maintenance_flag:
                                 print("executed loss cut in price - pos[3] < profit_width")
+                                file_path = f"./txt_dir/{pair}_{data.index[0]}_{data.index[-1]}_{interval}_after_position_process.txt"
+                                #save_positions(margin_maintenance_flag,pos,file_path)
                                 continue
 
                     if price - pos[3] >=  profit_width:
@@ -283,6 +309,8 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin, required_margin)                    
                         if margin_maintenance_flag:
                                 print("executed loss cut in price - pos[3] >=  profit_width")
+                                file_path = f"./txt_dir/{pair}_{data.index[0]}_{data.index[-1]}_{interval}_after_position_process.txt"
+                                #save_positions(margin_maintenance_flag,pos,file_path)
                                 continue
 
 
@@ -293,9 +321,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             #check swap
             num_positions = 0
             for pos in positions:
-                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval,pair) == date and data.index[pos[1]] != pos[6]): #last condition acts when a position is opend and closed in intraday
-                    effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
-                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]): #last condition acts when a position is opend and closed in intraday
+                    add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                    effective_margin += add_swap
+                    pos[8] += add_swap
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
@@ -307,13 +336,14 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin, required_margin)
                 if margin_maintenance_flag:
                         print("executed loss cut in check swap")
+                        file_path = f"./txt_dir/{pair}_{data.index[0]}_{data.index[-1]}_{interval}_after_swap_process.txt"
+                        #save_positions(margin_maintenance_flag,pos,file_path)
+                        
                         continue
                     #"""
 
            # 強制ロスカットのチェック
             if margin_maintenance_flag:
-                with open("./txt_dir/kabu_backtest_long_only_forced_losscut.txt","w") as f:
-                    pass
                 for pos in positions:
                     if pos[2] == 'Buy':
                         profit = (price - pos[3]) * order_size  # 現在の損失計算
@@ -326,20 +356,22 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                         pos[5] = 0
                         pos[2] = "Buy-Forced-Closed"
                         print(f"Forced Closed at {price} with grid {pos[3]}, Effective Margin: {effective_margin}")
-                        with open("./txt_dir/kabu_backtest_long_only_forced_losscut.txt","a") as f:
-                             f.write(f"{pos}")
                         _, margin_maintenance_rate = update_margin_maintenance_rate(effective_margin,required_margin)   
+                        file_path = f"./txt_dir/{pair}_{data.index[0]}_{data.index[-1]}_{interval}_after_losscut_process.txt"
+                        #save_positions(margin_maintenance_flag,pos,file_path)
+
             #position_value = calc_position_value(positions,price)
             #swap_value = calc_swap_value(positions,data,date,pair,calculator)
             # Calculate position value
             #print(positions)
             
             #check_totalscore(margin_deposit, position_value, swap_value, effective_margin,i,date, realized_profit)
+            #"""
             if num_positions != 0:
                 RETURN.append(sum((pos[7]+pos[8]) for pos in positions)/num_positions)
 
                 positions = [pos[:7] + [0, 0] for pos in positions]
-
+            #"""
     elif strategy == 'short_only':
         grids = np.linspace(grid_start, grid_end, num=num_traps)
         order_margin = sum(order_size * grid * required_margin_rate for grid in grids)
@@ -432,10 +464,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #check swap
             num_positions = 0
             for pos in positions:
-                if pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval,pair) == date and data.index[pos[1]] != pos[6]):
-
-                    effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
-                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                if pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]):
+                    add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                    effective_margin += add_swap
+                    pos[8] += add_swap
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
@@ -637,10 +669,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #check swap
             num_positions = 0
             for pos in positions:
-                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval,pair) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval,pair) == date and data.index[pos[1]] != pos[6]):
-
-                    effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
-                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]):
+                    add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                    effective_margin += add_swap
+                    pos[8] += add_swap
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
@@ -862,10 +894,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #check swap
             num_positions = 0
             for pos in positions:
-                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval,pair) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval,pair) == date and data.index[pos[1]] != pos[6]):
-
-                    effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
-                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]):
+                    add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                    effective_margin += add_swap
+                    pos[8] += add_swap
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
@@ -1026,10 +1058,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             #check swap
             num_positions = 0
             for pos in positions:
-                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval,pair) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval,pair) == date and data.index[pos[1]] != pos[6]):
-
-                    effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
-                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]):
+                    add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                    effective_margin += add_swap
+                    pos[8] += add_swap
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
                     if not "Closed" in pos[2]:
@@ -1241,10 +1273,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             num_positions = 0
             for pos in positions:
                 #check swap
-                if ("Buy" in pos[2] and not pos[2].endswith('Closed')) or ("Sell" in pos[2] and not pos[2].endswith('Closed')) or ("Closed" in pos[2] and calculator.add_business_days(pos[6],1,data.index,interval,pair) == date and data.index[pos[1]] != pos[6]):
-
-                    effective_margin += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
-                    pos[8] += calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                if ("Buy" in pos[2] and not pos[2].endswith('Closed')) or ("Sell" in pos[2] and not pos[2].endswith('Closed')) or ("Closed" in pos[2] and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]):
+                    add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
+                    effective_margin += add_swap
+                    pos[8] += add_swap
                     effective_margin_max, effective_margin_min = check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min)
                     print(f'added swap to effective_margin: {effective_margin}')
 
@@ -1314,7 +1346,7 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
     #"""
     if positions:
         swap_value += sum(calculator.get_total_swap_points(pair,status,data.index[index],date,size,data.index) if ('Buy' in status or 'Sell' in status) and not status.endswith('Closed') or 'Forced' in status else
-                      0 for size, index, status, _, _, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],calculator.add_business_days(swap_day,1,data.index,interval,pair),size,data.index) if 'Closed' in status and not 'Forced' in status and calculator.add_business_days(swap_day,1,data.index,interval,pair) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day,_ ,_ in positions)
+                      0 for size, index, status, _, _, _, _, _, _ in positions) + sum(calculator.get_total_swap_points(pair,status,data.index[index],calculator.add_business_days(swap_day,1,data.index,interval),size,data.index) if 'Closed' in status and not 'Forced' in status and calculator.add_business_days(swap_day,1,data.index,interval) <= date and data.index[index] != swap_day else 0 for size, index, status, _, _, _, swap_day,_ ,_ in positions)
     else:
         swap_value = 0
 
@@ -1337,15 +1369,16 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
     # Calculate margin deposit
     #margin_deposit = initial_funds + realized_profit
-    swap_value = 0
+    #swap_value = 0
     return effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min
 
 
 
 pair = 'EURGBP=X'
-interval="1d"
+interval="M1"
 website = "oanda" #minkabu or  oanda
-end_date = datetime.strptime("2021-04-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+end_date = datetime.strptime("2021-01-05 05:51:00","%Y-%m-%d %H:%M:%S")#datetime.now() - timedelta(days=7)
+#end_date = datetime.strptime("2021-04-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
 #start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 start_date = datetime.strptime("2021-01-04","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 100000
