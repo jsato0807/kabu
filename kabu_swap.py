@@ -158,12 +158,17 @@ class SwapCalculator:
         holidays_dict = self.get_holidays_from_pair(pair, start_date, end_date)
 
         holiday_time_ranges = {}
-        for currency, holidays in holidays_dict.items():
-            timezone = self.CURRENCY_TIMEZONES.get(currency)
-
-            for holiday_date in holidays:
-                start_time, end_time = self.convert_ny_close_to_local(holiday_date, timezone)
-                holiday_time_ranges[currency] = holiday_time_ranges.get(currency, []) + [(start_time, end_time)]
+        # holidays_dictのキー（通貨）があっても、空のリストがある場合には空のリストをセット
+        currencies = self.arrange_pair_format(pair)
+        for currency in currencies:
+            if currency not in holidays_dict or not holidays_dict[currency]:
+                holiday_time_ranges[currency] = []
+            else:
+                # 祝日がある場合には、通常の処理
+                timezone = self.CURRENCY_TIMEZONES.get(currency)
+                for holiday_date in holidays_dict[currency]:
+                    start_time, end_time = self.convert_ny_close_to_local(holiday_date, timezone)
+                    holiday_time_ranges[currency] = holiday_time_ranges.get(currency, []) + [(start_time, end_time)]
         return holiday_time_ranges
 
     # 2営業日後の日付を計算するメソッド
@@ -175,8 +180,8 @@ class SwapCalculator:
         currencies = self.arrange_pair_format(pair)
     
         # 全体の日時範囲を作成（start_date から end_date まで）
-        start_datetime = datetime.combine(start_date, datetime.min.time())
-        end_datetime = datetime.combine(end_date, datetime.max.time())
+        start_datetime = datetime.combine(start_date-timedelta(days=1), datetime.min.time())   #2営業日後を計算で使用する都合上、、start_date,end_dateを範囲としてしまうと、それを過ぎた場合の営業日が計算できなくなるので時差を考慮してstart_dateは1日前まで、end_dateは１ヶ月余裕を持って範囲指定する
+        end_datetime = datetime.combine(end_date+timedelta(days=30), datetime.max.time())
     
         # 全体の日時リスト（1分単位で全ての日付）
         all_dates = pd.date_range(start=start_datetime, end=end_datetime, freq='min', tz=pytz.UTC).to_pydatetime().tolist()
@@ -214,7 +219,7 @@ class SwapCalculator:
             current_datetime += pd.Timedelta(interval)
 
             # 次の日付が営業日であればカウント
-            if swap_flag and current_datetime in self.business_days:
+            if swap_flag and current_datetime in self.business_days:                
                 added_units += 1
             elif not swap_flag and (current_datetime in self.business_days and trading_days_set in self.business_days):
                 added_units += 1
