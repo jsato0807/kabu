@@ -165,3 +165,10 @@ kabu_swap.pyで、ロールオーバーの計算はadd_business_daysメソッド
 
 2024-11-28
 kabu_swap.pyをtest_get_holidays.pyに基づいて大幅に修正したが、正常に動作しないのでデバッグせよ
+
+2024-11-30
+kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位で取得した後に、それに含まれない時間帯をbusiness_daysとしているが、rolloverを計算する際に２営業日後の情報が必要
+なので、12/31など年末ギリギリのデータが来たときに、その２営業日後が正しく計算できない可能性があるので、修正せよ
+
+2024-12-1
+ロスカットが実行される場合にswap_valueが正しく計算されない模様。値が0になってしまうので、おそらくswap_value計算時のget_total_swap_pointsメソッド周りでエラーがあると思われる
