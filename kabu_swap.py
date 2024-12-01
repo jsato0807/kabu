@@ -26,8 +26,8 @@ def timing_decorator(func):
 
 
 class SwapCalculator:
-    #self.NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
-    NY_CLOSE_TIME = time(7, 0)  # NYクローズの時刻は午後5時で、それを日本時間に直すと14時間後の午前7時、oanda証券のスワップカレンダーが日本時間を基準としているので日本時間で計算すべし
+    NY_CLOSE_TIME = time(17, 0)  # NYクローズの時刻は午後5時（夏時間・冬時間は自動調整）
+    #NY_CLOSE_TIME = time(7, 0)  # NYクローズの時刻は午後5時で、それを日本時間に直すと14時間後の午前7時、oanda証券のスワップカレンダーが日本時間を基準としているので日本時間で計算すべし
     #NY_TIMEZONE = pytz.timezone("America/New_York")  # ニューヨーク時間帯
     JP_TIMEZONE = pytz.timezone("Asia/Tokyo")
     original_timezone = pytz.utc
@@ -49,7 +49,6 @@ class SwapCalculator:
     }
     def __init__(self, website, pair, start_date, end_date, interval="1d"):
         self.timezones = self.get_timezones_from_pair(pair)
-        self.each_holidays = self.get_holidays_from_pair(pair,start_date,end_date)  # 祝日データをインスタンスに保持
         self.website = website
 
         if website == "minkabu":
@@ -92,35 +91,45 @@ class SwapCalculator:
 
         # 祝日を保持する辞書
         holidays_dict = {}
-        years = list(range(start_date.year, end_date.year + 1))
+        start_date = start_date -timedelta(days=1)
+        end_date = end_date + timedelta(days=1)
+        years = list(range(start_date.year - 1, end_date.year + 1))
+
 
         # ベース通貨とクオート通貨それぞれの祝日を追加
+        i = 0
         for currency in currencies:
             # 例外処理をチェック
             country_code = exceptions.get(currency, currency[:2])
+            print(country_code)
             if country_code:  # Noneの場合はスキップ
-                holidays_dict[currency] = sorted(holidays.CountryHoliday(country_code,years=years).keys())
+                start_date = start_date.astimezone(pytz.timezone(self.timezones[i]))
+                end_date = end_date.astimezone(pytz.timezone(self.timezones[i]))
+                start_date_date = start_date.date()
+                end_date_date = end_date.date()
+                holidays_dict[currency] = sorted([
+                d for d in holidays.CountryHoliday(country_code,years=years).keys() if start_date_date <= d <= end_date_date
+            ])
+            i += 1
+
 
         return holidays_dict
 
-    # 祝日をチェックするメソッド
-    def is_holiday(self, date, currency):
-        date = date.date()
-        return date in self.each_holidays[currency]
 
     def is_ny_business_day(self, date):
+        date = date.astimezone(pytz.timezone('America/New_York'))
         """
         ニューヨーク時間で、日曜日17:00〜金曜日16:59の間（日本時間では月曜日7:00~土曜日6:59）であればTrue、それ以外はFalseを返す関数。
         """
 
         # 月曜日7:00以降、または月〜金曜日、土曜日7:00前は営業日
-        if date.weekday() == 0 and date.time() < self.NY_CLOSE_TIME: # 月曜日の7:00前
+        if date.weekday() == 6 and date.time() < self.NY_CLOSE_TIME: # 日曜日の17:00前
             return False
-        elif date.weekday() == 0 and date.time() >= self.NY_CLOSE_TIME:
+        elif date.weekday() == 6 and date.time() >= self.NY_CLOSE_TIME:
             return True
-        elif date.weekday() in [1, 2, 3, 4]:  # 月〜金曜日
+        elif date.weekday() in [0, 1, 2, 3]:  # 月〜木曜日
             return True
-        elif date.weekday() == 5 and date.time() < self.NY_CLOSE_TIME:  # 土曜日7:00前
+        elif date.weekday() == 4 and date.time() < self.NY_CLOSE_TIME:  # 金曜日17:00前
             return True
 
         # その他（営業日外）
@@ -129,15 +138,16 @@ class SwapCalculator:
     def convert_ny_close_to_local(self, holiday_date, timezone_str):
         """ニューヨーク時間17:00を指定されたタイムゾーンに変換"""
         local_timezone = pytz.timezone(timezone_str)
+        holiday_date = datetime.combine(holiday_date, time(0, 0))
+        holiday_date = local_timezone.localize(holiday_date)
 
-        # UTC基準でのNYクローズ（17:00または18:00）
-        utc_start = pytz.utc.localize(datetime.combine(holiday_date, datetime.min.time()))
-
-        # UTC基準で、NYクローズ時間（17:00 EST or 18:00 EDT）を設定
-        ny_close_utc = utc_start + timedelta(hours=22)
+        # NYクローズ時間をNewyork時間で設定(NYクローズはサマータイムの有無に関わらずnewyork時間では17:00で変わらないからこれを基準とする)
+        ny_timezone = pytz.timezone("America/New_York")
+        ny_start = holiday_date.astimezone(ny_timezone)
+        ny_start = ny_start.replace(hour=17, minute=0, second=0)
 
         # 現地タイムゾーンに変換
-        local_start = ny_close_utc.astimezone(local_timezone)
+        local_start = ny_start.astimezone(local_timezone)
 
         local_end = local_start + timedelta(hours=23, minutes=59)
 
@@ -154,7 +164,6 @@ class SwapCalculator:
             for holiday_date in holidays:
                 start_time, end_time = self.convert_ny_close_to_local(holiday_date, timezone)
                 holiday_time_ranges[currency] = holiday_time_ranges.get(currency, []) + [(start_time, end_time)]
-
         return holiday_time_ranges
 
     # 2営業日後の日付を計算するメソッド
@@ -180,7 +189,7 @@ class SwapCalculator:
                 if not any(holiday_start <= date.astimezone(pytz.timezone(self.timezones[1])) <= holiday_end for holiday_start, holiday_end in holiday_time_ranges[currencies[1]]):
                 
                     # ニューヨーク時間基準で営業日かつ祝日でない場合
-                    if self.is_ny_business_day(date.astimezone(pytz.timezone('Asia/Tokyo'))):
+                    if self.is_ny_business_day(date):
                         business_days_dict[date] = True
     
         return business_days_dict
@@ -217,11 +226,10 @@ class SwapCalculator:
     def calculate_rollover_days(self, open_date, current_date, trading_days_set):
         try:
             rollover_days = (self.add_business_days(current_date, 2, trading_days_set, "1d") - self.add_business_days(open_date, 2, trading_days_set, "1d")).days
-            print(rollover_days)
 
 
-            #open_date = open_date.astimezone(self.NY_TIMEZONE)
-            #current_date = current_date.astimezone(self.NY_TIMEZONE)
+            open_date = open_date.astimezone(pytz.timezone("America/New_York"))
+            current_date = current_date.astimezone(pytz.timezone("America/New_York"))
             open_time = open_date.time()
             current_time = current_date.time()
 
@@ -339,7 +347,7 @@ class SwapCalculator:
                 return swap_value * order_size / self.per_order_size    #2019年4月以降はoanda証券のサイトにあるデータはrollover込みの値なのでこれで良いが、それ以前はないので、スワップポイントを計算で求めないといけないので、rollover_daysを掛け合わせないといけない
 
 
-    def get_reference_date(self,dt_jst):
+    def get_reference_date(self,dt):
         """
         指定された日時に対して、7:00～翌日6:59の範囲で対応する基準日を返す。
 
@@ -352,22 +360,25 @@ class SwapCalculator:
         # 日本時間（JST）のタイムゾーンを設定
         #jst = pytz.timezone("Asia/Tokyo")
         try:
-            dt_jst = dt_jst.astimezone(pytz.timezone('Asia/Tokyo'))
+            dt = dt.astimezone(pytz.timezone('America/New_York'))
         except:
             pass
 
         # 入力日時を日本時間に変換（念のためタイムゾーンを揃える）
-        if dt_jst.tzinfo is None:
+        if dt.tzinfo is None:
             raise ValueError("入力日時にはタイムゾーンが必要です。")
         #dt_jst = dt.astimezone(jst)
 
         # 時刻を判定して基準日を計算
-        if dt_jst.time() < self.NY_CLOSE_TIME:
-            # 7:00未満の場合は前日が基準日
-            reference_date = (dt_jst - timedelta(days=1)).date()
+        if dt.time() < self.NY_CLOSE_TIME:
+            # 17:00未満の場合は前日が基準日
+            reference_date = dt-timedelta(days=1)
         else:
-            # 7:00以降の場合は当日が基準日
-            reference_date = dt_jst.date()
+            # 17:00以降の場合は当日が基準日
+            reference_date = dt
+
+        reference_date = reference_date.astimezone(pytz.timezone('Asia/Tokyo'))
+        reference_date = reference_date.astimezone(pytz.timezone('Asia/Tokyo')).date()
 
         return reference_date
 
@@ -663,20 +674,23 @@ if __name__ == "__main__":
     jst = pytz.timezone("Asia/Tokyo")
     
     # 日本時間で日時を設定（タイムゾーンを正しく設定）
-    start_date = jst.localize(datetime(2024, 9, 24, 7, 2))
-    end_date = jst.localize(datetime(2024, 9, 25, 7, 2))
     NY_TIMEZONE = pytz.timezone("America/New_York") 
     JP_TIMEZONE = pytz.timezone("Asia/Tokyo")
 
-    print("ny_timezone and jp_timezone")
-    print(start_date.astimezone(NY_TIMEZONE))
-    print(start_date.astimezone(JP_TIMEZONE))
-    print(end_date.astimezone(NY_TIMEZONE))
-    print(end_date.astimezone(JP_TIMEZONE))
-    print("\n")
+    #print("ny_timezone and jp_timezone")
+    #print(start_date.astimezone(NY_TIMEZONE))
+    #print(start_date.astimezone(JP_TIMEZONE))
+    #print(end_date.astimezone(NY_TIMEZONE))
+    #print(end_date.astimezone(JP_TIMEZONE))
+    #print("\n")
 
+    start_date = jst.localize(datetime(2024, 9, 3, 0, 0))
+    end_date = jst.localize(datetime(2024, 9, 26, 23, 59))
     calculator = SwapCalculator("oanda", pair, start_date, end_date,interval="M1")
 
+
+    start_date = jst.localize(datetime(2024, 9, 20, 6, 2))
+    end_date = jst.localize(datetime(2024, 9, 21, 6, 2))
     total_swap_points = calculator.get_total_swap_points(pair, "Buy", start_date, end_date, order_size, [])
     print(total_swap_points)
 
