@@ -212,6 +212,10 @@ class SwapCalculator:
             start_datetime = start_datetime.astimezone(pytz.utc)
         except:
             pass
+
+        if interval == "M1":
+            interval = "1m"
+        
         current_datetime = start_datetime
         added_units = 0
 
@@ -315,13 +319,6 @@ class SwapCalculator:
         return rollover_days
 
     def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
-        try:
-            jst = pytz.timezone("Asia/Tokyo")
-            # 日本時間で日時を設定（タイムゾーンを正しく設定）
-            open_date = jst.localize(open_date)
-            current_date = jst.localize(current_date)
-        except:
-            pass
 
         trading_days_set = set(trading_days)
         rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set)
@@ -343,25 +340,25 @@ class SwapCalculator:
 
                 # open_date から current_date までの日付をループ
                 current = open_date
-                while self.get_reference_date(current) < self.get_reference_date(current_date):
-                    #date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
-                    date_str = self.get_reference_date(current).strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
+                while self.get_ny_business_date(current) < self.get_ny_business_date(current_date):
+                    date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
+                    #date_str = self.get_ny_business_date(current).strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
                     swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
                     current += timedelta(days=1)  # 次の日に進める
 
                 return swap_value * order_size / self.per_order_size    #2019年4月以降はoanda証券のサイトにあるデータはrollover込みの値なのでこれで良いが、それ以前はないので、スワップポイントを計算で求めないといけないので、rollover_daysを掛け合わせないといけない
 
 
-    def get_reference_date(self,dt):
-        """
-        指定された日時に対して、7:00～翌日6:59の範囲で対応する基準日を返す。
+    def get_ny_business_date(self,dt):
+        
+        #指定された日時に対して、7:00～翌日6:59の範囲で対応する基準日を返す。
 
-        Args:
-            dt (datetime): 処理対象の日時（タイムゾーン付き）
+        #Args:
+        #    dt (datetime): 処理対象の日時（タイムゾーン付き）
 
-        Returns:
-            datetime.date: 基準日の日付
-        """
+        #Returns:
+        #    datetime.date: 基準日の日付
+        
         # 日本時間（JST）のタイムゾーンを設定
         #jst = pytz.timezone("Asia/Tokyo")
         try:
@@ -377,13 +374,12 @@ class SwapCalculator:
         # 時刻を判定して基準日を計算
         if dt.time() < self.NY_CLOSE_TIME:
             # 17:00未満の場合は前日が基準日
-            reference_date = dt-timedelta(days=1)
+            reference_date = dt
         else:
             # 17:00以降の場合は当日が基準日
-            reference_date = dt
+            reference_date = dt+timedelta(days=1)
 
-        reference_date = reference_date.astimezone(pytz.timezone('Asia/Tokyo'))
-        reference_date = reference_date.astimezone(pytz.timezone('Asia/Tokyo')).date()
+        reference_date  =reference_date.date()
 
         return reference_date
 
@@ -672,6 +668,7 @@ class ScrapeFromOanda:
 
 if __name__ == "__main__":
     order_size = 1000
+    #"""
     pair = "USDJPY=X"
 
     #this time is utc
@@ -694,10 +691,20 @@ if __name__ == "__main__":
     calculator = SwapCalculator("oanda", pair, start_date, end_date,interval="M1")
 
 
-    start_date = jst.localize(datetime(2024, 9, 20, 6, 2))
-    end_date = jst.localize(datetime(2024, 9, 21, 6, 2))
+    start_date = jst.localize(datetime(2024, 9, 23, 6, 2))
+    end_date = jst.localize(datetime(2024, 9, 24, 6, 2))
     total_swap_points = calculator.get_total_swap_points(pair, "Buy", start_date, end_date, order_size, [])
     print(total_swap_points)
+    #"""
+    #import datetime as dt_library
+    #start_date = datetime(2021,1,4,0,0,tzinfo=dt_library.timezone.utc)
+    #end_date = datetime(2021,1,5,5,55,tzinfo=dt_library.timezone.utc)
+    #pair = "EURGBP=X"
+    #calculator = SwapCalculator("oanda", pair, start_date, end_date,interval="M1")
+#
+    #total_swap_points = calculator.get_total_swap_points(pair, "Buy-Forced-Closed", start_date, end_date, order_size, [])
+    #print(total_swap_points)
+
 
     #a = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 4), datetime(2024, 6, 10), order_size, [])
     #b = calculator.get_total_swap_points('USDJPY=X', "Buy", datetime(2024, 6, 11), datetime(2024, 6, 11), order_size, [])
