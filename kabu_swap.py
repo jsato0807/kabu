@@ -417,6 +417,18 @@ class SwapCalculator:
 
         return reference_date
 
+    def crossover_ny_close(self,start_date,end_date):
+        if (end_date - start_date).days >= 1:
+            return True
+        else:
+            start_date = start_date.astimezone(pytz.timezone('America/New_York'))
+            end_date  = end_date.astimezone(pytz.timezone('America/New_York'))
+
+            if start_date.time() < time(17,0) and end_date.time() >= time(17,0):
+                 return True
+            else:
+                 return False
+
 class ScrapeFromMinkabu:
     def __init__(self):
         url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
