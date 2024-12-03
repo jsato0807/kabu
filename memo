@@ -172,3 +172,10 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 
 2024-12-1
 ロスカットが実行される場合にswap_valueが正しく計算されない模様。値が0になってしまうので、おそらくswap_value計算時のget_total_swap_pointsメソッド周りでエラーがあると思われる
+
+2024-12-3
+    kabu_swap.pyのget_total_swap_pointsメソッドで、ロールオーバーを計算する前に、open_dateとcurrent_dateを、pairで指定される二カ国の現地時間でのNYクローズと比較することで、それを跨いでいない場合はそもそもロールオーバーは０に決まっているので計算する必要がない、という条件分岐を追加せよ
+    →crossover_ny_closeメソッドをSwapCalculatorに追加した。
+    https://www.oanda.jp/course/ty3/swap が見れなくなっているので、ny4に移行したほうがいいかも。さらに２つの違いの詳細を把握せよ
+    →oanda証券のミスだったので、現在は復旧したためとりあえず問題なし。
+    →pairの右側の単位でスワップポイントが表示されている(例えば、USDJPYならば円)ので、単位を合わせよ。
