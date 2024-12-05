@@ -48,7 +48,7 @@ class SwapCalculator:
         'NOK': 'Europe/Oslo',
         'SEK': 'Europe/Stockholm',
     }
-    def __init__(self, website, pair, start_date, end_date, interval="1d"):
+    def __init__(self, website, pair, start_date, end_date):
         self.timezones = self.get_timezones_from_pair(pair)
         self.website = website
 
@@ -743,7 +743,7 @@ if __name__ == "__main__":
 
     start_date = jst.localize(datetime(2024, 9, 3, 0, 0))
     end_date = jst.localize(datetime(2024, 9, 26, 23, 59))
-    calculator = SwapCalculator("minkabu", pair, start_date, end_date,interval="M1")
+    calculator = SwapCalculator("minkabu", pair, start_date, end_date)
 
 
     start_date = jst.localize(datetime(2024, 9, 18, 14, 2))
@@ -755,7 +755,7 @@ if __name__ == "__main__":
     start_date = datetime(2021,1,4,21,59,tzinfo=dt_library.timezone.utc)
     end_date = datetime(2021,1,5,22,0,tzinfo=dt_library.timezone.utc)
     pair = "EURGBP=X"
-    calculator = SwapCalculator("minkabu", pair, start_date, end_date,interval="M1")
+    calculator = SwapCalculator("minkabu", pair, start_date, end_date)
 
     total_swap_points = calculator.get_total_swap_points(pair, "Buy-Forced-Closed", start_date, end_date, order_size, [])
     print(total_swap_points)
@@ -765,7 +765,7 @@ if __name__ == "__main__":
     #end_date = nzd.localize(datetime(2024,1,11,0,0))
 #
     #pair = "AUDNZD=X"
-    #calculator = SwapCalculator("oanda", pair, start_date, end_date,interval="M1")
+    #calculator = SwapCalculator("oanda", pair, start_date, end_date)
     #total_swap_points = calculator.get_total_swap_points(pair, "Buy-Forced-Closed", start_date, end_date, order_size, [])
     #print(total_swap_points)
 #
