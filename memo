@@ -179,3 +179,6 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     https://www.oanda.jp/course/ty3/swap が見れなくなっているので、ny4に移行したほうがいいかも。さらに２つの違いの詳細を把握せよ
     →oanda証券のミスだったので、現在は復旧したためとりあえず問題なし。
     →pairの右側の単位でスワップポイントが表示されている(例えば、USDJPYならば円)ので、単位を合わせよ。
+
+2024-12-5
+    2019-4-1以前ではスワップカレンダーがないので、ScrapeFromOanda内で、計算するメソッドを定義し、その関数をSwapCalculatorのinitのところでwebsite=="theory"で動作するようにもせよ
