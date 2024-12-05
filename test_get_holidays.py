@@ -49,12 +49,16 @@ class HolidayProcessor:
 
     def convert_ny_close_to_local(self, holiday_date, timezone_str):
         """ニューヨーク時間17:00を指定されたタイムゾーンに変換"""
-        ny_timezone = pytz.timezone("America/New_York")
         local_timezone = pytz.timezone(timezone_str)
 
-        ny_start = ny_timezone.localize(datetime.combine(holiday_date, datetime.min.time()) + timedelta(hours=17)) - timedelta(days=1)
+        # UTC基準でのNYクローズ（17:00または18:00）
+        utc_start = pytz.utc.localize(datetime.combine(holiday_date, datetime.min.time()))
 
-        local_start = ny_start.astimezone(local_timezone)
+        # UTC基準で、NYクローズ時間（17:00 EST or 18:00 EDT）を設定
+        ny_close_utc = utc_start + timedelta(hours=22)
+
+        # 現地タイムゾーンに変換
+        local_start = ny_close_utc.astimezone(local_timezone)
 
         local_end = local_start + timedelta(hours=23, minutes=59)
 
@@ -220,8 +224,8 @@ calculator = BusinessDayCalculatorWithHolidayProcessor(holiday_processor, pair, 
 
 #start_datetime = datetime(2024, 11, 5, 9, 0, tzinfo=pytz.utc)  # 任意の開始日時
 japan_tz = pytz.timezone('Asia/Tokyo')
-start_datetime = japan_tz.localize(datetime(2024, 9, 18, 6, 59))
-end_datetime = japan_tz.localize(datetime(2024, 9 ,19, 7, 0))
+start_datetime = japan_tz.localize(datetime(2024, 9, 20, 7, 0))
+end_datetime = japan_tz.localize(datetime(2024, 9 , 21, 7, 0))
 #new_datetime = calculator.add_business_days(start_datetime, 1, "1m")
 #new_datetime = calculator.add_business_days(start_datetime, 1, "1d")
 rollover_days = calculator.add_business_days(end_datetime, 2, "1d") - calculator.add_business_days(start_datetime, 2, "1d")
