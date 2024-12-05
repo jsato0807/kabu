@@ -1381,16 +1381,16 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 
 
-pair = 'EURGBP=X'
-interval="M1"
-website = "oanda" #minkabu or  oanda
-end_date = datetime.strptime("2021-01-05 05:51:00","%Y-%m-%d %H:%M:%S")#datetime.now() - timedelta(days=7)
-#end_date = datetime.strptime("2021-04-01","%Y-%m-%d")#datetime.now() - timedelta(days=7)
-#start_date = datetime.strptime("2019-09-01","%Y-%m-%d")#datetime.now() - timedelta(days=14)
-start_date = datetime.strptime("2021-01-04","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+pair = 'AUDNZD=X'
+interval="1d"
+website = "minkabu" #minkabu or  oanda
+#end_date = datetime.strptime("2021-01-05 05:51:00","%Y-%m-%d %H:%M:%S")#datetime.now() - timedelta(days=7)
+end_date = datetime.strptime("2019-11-30","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+start_date = datetime.strptime("2019-11-02","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+#start_date = datetime.strptime("2021-01-04","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 100000
-grid_start = 0.86
-grid_end = 0.91
+grid_start = 1.02
+grid_end = 1.14
 strategies = ['long_only']
 entry_intervals = [0]  # エントリー間隔
 total_thresholds = [10000]  # 全ポジション決済の閾値
@@ -1402,10 +1402,10 @@ if __name__ == "__main__":
     #order_sizes = [1000,2000,3000,4000,5000,6000,7000,8000,9000,10000]
     order_sizes = [10000]
     num_traps_options = [100]
-    profit_widths = [100]
+    profit_widths = [0.01]
     densities = [10]
 
-    calculator = SwapCalculator(website,pair,start_date,end_date,interval=interval)
+    calculator = SwapCalculator(website,pair,start_date,end_date)
     
     results = []
     
