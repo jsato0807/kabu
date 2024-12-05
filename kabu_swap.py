@@ -13,6 +13,7 @@ from selenium.webdriver.support.ui import Select
 from webdriver_manager.chrome import ChromeDriverManager
 import os
 import pandas as pd
+from kabu_library import fetch_currency_data
 
 
 def timing_decorator(func):
@@ -54,6 +55,11 @@ class SwapCalculator:
         if website == "minkabu":
             self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000 #MINKABU
             self.fetcher = ScrapeFromMinkabu()
+            currencies = self.arrange_pair_format(pair)
+            if not currencies[1] == "JPY":
+                self.unit_conversion_data = fetch_currency_data(currencies[1]+"JPY=X", start_date, end_date, "1d")
+            else:
+                self.unit_conversion_data = None
         elif website == "oanda":
             self.per_order_size = 100000 if pair in ['ZARJPY=X','HKDJPY=X'] else 10000
             self.fetcher = ScrapeFromOanda(pair,start_date,end_date)
@@ -331,6 +337,9 @@ class SwapCalculator:
                 if pair not in self.swap_points_dict:
                     return 0.0
                 swap_value = self.fetcher.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
+                if not self.unit_conversion_data is None:
+                    current_date_str = current_date.strftime("%Y-%m-%d")
+                    swap_value /= self.unit_conversion_data[current_date_str]
                 return swap_value * rollover_days * order_size / self.per_order_size
 
             if self.website == "oanda":
@@ -714,7 +723,7 @@ class ScrapeFromOanda:
 
 if __name__ == "__main__":
     order_size = 1000
-    #"""
+    """
     pair = "USDJPY=X"
 
     #this time is utc
@@ -734,22 +743,22 @@ if __name__ == "__main__":
 
     start_date = jst.localize(datetime(2024, 9, 3, 0, 0))
     end_date = jst.localize(datetime(2024, 9, 26, 23, 59))
-    calculator = SwapCalculator("oanda", pair, start_date, end_date,interval="M1")
+    calculator = SwapCalculator("minkabu", pair, start_date, end_date,interval="M1")
 
 
     start_date = jst.localize(datetime(2024, 9, 18, 14, 2))
     end_date = jst.localize(datetime(2024, 9, 19, 14, 2))
     total_swap_points = calculator.get_total_swap_points(pair, "Buy", start_date, end_date, order_size, [])
     print(total_swap_points)
-    #"""
-    #import datetime as dt_library
-    #start_date = datetime(2021,1,4,21,59,tzinfo=dt_library.timezone.utc)
-    #end_date = datetime(2021,1,5,22,0,tzinfo=dt_library.timezone.utc)
-    #pair = "EURGBP=X"
-    #calculator = SwapCalculator("oanda", pair, start_date, end_date,interval="M1")
-#
-    #total_swap_points = calculator.get_total_swap_points(pair, "Buy-Forced-Closed", start_date, end_date, order_size, [])
-    #print(total_swap_points)
+    """
+    import datetime as dt_library
+    start_date = datetime(2021,1,4,21,59,tzinfo=dt_library.timezone.utc)
+    end_date = datetime(2021,1,5,22,0,tzinfo=dt_library.timezone.utc)
+    pair = "EURGBP=X"
+    calculator = SwapCalculator("minkabu", pair, start_date, end_date,interval="M1")
+
+    total_swap_points = calculator.get_total_swap_points(pair, "Buy-Forced-Closed", start_date, end_date, order_size, [])
+    print(total_swap_points)
 
     #nzd = pytz.timezone('Pacific/Auckland')
     #start_date = nzd.localize(datetime(2024,1,10,0,0))
