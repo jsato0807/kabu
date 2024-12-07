@@ -1,11 +1,12 @@
 from kabu_oanda_swapscraping import scrape_from_oanda
 from kabu_bis_intrestrate import filter_country_data
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import os
+import pytz
 
 # Pandasの表示設定
 pd.set_option('display.max_columns', None)
@@ -15,6 +16,21 @@ pd.set_option('display.max_rows', 100)
 
 
 class Compare_Swap:
+    CURRENCY_TIMEZONES = {
+        'JPY': 'Asia/Tokyo',
+        'ZAR': 'Africa/Johannesburg',
+        'MXN': 'America/Mexico_City',
+        'TRY': 'Europe/Istanbul',
+        'CHF': 'Europe/Zurich',
+        'NZD': 'Pacific/Auckland',
+        'AUD': 'Australia/Sydney',
+        'EUR': 'Europe/Berlin',
+        'GBP': 'Europe/London',
+        'USD': 'America/New_York',
+        'CAD': 'America/Toronto',
+        'NOK': 'Europe/Oslo',
+        'SEK': 'Europe/Stockholm',
+    }
     def __init__(self,pair,start_date,final_end,order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month"):
         directory = './csv_dir'
         rename_pair = pair.replace("/", "")
@@ -73,11 +89,26 @@ class Compare_Swap:
 
         self.interest_rates = interest_rates
 
+    def change_utc_to_localtimezone(self,currency,date):
+        try:
+            date = date.strftime("%Y-%m-%d")
+        except:
+            pass
+        utc = pytz.utc
+        utc_datetime = utc.localize(datetime.strptime(date, "%Y-%m-%d"))
+        local_timezone = pytz.timezone(self.CURRENCY_TIMEZONES.get(currency))
+        local_datetime = utc_datetime.astimezone(local_timezone)
+        return local_datetime
+
+
     def download_interest_rate(self, currency):
         country_name = self.currency_code_to_country_name(currency)
         directory = './csv_dir'
-        target_start = datetime.strptime(self.start_date, '%Y-%m-%d').date()
-        target_end = datetime.strptime(self.final_end, '%Y-%m-%d').date()
+
+        start_date = self.change_utc_to_localtimezone(currency,self.start_date)
+        final_end =  self.change_utc_to_localtimezone(currency,self.final_end)    
+        target_start = start_date.date()
+        target_end = final_end.date()
 
 
         # 条件に合致するファイルの検索
@@ -190,7 +221,7 @@ class Compare_Swap:
             cumulative_avg_sell = pd.Series(sell_values).mean()
 
             print(f"executing theorys from {start_date} to {current_end}...")
-            theory = self.calculate_theory(start_date,current_end)
+            theory = theory = sum(self.calculate_theory(date,start_date,current_end) for date in (start_date + timedelta(days=i) for i in range((current_end - start_date).days)))/(current_end-start_date).days
 
             results.append({
             "period": current_end,  # ここをdatetimeオブジェクトに変更
@@ -229,7 +260,7 @@ class Compare_Swap:
             #print(f"first_key:{first_key}")
             #print(f"last_key:{last_key}")
 
-            theory = self.calculate_theory(first_key,last_key)
+            theory = theory = sum(self.calculate_theory(date,first_key,last_key) for date in (first_key + timedelta(days=i) for i in range((last_key - first_key).days)))/(last_key-first_key).days
 
             
 
@@ -244,20 +275,47 @@ class Compare_Swap:
 
         return results
 
-    def calculate_theory(self,current_start,current_end):
+
+    def get_interest_rate_list(self,current_start, current_end):
         pair_splits = self.pair.split("/")
-        AVERAGES = []
+        interest_list = []
         for currency in pair_splits:
+            current_start = self.change_utc_to_localtimezone(currency,current_start)
+            current_end = self.change_utc_to_localtimezone(currency,current_end)
+            current_start = current_start.strftime("%Y-%m-%d")
+            current_end = current_end.strftime("%Y-%m-%d")
+
             interest_rate = self.interest_rates[currency]
+            #print(interest_rate)
+            #exit()
             interest_rate['TIME_PERIOD:Time period or range'] = pd.to_datetime(interest_rate['TIME_PERIOD:Time period or range'])
 
 
 
             filtered_interest_rate = interest_rate[(current_start <= interest_rate['TIME_PERIOD:Time period or range']) & (interest_rate['TIME_PERIOD:Time period or range'] <= current_end)]
-            average_interest = filtered_interest_rate['OBS_VALUE:Observation Value'].mean()
-            AVERAGES.append(average_interest)
 
-        theory = (AVERAGES[0] - AVERAGES[1]) * self.order_size / 100 * 1 / 365
+            # DataFrameに変換
+            df = pd.DataFrame(filtered_interest_rate)
+
+            # 必要な列を取り出す
+            result = df[["TIME_PERIOD:Time period or range", "OBS_VALUE:Observation Value"]]
+            result_dict = result.set_index('TIME_PERIOD:Time period or range')['OBS_VALUE:Observation Value'].to_dict()
+
+            interest_list.append(result_dict)
+        return interest_list
+
+    def calculate_theory(self,date,current_start,current_end):
+        interest_list = self.get_interest_rate_list(current_start,current_end)
+        pair_splits = self.pair.split("/")
+        date_0 = self.change_utc_to_localtimezone(pair_splits[0],date)
+        date_1 = self.change_utc_to_localtimezone(pair_splits[1],date)
+        date_0 = date_0.date()
+        date_1 = date_1.date()
+        date_0 = pd.Timestamp(date_0)
+        date_1 = pd.Timestamp(date_1)
+
+        theory = (interest_list[0].get(date_0) - interest_list[1].get(date_1)) * self.order_size / 100 * 1 / 365
+
 
         return theory
 
@@ -274,7 +332,7 @@ class Compare_Swap:
 
             avg_buy, avg_sell = self.calculate_swap_averages(current_start.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
 
-            theory = self.calculate_theory(current_start,current_end)
+            theory = sum(self.calculate_theory(date,current_start,current_end) for date in (current_start + timedelta(days=i) for i in range((current_end - current_start).days)))/(current_end-current_start).days
 
             results.append({
                 "period": current_start,  # ここをdatetimeオブジェクトに変更
