@@ -182,3 +182,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 
 2024-12-5
     2019-4-1以前ではスワップカレンダーがないので、ScrapeFromOanda内で、計算するメソッドを定義し、その関数をSwapCalculatorのinitのところでwebsite=="theory"で動作するようにもせよ
+
+
+2024-12-7
+    kabu_compare_bis_intrestrate_and_oandascraping.py で累積平均や、移動平均の部分でもtheoryを普通の平均で計算してしまっているので、修正
