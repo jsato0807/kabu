@@ -15,9 +15,15 @@ pd.set_option('display.max_rows', 100)
 
 
 class Compare_Swap:
-    def __init__(self,pair,start_date,final_end,order_size,months_interval,window_size=30,cumulative_period=1,cumulative_unit="month"):
+    def __init__(self,pair,start_date,final_end,order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month"):
         directory = './csv_dir'
         rename_pair = pair.replace("/", "")
+        
+        try:
+            start_date = start_date.strftime("%Y-%m-%d")
+            final_end = final_end.strftime("%Y-%m-%d")
+        except:
+            pass
         target_start = datetime.strptime(start_date, '%Y-%m-%d')
         target_end = datetime.strptime(final_end, '%Y-%m-%d')
         
@@ -105,7 +111,7 @@ class Compare_Swap:
         currency_map = {
             'USD': 'United_States',
             'JPY': 'Japan',
-            'EUR': 'Eurozone',
+            'EUR': 'Euro_area',
             'GBP': 'United_Kingdom',
             'AUD': 'Australia',
             'CAD': 'Canada',
@@ -251,7 +257,7 @@ class Compare_Swap:
             average_interest = filtered_interest_rate['OBS_VALUE:Observation Value'].mean()
             AVERAGES.append(average_interest)
 
-        theory = (AVERAGES[0] - AVERAGES[1]) * order_size / 100 * 1 / 365
+        theory = (AVERAGES[0] - AVERAGES[1]) * self.order_size / 100 * 1 / 365
 
         return theory
 
