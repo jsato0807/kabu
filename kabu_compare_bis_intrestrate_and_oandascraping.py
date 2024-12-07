@@ -89,6 +89,8 @@ class Compare_Swap:
 
         self.interest_rates = interest_rates
 
+        self.interest_rate_list = self.get_interest_rate_list(self.start_date, self.final_end)
+
     def change_utc_to_localtimezone(self,currency,date):
         try:
             date = date.strftime("%Y-%m-%d")
@@ -221,7 +223,14 @@ class Compare_Swap:
             cumulative_avg_sell = pd.Series(sell_values).mean()
 
             print(f"executing theorys from {start_date} to {current_end}...")
-            theory = theory = sum(self.calculate_theory(date,start_date,current_end) for date in (start_date + timedelta(days=i) for i in range((current_end - start_date).days)))/(current_end-start_date).days
+            valid_theories = [
+                self.calculate_theory(date) 
+                for date in (start_date + timedelta(days=i) for i in range((current_end - start_date).days)) 
+                if (value := self.calculate_theory(date)) is not None
+                ]
+
+            # valid_theoriesが空の場合の処理
+            theory = sum(valid_theories) / len(valid_theories) if valid_theories else 0
 
             results.append({
             "period": current_end,  # ここをdatetimeオブジェクトに変更
@@ -257,10 +266,17 @@ class Compare_Swap:
             first_key = list(filtered_data.keys())[i]
             last_key = list(filtered_data.keys())[i+self.window_size]
 
-            #print(f"first_key:{first_key}")
-            #print(f"last_key:{last_key}")
+            current_start = datetime.strptime(first_key, "%Y-%m-%d")
+            current_end = datetime.strptime(last_key, "%Y-%m-%d")
 
-            theory = sum(self.calculate_theory(date,first_key,last_key) for date in (first_key + timedelta(days=i) for i in range((last_key - first_key).days)))/(last_key-first_key).days
+            valid_theories = [
+                self.calculate_theory(date) 
+                for date in (current_start + timedelta(days=i) for i in range((current_end - current_start).days)) 
+                if (value := self.calculate_theory(date)) is not None
+                ]
+
+            # valid_theoriesが空の場合の処理
+            theory = sum(valid_theories) / len(valid_theories) if valid_theories else 0
 
             
 
@@ -304,8 +320,8 @@ class Compare_Swap:
             interest_list.append(result_dict)
         return interest_list
 
-    def calculate_theory(self,date,current_start,current_end):
-        interest_list = self.get_interest_rate_list(current_start,current_end)
+    def calculate_theory(self,date):
+        interest_list = self.interest_rate_list
         pair_splits = self.pair.split("/")
         date_0 = self.change_utc_to_localtimezone(pair_splits[0],date)
         date_1 = self.change_utc_to_localtimezone(pair_splits[1],date)
@@ -314,7 +330,10 @@ class Compare_Swap:
         date_0 = pd.Timestamp(date_0)
         date_1 = pd.Timestamp(date_1)
 
-        theory = (interest_list[0].get(date_0) - interest_list[1].get(date_1)) * self.order_size / 100 * 1 / 365
+        try:
+            theory = (interest_list[0].get(date_0) - interest_list[1].get(date_1)) * self.order_size / 100 * 1 / 365
+        except:
+            theory = None
 
 
         return theory
@@ -332,7 +351,14 @@ class Compare_Swap:
 
             avg_buy, avg_sell = self.calculate_swap_averages(current_start.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
 
-            theory = sum(self.calculate_theory(date,current_start,current_end) for date in (current_start + timedelta(days=i) for i in range((current_end - current_start).days)))/(current_end-current_start).days
+            valid_theories = [
+                self.calculate_theory(date) 
+                for date in (current_start + timedelta(days=i) for i in range((current_end - current_start).days)) 
+                if (value := self.calculate_theory(date)) is not None
+                ]
+
+            # valid_theoriesが空の場合の処理
+            theory = sum(valid_theories) / len(valid_theories) if valid_theories else 0
 
             results.append({
                 "period": current_start,  # ここをdatetimeオブジェクトに変更
