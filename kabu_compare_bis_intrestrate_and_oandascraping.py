@@ -260,7 +260,7 @@ class Compare_Swap:
             #print(f"first_key:{first_key}")
             #print(f"last_key:{last_key}")
 
-            theory = theory = sum(self.calculate_theory(date,first_key,last_key) for date in (first_key + timedelta(days=i) for i in range((last_key - first_key).days)))/(last_key-first_key).days
+            theory = sum(self.calculate_theory(date,first_key,last_key) for date in (first_key + timedelta(days=i) for i in range((last_key - first_key).days)))/(last_key-first_key).days
 
             
 
