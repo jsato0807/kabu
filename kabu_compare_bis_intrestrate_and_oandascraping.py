@@ -188,7 +188,6 @@ class Compare_Swap:
         sell_values = [data['sell'] for date, data in filtered_data.items()]
         number_of_days = [data['number_of_days'] for date, data in filtered_data.items()]
 
-
         total_buy_swap = sum(buy_values)
         total_sell_swap = sum(sell_values)
         total_days = sum(number_of_days)
@@ -225,7 +224,7 @@ class Compare_Swap:
             print(f"executing theorys from {start_date} to {current_end}...")
             valid_theories = [
                 self.calculate_theory(date) 
-                for date in (start_date + timedelta(days=i) for i in range((current_end - start_date).days)) 
+                for date in (start_date + timedelta(days=i) for i in range((current_end - start_date).days + 1)) 
                 if (value := self.calculate_theory(date)) is not None
                 ]
 
@@ -271,7 +270,7 @@ class Compare_Swap:
 
             valid_theories = [
                 self.calculate_theory(date) 
-                for date in (current_start + timedelta(days=i) for i in range((current_end - current_start).days)) 
+                for date in (current_start + timedelta(days=i) for i in range((current_end - current_start).days + 1)) 
                 if (value := self.calculate_theory(date)) is not None
                 ]
 
@@ -353,7 +352,7 @@ class Compare_Swap:
 
             valid_theories = [
                 self.calculate_theory(date) 
-                for date in (current_start + timedelta(days=i) for i in range((current_end - current_start).days)) 
+                for date in (current_start + timedelta(days=i) for i in range((current_end - current_start).days + 1)) 
                 if (value := self.calculate_theory(date)) is not None
                 ]
 
@@ -430,7 +429,7 @@ def makegraph(arg1, arg2, results,graphname):
 if __name__ == "__main__":
     # 使用例
     pair = "USD/JPY"
-    start_date = "2019-04-01"
+    start_date = "2020-03-01"
     end_date = "2024-10-31"
     order_size = 10000 if pair != "ZAR/JPY" and pair != "HKD/JPY" else 100000
     months_interval = 1
