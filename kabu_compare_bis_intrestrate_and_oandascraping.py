@@ -14,7 +14,7 @@ pd.set_option('display.max_colwidth', None)
 pd.set_option('display.max_rows', 100)
 
 
-class ScrapeSwap:
+class Compare_Swap:
     def __init__(self,pair,start_date,final_end,order_size,months_interval,window_size=30,cumulative_period=1,cumulative_unit="month"):
         directory = './csv_dir'
         rename_pair = pair.replace("/", "")
@@ -345,7 +345,7 @@ if __name__ == "__main__":
     order_size = 10000 if pair != "ZAR/JPY" and pair != "HKD/JPY" else 100000
     months_interval = 1
 
-    scrapeswap = ScrapeSwap(pair,start_date,end_date, order_size, months_interval)
+    scrapeswap = Compare_Swap(pair,start_date,end_date, order_size, months_interval)
 
     comparison_df = scrapeswap.multiple_period_swap_comparison()
     print(comparison_df)
