@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import os
 import pytz
+import statistics
 
 # Pandasの表示設定
 pd.set_option('display.max_columns', None)
@@ -199,13 +200,13 @@ class Compare_Swap:
         return average_buy_swap, average_sell_swap
 
 
-    def calculate_swap_cumulative_averages(self):
-        start_date = datetime.strptime(self.start_date, "%Y-%m-%d")
+    def calculate_swap_cumulative_averages(self,start_date,final_end):
+        start_date = datetime.strptime(start_date, "%Y-%m-%d")
         current_end = start_date
-        final_end = datetime.strptime(self.final_end, "%Y-%m-%d")
+        final_end = datetime.strptime(final_end, "%Y-%m-%d")
         results = []
 
-        while current_end < final_end:
+        while current_end <= final_end:
             if self.cumulative_unit == "month":
                 current_end += relativedelta(months=self.cumulative_period) + relativedelta(days=-1)
             if self.cumulative_unit == "day":
@@ -243,10 +244,7 @@ class Compare_Swap:
         return results
 
 
-    def calculate_swap_moving_averages(self):
-        start_date = self.start_date
-        final_end = self.final_end
-    
+    def calculate_swap_moving_averages(self,start_date,final_end):    
         filtered_data = self.get_data_range(self.swap_data,start_date,final_end)
         buy_values = [data['buy'] for date, data in filtered_data.items()]
         sell_values = [data['sell'] for date, data in filtered_data.items()]
@@ -330,17 +328,17 @@ class Compare_Swap:
         date_1 = pd.Timestamp(date_1)
 
         try:
-            theory = (interest_list[0].get(date_0) - interest_list[1].get(date_1)) * self.order_size / 100 * 1 / 365
+            theory = (interest_list[0].get(date_0) - interest_list[1].get(date_1)) * self.order_size * 1 / 365
         except:
             theory = None
 
 
         return theory
 
-    def multiple_period_swap_comparison(self):
+    def multiple_period_swap_comparison(self,start_date,final_end):
     # 複数periodでのスワップポイント検証
-        current_start = datetime.strptime(self.start_date, "%Y-%m-%d")
-        final_end = datetime.strptime(self.final_end, "%Y-%m-%d")
+        current_start = datetime.strptime(start_date, "%Y-%m-%d")
+        final_end = datetime.strptime(final_end, "%Y-%m-%d")
         results = []
         while current_start < final_end:
             current_end = current_start + relativedelta(months=months_interval) + relativedelta(days=-1)
@@ -370,6 +368,25 @@ class Compare_Swap:
         comparison_df = pd.DataFrame(results)
         return comparison_df 
 
+
+    def calculate_theory_swap(self,start_date,end_date):
+        theory_averages = self.multiple_period_swap_comparison(self.start_date,self.end_date)
+        theory_moving_averages = self.calculate_swap_moving_averages(self.start_date,self.end_date)
+        theory_cumulative_averages = self.calculate_swap_cumulative_averages(self.start_date,self.end_date)
+
+        buy_avg = (statistics.mean(theory_moving_averages["moving_avg_buy"]) + statistics.mean(theory_cumulative_averages["cumulative_avg_buy"]) + statistics.mean(theory_averages["average_buy_swap"])) / 3
+        sell_avg = (statistics.mean(theory_moving_averages["moving_avg_sell"]) + statistics.mean(theory_cumulative_averages["cumulative_avg_sell"]) + statistics.mean(theory_averages["average_sell_swap"])) / 3
+        theory_avg = (statistics.mean(theory_moving_averages["theory"]) + statistics.mean(theory_cumulative_averages["theory"]) + statistics.mean(theory_averages["theory"])) / 3
+
+        buy_ratio = buy_avg/theory_avg
+        sell_ratio = sell_avg/theory_avg
+
+        buy_swap_theory = self.interest_rate_list * buy_ratio
+        sell_swap_theory = self.interest_rate_list * sell_ratio
+
+
+        return buy_swap_theory, sell_swap_theory
+    
 
 # グラフを作成
 def makegraph(arg1, arg2, results,graphname):
@@ -431,15 +448,15 @@ if __name__ == "__main__":
     pair = "USD/JPY"
     start_date = "2020-03-01"
     end_date = "2024-10-31"
-    order_size = 10000 if pair != "ZAR/JPY" and pair != "HKD/JPY" else 100000
+    order_size = 1000
     months_interval = 1
 
     scrapeswap = Compare_Swap(pair,start_date,end_date, order_size, months_interval)
 
-    comparison_df = scrapeswap.multiple_period_swap_comparison()
+    comparison_df = scrapeswap.multiple_period_swap_comparison(start_date,end_date)
     print(comparison_df)
-    cumulative_averages = scrapeswap.calculate_swap_cumulative_averages()
-    moving_averages = scrapeswap.calculate_swap_moving_averages()
+    cumulative_averages = scrapeswap.calculate_swap_cumulative_averages(start_date,end_date)
+    moving_averages = scrapeswap.calculate_swap_moving_averages(start_date,end_date)
 
     pair = pair.replace("/","")
     # 結果をCSVファイルとして保存
