@@ -166,6 +166,12 @@ class Compare_Swap:
     def get_data_range(self, data, current_start, current_end):
         #pay attention to data type; we should change the data type of current_start and current_end to strftime.
 
+        try:
+            current_start = current_start.strftime("%Y-%m-%d")
+            current_end = current_end.strftime("%Y-%m-%d")
+        except:
+            pass
+
         result = {}
         start_collecting = False
         for date, values in data.items():        
@@ -201,9 +207,12 @@ class Compare_Swap:
 
 
     def calculate_swap_cumulative_averages(self,start_date,final_end):
-        start_date = datetime.strptime(start_date, "%Y-%m-%d")
+        try:
+            start_date = datetime.strptime(start_date, "%Y-%m-%d")
+            final_end = datetime.strptime(final_end, "%Y-%m-%d")
+        except:
+            pass
         current_end = start_date
-        final_end = datetime.strptime(final_end, "%Y-%m-%d")
         results = []
 
         while current_end <= final_end:
@@ -244,14 +253,21 @@ class Compare_Swap:
         return results
 
 
-    def calculate_swap_moving_averages(self,start_date,final_end):    
+    def calculate_swap_moving_averages(self,start_date,final_end):
+        # window_size以下の長さしかbuy_valuesが持っていないとmean()とした時moving_avg_buyの長さが１となるため、for i in range(len(moving_avg_buy)-1)が0となり、resultsが空になるので以下のif文で例外処理
+
+        if (final_end - start_date).days < self.window_size:
+            window_size = (final_end - start_date) / 5
+        else:
+            window_size = self.window_size
+
         filtered_data = self.get_data_range(self.swap_data,start_date,final_end)
         buy_values = [data['buy'] for date, data in filtered_data.items()]
         sell_values = [data['sell'] for date, data in filtered_data.items()]
 
         # スライディングウィンドウ
-        moving_avg_buy = pd.Series(buy_values).rolling(window=self.window_size).mean()
-        moving_avg_sell = pd.Series(sell_values).rolling(window=self.window_size).mean()
+        moving_avg_buy = pd.Series(buy_values).rolling(window=window_size).mean()
+        moving_avg_sell = pd.Series(sell_values).rolling(window=window_size).mean()
 
         moving_avg_buy = moving_avg_buy.dropna()
         moving_avg_sell = moving_avg_sell.dropna()
@@ -337,11 +353,16 @@ class Compare_Swap:
 
     def multiple_period_swap_comparison(self,start_date,final_end):
     # 複数periodでのスワップポイント検証
-        current_start = datetime.strptime(start_date, "%Y-%m-%d")
-        final_end = datetime.strptime(final_end, "%Y-%m-%d")
+        try:
+            current_start = datetime.strptime(start_date, "%Y-%m-%d")
+            final_end = datetime.strptime(final_end, "%Y-%m-%d")
+        except:
+            current_start = start_date
+            final_end = final_end
+
         results = []
         while current_start < final_end:
-            current_end = current_start + relativedelta(months=months_interval) + relativedelta(days=-1)
+            current_end = current_start + relativedelta(months=self.months_interval) + relativedelta(days=-1)
 
             if current_end > final_end:
                 current_end = final_end
@@ -370,9 +391,14 @@ class Compare_Swap:
 
 
     def calculate_theory_swap(self,start_date,end_date):
-        theory_averages = self.multiple_period_swap_comparison(self.start_date,self.end_date)
-        theory_moving_averages = self.calculate_swap_moving_averages(self.start_date,self.end_date)
-        theory_cumulative_averages = self.calculate_swap_cumulative_averages(self.start_date,self.end_date)
+        jst = pytz.timezone("Asia/Tokyo")
+        theory_averages = self.multiple_period_swap_comparison(datetime(2019,4,1),datetime.now(jst))
+        theory_moving_averages = self.calculate_swap_moving_averages(datetime(2019,4,1),datetime.now(jst))
+        theory_cumulative_averages = self.calculate_swap_cumulative_averages(datetime(2019,4,1),datetime.now(jst))
+
+
+        print(f"theory_moving_averages: {theory_moving_averages}")
+        #exit()
 
         buy_avg = (statistics.mean(theory_moving_averages["moving_avg_buy"]) + statistics.mean(theory_cumulative_averages["cumulative_avg_buy"]) + statistics.mean(theory_averages["average_buy_swap"])) / 3
         sell_avg = (statistics.mean(theory_moving_averages["moving_avg_sell"]) + statistics.mean(theory_cumulative_averages["cumulative_avg_sell"]) + statistics.mean(theory_averages["average_sell_swap"])) / 3
@@ -381,8 +407,11 @@ class Compare_Swap:
         buy_ratio = buy_avg/theory_avg
         sell_ratio = sell_avg/theory_avg
 
-        buy_swap_theory = self.interest_rate_list * buy_ratio
-        sell_swap_theory = self.interest_rate_list * sell_ratio
+
+        interest_rate_list = self.get_interest_rate_list(start_date,end_date)
+
+        buy_swap_theory = interest_rate_list * buy_ratio
+        sell_swap_theory = interest_rate_list * sell_ratio
 
 
         return buy_swap_theory, sell_swap_theory
