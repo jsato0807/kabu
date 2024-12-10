@@ -14,6 +14,7 @@ from webdriver_manager.chrome import ChromeDriverManager
 import os
 import pandas as pd
 from kabu_library import fetch_currency_data
+from kabu_compare_bis_intrestrate_and_oandascraping import Compare_Swap
 
 
 def timing_decorator(func):
@@ -63,8 +64,6 @@ class SwapCalculator:
         elif website == "oanda":
             self.per_order_size = 100000 if pair in ['ZARJPY=X','HKDJPY=X'] else 10000
             self.fetcher = ScrapeFromOanda(pair,start_date,end_date)
-        else:
-            raise ValueError("Invalid website specified")
         
         self.swap_points_dict = self.fetcher.swap_points_dict
 
@@ -529,11 +528,21 @@ class ScrapeFromMinkabu:
 class ScrapeFromOanda:
     def __init__(self,pair, start_date, end_date):
         
-        directory = './csv_dir'
         rename_pair = pair.replace("/", "")
         rename_pair = rename_pair.replace("=X","")
         self.rename_pair = rename_pair
+
+        self.swap_points_dict = self.get_swap_points_dict(start_date,end_date,self.rename_pair)
         
+
+    def get_swap_points_dict(self,start_date,end_date,rename_pair):
+        directory = './csv_dir'
+
+        try:
+            target_start = pytz.timezone('Asia/Tokyo').localize(target_start)
+            target_end = pytz.timezone('Asia/Tokyo').localize(target_end)
+        except:
+            pass
 
         try:
             target_start = datetime.strptime(start_date, '%Y-%m-%d')
@@ -541,41 +550,81 @@ class ScrapeFromOanda:
         except:
             target_start = start_date
             target_end = end_date
-
-        try:
-            target_start = pytz.utc.localize(target_start)
-            target_end = pytz.utc.localize(target_end)
-        except:
-            pass
         
         
         # ファイル検索と条件に合致するファイルの選択
         found_file = None
+        partial_overlap_files = []
+
         for filename in os.listdir(directory):
             if filename.startswith(f'kabu_oanda_swapscraping_{rename_pair}_from'):
-                # ファイルの start と end 日付を抽出
                 try:
                     file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d')
                     file_end = datetime.strptime(filename.split('_to')[1].split('.csv')[0], '%Y-%m-%d')
                     file_start = pytz.utc.localize(file_start)
                     file_end = pytz.utc.localize(file_end)
-                    
-                    # start_date と final_end がファイルの範囲内か確認
+
+                    # 完全包含
                     if file_start <= target_start and file_end >= target_end:
                         found_file = filename
                         break
+                    # 部分的に重なるファイルを収集
+                    elif (file_start <= target_end and file_end >= target_start):
+                        partial_overlap_files.append((filename, file_start, file_end))
                 except ValueError:
-                    continue  # 日付フォーマットが違うファイルは無視
+                    continue
 
         # ファイルを読み込みまたはスクレイピング
         if found_file:
             print(f"Loading data from {found_file}")
             file_path = os.path.join(directory, found_file)
             swap_data = pd.read_csv(file_path)
-            self.swap_points_dict = swap_data.set_index('date').to_dict('index')
+            return swap_data.set_index('date').to_dict('index')
+
+        elif partial_overlap_files:
+            print("Loading data from partial overlap files")
+            combined_data = pd.DataFrame()
+
+            for filename, file_start, file_end in partial_overlap_files:
+                file_path = os.path.join(directory, filename)
+                swap_data = pd.read_csv(file_path)
+                # 範囲を指定して抽出
+                overlap_start = max(file_start, target_start)
+                overlap_end = min(file_end, target_end)
+                filtered_data = swap_data[(swap_data['date'] >= overlap_start.isoformat()) & 
+                                          (swap_data['date'] <= overlap_end.isoformat())]
+                    # 重複を削除する
+                filtered_data = filtered_data.drop_duplicates(subset='date')
+
+                # combined_dataに追加（重複する日付は追加されない）
+                combined_data = pd.concat([combined_data, filtered_data], ignore_index=True)
+
+            # すべてのデータがcombined_dataに集められた後、重複を削除する
+            combined_data = combined_data.drop_duplicates(subset='date', keep='first')
+            
+            # 日付順に並べ替え
+            combined_data = combined_data.sort_values(by='date').reset_index(drop=True)
+
+            # combined_data['date']をdatetime型に変換し、日本時間 (Asia/Tokyo) のタイムゾーンを設定
+            combined_data['date'] = pd.to_datetime(combined_data['date'])
+            combined_data['date'] = combined_data['date'].dt.tz_localize('Asia/Tokyo')
+
+
+            # 不足分をスクレイピング
+            scrape_start = target_start if combined_data.empty else max(target_start, pd.to_datetime(combined_data['date']).max())
+            scrape_end = target_end
+            print(scrape_start)
+            print(scrape_end)
+            exit()
+            if scrape_start <= scrape_end:
+                scraped_data = self.scrape_from_oanda(pair, scrape_start, scrape_end)
+                combined_data = pd.concat([combined_data, scraped_data])
+
+            return combined_data.set_index('date').to_dict('index')
+
         else:
             print(f"scrape_from_oanda({pair}, {start_date}, {end_date})")
-            self.swap_points_dict = self.scrape_from_oanda(pair, start_date, end_date).set_index('date').to_dict('index')
+            return self.scrape_from_oanda(pair, start_date, end_date).set_index('date').to_dict('index')
 
     def arrange_pair_format(self,pair):
         if "=X" in pair:
@@ -591,6 +640,13 @@ class ScrapeFromOanda:
     def scrape_from_oanda(self, pair, start_date, end_date):
 
         pair = self.arrange_pair_format(pair)
+
+        jst = pytz.timezone('Asia/Tokyo')
+        try:
+            start_date = start_date.astimezone(jst)
+            end_date = end_date.astimezone(jst)
+        except:
+            pass
         
         # 日付をdatetime形式に変換
         # datetimeオブジェクトであるかチェック
@@ -605,10 +661,26 @@ class ScrapeFromOanda:
             end_date = datetime.strptime(end_date, "%Y-%m-%d")
 
 
+        print(start_date)
+        print(end_date)
+        exit()
+
+
         # データ取得の制限を確認
-        if start_date < datetime(2019, 4, 1):
-            print("2019年4月以前のデータはありません。")
-            start_date = datetime(2019, 4, 1)
+        if start_date < jst.localize(datetime(2019,4,1)):
+            print("2019年4月以前のデータはないので理論値を計算します...")
+            compare_swap = Compare_Swap(pair,start_date,datetime.now(jst),order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month")
+            if end_date > jst.localize(datetime(2019,3,31)):
+                buy_swap, sell_swap = [compare_swap.calculate_theory_swap(start_date,jst.localize(datetime(2019,3,31)).astimezone(pytz.utc))]
+                start_date = jst.localize(datetime(2019, 4, 1))
+                print(buy_swap)
+                exit()
+
+            elif end_date <= jst.localize(datetime(2019,3,31)):
+                buy_swap, sell_swap = [compare_swap.calculate_theory_swap(start_date,end_date)]
+                print(buy_swap)
+                exit()
+                return [buy_swap, sell_swap]
 
         # データを保存するための辞書
         all_data = {}
@@ -752,10 +824,10 @@ if __name__ == "__main__":
     print(total_swap_points)
     """
     import datetime as dt_library
-    start_date = datetime(2021,1,4,21,59,tzinfo=dt_library.timezone.utc)
-    end_date = datetime(2021,1,5,22,0,tzinfo=dt_library.timezone.utc)
+    start_date = datetime(2019,3,25,21,59,tzinfo=dt_library.timezone.utc)
+    end_date = datetime(2019,4,2,22,0,tzinfo=dt_library.timezone.utc)
     pair = "EURGBP=X"
-    calculator = SwapCalculator("minkabu", pair, start_date, end_date)
+    calculator = SwapCalculator("oanda", pair, start_date, end_date)
 
     total_swap_points = calculator.get_total_swap_points(pair, "Buy-Forced-Closed", start_date, end_date, order_size, [])
     print(total_swap_points)
