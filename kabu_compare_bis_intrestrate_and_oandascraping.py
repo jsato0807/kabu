@@ -1,4 +1,4 @@
-from kabu_library import get_swap_points_dict
+from kabu_library import get_swap_points_dict, modified_to_japan_datetime
 from kabu_bis_intrestrate import filter_country_data
 import pandas as pd
 from datetime import datetime, timedelta
@@ -320,12 +320,9 @@ class Compare_Swap:
 
     def multiple_period_swap_comparison(self,start_date,final_end):
     # 複数periodでのスワップポイント検証
-        try:
-            current_start = datetime.strptime(start_date, "%Y-%m-%d")
-            final_end = datetime.strptime(final_end, "%Y-%m-%d")
-        except:
-            current_start = start_date
-            final_end = final_end
+        start_date = modified_to_japan_datetime(start_date)
+        final_end = modified_to_japan_datetime(final_end)
+        current_start = start_date
 
         results = []
         while current_start < final_end:

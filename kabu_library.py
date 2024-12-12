@@ -130,24 +130,26 @@ def get_data_range(data, current_start, current_end):
 
     return result
 
+def modified_to_japan_datetime(date):
+    #modify str to jst datetime and all but jst datetime also modify to jst datetime
+    try:
+        date = datetime.strptime(date, '%Y-%m-%d')
+    except:
+        pass
+        
+    try:
+        date = date.astimezone(pytz.timezone('Asia/Tokyo'))
+    except:
+        pass
+
+    return date
+
+
 def get_swap_points_dict(start_date,end_date,rename_pair):
     directory = './csv_dir'
 
-    try:
-        target_start = datetime.strptime(start_date, '%Y-%m-%d')
-        target_end = datetime.strptime(end_date, '%Y-%m-%d')
-        print("hello")
-    except:
-        target_start = start_date
-        target_end = end_date
-        
-
-    try:
-        target_start = target_start.astimezone(pytz.timezone('Asia/Tokyo'))
-        target_end = target_end.astimezone(pytz.timezone('Asia/Tokyo'))
-    except:
-        target_start = target_start
-        target_end = target_end
+    target_start = modified_to_japan_datetime(start_date)
+    target_end = modified_to_japan_datetime(end_date)
         
     # ファイル検索と条件に合致するファイルの選択
     found_file = None
