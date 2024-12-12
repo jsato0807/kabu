@@ -1,4 +1,4 @@
-from kabu_library import get_swap_points_dict, modified_to_japan_datetime
+from kabu_library import get_swap_points_dict, modified_to_japan_datetime, modified_to_utc_datetime
 from kabu_bis_intrestrate import filter_country_data
 import pandas as pd
 from datetime import datetime, timedelta
@@ -356,9 +356,9 @@ class Compare_Swap:
 
     def calculate_theory_swap(self,start_date,end_date):
         jst = pytz.timezone("Asia/Tokyo")
-        theory_averages = self.multiple_period_swap_comparison(datetime(2019,4,1),datetime.now(jst))
-        theory_moving_averages = self.calculate_swap_moving_averages(datetime(2019,4,1),datetime.now(jst))
-        theory_cumulative_averages = self.calculate_swap_cumulative_averages(datetime(2019,4,1),datetime.now(jst))
+        theory_averages = self.multiple_period_swap_comparison(jst.localize(datetime(2019,4,1)),datetime.now(jst))
+        theory_moving_averages = self.calculate_swap_moving_averages(jst.localize(datetime(2019,4,1)),datetime.now(jst))
+        theory_cumulative_averages = self.calculate_swap_cumulative_averages(jst.localize(datetime(2019,4,1)),datetime.now(jst))
 
 
         print(f"theory_moving_averages: {theory_moving_averages}")
@@ -371,18 +371,25 @@ class Compare_Swap:
         buy_ratio = buy_avg/theory_avg
         sell_ratio = sell_avg/theory_avg
 
-        
-        if end_date < jst.localize(datetime(2019,4,1)):
-            interest_rate_list = self.get_interest_rate_list(start_date,end_date)
-        elif end_date >= jst.localize(datetime(2019,4,1)):
-            interest_rate_list = self.get_interest_rate_list(start_date,jst.localize(datetime(2019,3,31)))
 
+        # 結果を格納する辞書
+        output_data = {}
+        start_date = modified_to_utc_datetime(start_date)
+        end_date = modified_to_utc_datetime(end_date)
+        end_date = end_date if end_date.astimezone(jst) < jst.localize(datetime(2019,4,1)) else modified_to_utc_datetime(jst.localize(datetime(2019,3,31)))
 
-        buy_swap_theory = interest_rate_list * buy_ratio
-        sell_swap_theory = interest_rate_list * sell_ratio
+        for date in range((end_date - start_date).days+1):
+            current_date = start_date + timedelta(days=date)
 
+            theory = self.calculate_theory(current_date)
 
-        return buy_swap_theory, sell_swap_theory
+            # データ処理
+            output_data[current_date.astimezone(jst).strftime("%Y-%m-%d")] = {
+                "sell": theory * sell_ratio if not theory is None else 0,
+                "buy": theory * buy_ratio if not theory is None else 0,
+            }
+
+        return output_data
     
 
 # グラフを作成
