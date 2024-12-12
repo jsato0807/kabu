@@ -191,3 +191,6 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 2024-12-10
     scrape_from_oandaの手前で、found_fileの名称を決めているが、例えばend_date = 2024-10-31の時に、file名が2024-10-30のようにその1日前であっても、最初からscrapingしてしまうので、近い日付があればscrapeするのはその続きからになるように修正せよ
     また、kabu_oanda_swapscrapingのscrape_from_oandaと、kabu_swap.py内のScrapeFromOanda内のscrape_from_oandaメソッドを統一した方が良いのでは？
+
+2024-12-12
+    kabu_library.py のget_swap_points_dictメソッドのmissing_rangesに2019-4-1以前の範囲が指定された場合、その前段階ですでにファイルにある範囲のデータをダウンロードしているにも関わらず、scrape_from_oanda関数内でstart_date=2019-4-1,end_date=datetime.now(jst)としてしまうので、またこの範囲でスクレイピングが実行されてしまう。
