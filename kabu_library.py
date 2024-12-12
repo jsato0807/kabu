@@ -144,12 +144,33 @@ def modified_to_japan_datetime(date):
 
     return date
 
+def modified_to_utc_datetime(date):
+    #modify str to jst datetime and all but jst datetime also modify to jst datetime
+    try:
+        date = datetime.strptime(date, '%Y-%m-%d')
+    except:
+        pass
+        
+    try:
+        date = date.astimezone(pytz.utc)
+    except:
+        pass
+
+    return date
+
 
 def get_swap_points_dict(start_date,end_date,rename_pair):
     directory = './csv_dir'
 
     target_start = modified_to_japan_datetime(start_date)
     target_end = modified_to_japan_datetime(end_date)
+
+    # データ取得の制限を確認
+    jst = pytz.timezone('Asia/Tokyo')
+    if target_start < jst.localize(datetime(2019,4,1)):
+        print("2019年4月以前のデータはないので、理論値計算のためにstart_date=2019-4-1, end_date=datetime.now(jst)とします.")
+        target_start = jst.localize(datetime(2019,4,1))
+        target_end = datetime.now(jst)
         
     # ファイル検索と条件に合致するファイルの選択
     found_file = None
@@ -160,8 +181,8 @@ def get_swap_points_dict(start_date,end_date,rename_pair):
             try:
                 file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d')
                 file_end = datetime.strptime(filename.split('_to')[1].split('.csv')[0], '%Y-%m-%d')
-                file_start = pytz.utc.localize(file_start)
-                file_end = pytz.utc.localize(file_end)
+                file_start = jst.localize(file_start)
+                file_end = jst.localize(file_end)
 
                 # 完全包含
                 if file_start <= target_start and file_end >= target_end:
@@ -203,6 +224,8 @@ def get_swap_points_dict(start_date,end_date,rename_pair):
             
         # 日付順に並べ替え
         combined_data = combined_data.sort_values(by='date').reset_index(drop=True)
+        print(combined_data)
+        exit()
 
         # combined_data['date']をdatetime型に変換し、日本時間 (Asia/Tokyo) のタイムゾーンを設定
         combined_data['date'] = pd.to_datetime(combined_data['date'])
