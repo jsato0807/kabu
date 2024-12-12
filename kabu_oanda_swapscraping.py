@@ -162,6 +162,7 @@ def scrape_from_oanda(pair, start_date, end_date):
     pair = pair.replace("/","")
 
     df.to_csv(f'./csv_dir/kabu_oanda_swapscraping_{pair}_from{actual_start_date}_to{actual_end_date}.csv', index=False, encoding='utf-8')
+    print(f"saved./csv_dir/kabu_oanda_swapscraping_{pair}_from{actual_start_date}_to{actual_end_date}.csv")
     # 取得したデータを返す
     return df
 
