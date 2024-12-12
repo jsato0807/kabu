@@ -2,6 +2,11 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime
 import os
+import re
+import gdown
+import statistics
+import pytz
+from kabu_oanda_swapscraping import scrape_from_oanda
 
 def get_file_id(url):
     # 正規表現パターン
@@ -28,7 +33,7 @@ def fetch_currency_data(pair, start, end, interval,link=None):
 
         data = data['Close']
         print(f"Fetched data length: {len(data)}")
-        print(data.head())
+        #print(data.head())
 
         return data
     
@@ -124,3 +129,110 @@ def get_data_range(data, current_start, current_end):
     result.index.name = 'Date'
 
     return result
+
+def get_swap_points_dict(start_date,end_date,rename_pair):
+    directory = './csv_dir'
+
+    try:
+        target_start = datetime.strptime(start_date, '%Y-%m-%d')
+        target_end = datetime.strptime(end_date, '%Y-%m-%d')
+        print("hello")
+    except:
+        target_start = start_date
+        target_end = end_date
+        
+
+    try:
+        target_start = target_start.astimezone(pytz.timezone('Asia/Tokyo'))
+        target_end = target_end.astimezone(pytz.timezone('Asia/Tokyo'))
+    except:
+        target_start = target_start
+        target_end = target_end
+        
+    # ファイル検索と条件に合致するファイルの選択
+    found_file = None
+    partial_overlap_files = []
+
+    for filename in os.listdir(directory):
+        if filename.startswith(f'kabu_oanda_swapscraping_{rename_pair}_from'):
+            try:
+                file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d')
+                file_end = datetime.strptime(filename.split('_to')[1].split('.csv')[0], '%Y-%m-%d')
+                file_start = pytz.utc.localize(file_start)
+                file_end = pytz.utc.localize(file_end)
+
+                # 完全包含
+                if file_start <= target_start and file_end >= target_end:
+                    found_file = filename
+                    break
+                # 部分的に重なるファイルを収集
+                elif (file_start <= target_end and file_end >= target_start):
+                    partial_overlap_files.append((filename, file_start, file_end))
+            except ValueError:
+                continue
+
+    # ファイルを読み込みまたはスクレイピング
+    if found_file:
+        print(f"Loading data from {found_file}")
+        file_path = os.path.join(directory, found_file)
+        swap_data = pd.read_csv(file_path)
+        return swap_data.set_index('date').to_dict('index')
+
+    elif partial_overlap_files:
+        print("Loading data from partial overlap files")
+        combined_data = pd.DataFrame()
+    
+        for filename, file_start, file_end in partial_overlap_files:
+            file_path = os.path.join(directory, filename)
+            swap_data = pd.read_csv(file_path)
+            # 範囲を指定して抽出
+            overlap_start = max(file_start, target_start)
+            overlap_end = min(file_end, target_end)
+            filtered_data = swap_data[(swap_data['date'] >= overlap_start.isoformat()) & 
+                                      (swap_data['date'] <= overlap_end.isoformat())]
+            # 重複を削除する
+            filtered_data = filtered_data.drop_duplicates(subset='date')
+
+            # combined_dataに追加（重複する日付は追加されない）
+            combined_data = pd.concat([combined_data, filtered_data], ignore_index=True)
+
+        # すべてのデータがcombined_dataに集められた後、重複を削除する
+        combined_data = combined_data.drop_duplicates(subset='date', keep='first')
+            
+        # 日付順に並べ替え
+        combined_data = combined_data.sort_values(by='date').reset_index(drop=True)
+
+        # combined_data['date']をdatetime型に変換し、日本時間 (Asia/Tokyo) のタイムゾーンを設定
+        combined_data['date'] = pd.to_datetime(combined_data['date'])
+        if combined_data['date'].dt.tz is None:  # タイムゾーンが付与されていない場合
+            combined_data['date'] = combined_data['date'].dt.tz_localize('Asia/Tokyo')
+        else:  # 既にタイムゾーンが付与されている場合
+            combined_data['date'] = combined_data['date'].dt.tz_convert('Asia/Tokyo')
+
+
+        # 不足分を計算
+        # タイムゾーンの有無を確認して適切に処理
+        if combined_data['date'].dt.tz is None:  # タイムゾーンが付与されていない場合
+            existing_dates = combined_data['date'].dt.tz_localize('Asia/Tokyo')
+        else:  # すでにタイムゾーンが付与されている場合
+            existing_dates = combined_data['date'].dt.tz_convert('Asia/Tokyo')
+
+        missing_ranges = []
+        if target_start < existing_dates.min():
+            missing_ranges.append((target_start, existing_dates.min() - pd.Timedelta(days=1)))
+        if target_end > existing_dates.max():
+            missing_ranges.append((existing_dates.max() + pd.Timedelta(days=1), target_end))
+
+        # 不足分をスクレイピング
+        for scrape_start, scrape_end in missing_ranges:
+            print(f"Scraping data from {scrape_start} to {scrape_end}")
+            scraped_data = scrape_from_oanda(rename_pair, scrape_start, scrape_end)
+            combined_data = pd.concat([combined_data, scraped_data])
+
+        # 最終結果を返す
+        return combined_data.set_index('date').to_dict('index')
+
+
+    else:
+        print(f"scrape_from_oanda({rename_pair}, {start_date}, {end_date})")
+        return scrape_from_oanda(rename_pair, start_date, end_date).set_index('date').to_dict('index')

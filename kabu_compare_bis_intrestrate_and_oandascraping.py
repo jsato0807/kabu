@@ -1,4 +1,4 @@
-from kabu_oanda_swapscraping import scrape_from_oanda
+from kabu_library import get_swap_points_dict
 from kabu_bis_intrestrate import filter_country_data
 import pandas as pd
 from datetime import datetime, timedelta
@@ -32,45 +32,12 @@ class Compare_Swap:
         'NOK': 'Europe/Oslo',
         'SEK': 'Europe/Stockholm',
     }
-    def __init__(self,pair,start_date,final_end,order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month"):
-        directory = './csv_dir'
+    def __init__(self,pair,start_date,final_end,order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month",swap_points_dict=False):
         rename_pair = pair.replace("/", "")
         
-        try:
-            start_date = start_date.strftime("%Y-%m-%d")
-            final_end = final_end.strftime("%Y-%m-%d")
-        except:
-            pass
-        target_start = datetime.strptime(start_date, '%Y-%m-%d')
-        target_end = datetime.strptime(final_end, '%Y-%m-%d')
-        
-        # ファイル検索と条件に合致するファイルの選択
-        found_file = None
-        for filename in os.listdir(directory):
-            if filename.startswith(f'kabu_oanda_swapscraping_{rename_pair}_from'):
-                # ファイルの start と end 日付を抽出
-                try:
-                    file_start = datetime.strptime(filename.split('_from')[1].split('_to')[0], '%Y-%m-%d')
-                    file_end = datetime.strptime(filename.split('_to')[1].split('.csv')[0], '%Y-%m-%d')
-                    
-                    # start_date と final_end がファイルの範囲内か確認
-                    if file_start <= target_start and file_end >= target_end:
-                        found_file = filename
-                        break
-                except ValueError:
-                    continue  # 日付フォーマットが違うファイルは無視
 
-        # ファイルを読み込みまたはスクレイピング
-        if found_file:
-            print(f"Loading data from {found_file}")
-            file_path = os.path.join(directory, found_file)
-            swap_data = pd.read_csv(file_path)
-            swap_data = swap_data.set_index('date').T.to_dict()
-        else:
-            print(f"scrape_from_oanda({pair}, {start_date}, {final_end})")
-            swap_data = scrape_from_oanda(pair, start_date, final_end)
 
-        self.swap_data = swap_data
+        self.swap_data = get_swap_points_dict(start_date,end_date,rename_pair) if not swap_points_dict else swap_points_dict
 
         self.start_date = start_date
         self.final_end = final_end
@@ -407,8 +374,12 @@ class Compare_Swap:
         buy_ratio = buy_avg/theory_avg
         sell_ratio = sell_avg/theory_avg
 
+        
+        if end_date < jst.localize(datetime(2019,4,1)):
+            interest_rate_list = self.get_interest_rate_list(start_date,end_date)
+        elif end_date >= jst.localize(datetime(2019,4,1)):
+            interest_rate_list = self.get_interest_rate_list(start_date,jst.localize(datetime(2019,3,31)))
 
-        interest_rate_list = self.get_interest_rate_list(start_date,end_date)
 
         buy_swap_theory = interest_rate_list * buy_ratio
         sell_swap_theory = interest_rate_list * sell_ratio
@@ -475,12 +446,15 @@ def makegraph(arg1, arg2, results,graphname):
 if __name__ == "__main__":
     # 使用例
     pair = "USD/JPY"
-    start_date = "2020-03-01"
-    end_date = "2024-10-31"
+    start_date = "2019-03-01"
+    end_date = "2019-4-30"
     order_size = 1000
     months_interval = 1
 
     scrapeswap = Compare_Swap(pair,start_date,end_date, order_size, months_interval)
+
+    print(scrapeswap.calculate_theory_swap(start_date,end_date))
+    exit()
 
     comparison_df = scrapeswap.multiple_period_swap_comparison(start_date,end_date)
     print(comparison_df)
