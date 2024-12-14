@@ -1,4 +1,4 @@
-from kabu_library import get_swap_points_dict, modified_to_japan_datetime, modified_to_utc_datetime
+from kabu_library import get_swap_points_dict, modified_to_japan_datetime, modified_to_utc_datetime, get_tokyo_business_date
 from kabu_bis_intrestrate import filter_country_data
 import pandas as pd
 from datetime import datetime, timedelta
@@ -8,6 +8,7 @@ import matplotlib.dates as mdates
 import os
 import pytz
 import statistics
+from kabu_oanda_swapscraping import arrange_pair_format
 
 # Pandasの表示設定
 pd.set_option('display.max_columns', None)
@@ -33,6 +34,9 @@ class Compare_Swap:
         'SEK': 'Europe/Stockholm',
     }
     def __init__(self,pair,start_date,final_end,order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month",swap_points_dict=False):
+        currencies = arrange_pair_format(pair)
+        pair = currencies[0]+"/"+ currencies[1]
+
         rename_pair = pair.replace("/", "")
         
 
@@ -60,14 +64,13 @@ class Compare_Swap:
         self.interest_rate_list = self.get_interest_rate_list(self.start_date, self.final_end)
 
     def change_utc_to_localtimezone(self,currency,date):
-        try:
-            date = date.strftime("%Y-%m-%d")
+        try:    #try to change str to datetime with utc
+            date = datetime.strptime(date,"%Y-%m-%d")
+            date = pytz.utc.localize(date)
         except:
             pass
-        utc = pytz.utc
-        utc_datetime = utc.localize(datetime.strptime(date, "%Y-%m-%d"))
         local_timezone = pytz.timezone(self.CURRENCY_TIMEZONES.get(currency))
-        local_datetime = utc_datetime.astimezone(local_timezone)
+        local_datetime = date.astimezone(local_timezone)
         return local_datetime
 
 
@@ -104,7 +107,7 @@ class Compare_Swap:
         else:
             print(f"filter_country_data({country_name}, {target_start}, {target_end})")
             interest_rate = filter_country_data(country_name, pd.to_datetime(target_start), pd.to_datetime(target_end))
-
+        
         return interest_rate
 
 
@@ -315,7 +318,6 @@ class Compare_Swap:
         except:
             theory = None
 
-
         return theory
 
     def multiple_period_swap_comparison(self,start_date,final_end):
@@ -384,7 +386,7 @@ class Compare_Swap:
             theory = self.calculate_theory(current_date)
 
             # データ処理
-            output_data[current_date.astimezone(jst).strftime("%Y-%m-%d")] = {
+            output_data[current_date.astimezone(pytz.timezone("Asia/Tokyo")).strftime("%Y-%m-%d")] = {
                 "sell": theory * sell_ratio if not theory is None else 0,
                 "buy": theory * buy_ratio if not theory is None else 0,
             }
