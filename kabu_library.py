@@ -20,8 +20,8 @@ def get_file_id(url):
     else:
         return None
 
-def fetch_currency_data(pair, start, end, interval,link=None):
-    if link is None:
+def fetch_currency_data(pair, start, end, interval):
+    if interval=="1d":
         # Yahoo Financeからデータを取得
         data = yf.download(pair, start=start, end=end, interval=interval)
         # DateにUTC 0時0分を追加 (既にdate部分は0時で保存されている)
@@ -33,7 +33,8 @@ def fetch_currency_data(pair, start, end, interval,link=None):
 
         data = data['Close']
         print(f"Fetched data length: {len(data)}")
-        #print(data.head())
+
+        print(data.tail())
 
         return data
     
@@ -65,6 +66,7 @@ def fetch_currency_data(pair, start, end, interval,link=None):
             df = pd.read_csv(file_path)
 
         else:
+            link="https://drive.google.com/file/d/1XQhYNS5Q72nEqCz9McF5yizFxhadAaRT/view?usp=drive_link"    #the link of AUDNZD
             file_id = get_file_id(link)
             url = f"https://drive.google.com/uc?id={file_id}"
 
@@ -101,8 +103,6 @@ def fetch_currency_data(pair, start, end, interval,link=None):
         df = get_data_range(df, start, end)
         print(f"Fetched data length: {len(df)}")
 
-        #print(df.head())
-        #exit()
         
         return df
 
