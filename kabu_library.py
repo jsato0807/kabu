@@ -1,6 +1,6 @@
 import pandas as pd
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timedelta, time
 import os
 import re
 import gdown
@@ -148,6 +148,7 @@ def modified_to_utc_datetime(date):
     #modify str to jst datetime and all but jst datetime also modify to jst datetime
     try:
         date = datetime.strptime(date, '%Y-%m-%d')
+        date = pytz.utc.localize(date)
     except:
         pass
         
@@ -157,6 +158,39 @@ def modified_to_utc_datetime(date):
         pass
 
     return date
+
+
+def get_tokyo_business_date(dt):
+        
+    #指定された日時に対して、7:00～翌日6:59の範囲で対応する基準日を返す。
+
+    #Args:
+    #    dt (datetime): 処理対象の日時（タイムゾーン付き）
+
+    #Returns:
+    #    datetime.date: 基準日の日付
+    # 日本時間（JST）のタイムゾーンを設定
+    #jst = pytz.timezone("Asia/Tokyo")
+
+
+    dt_ny = dt.astimezone(pytz.timezone('America/New_York'))
+    dt_jp = dt.astimezone(pytz.timezone('Asia/Tokyo'))
+
+    diff_ny_jp = dt_ny.date() - dt_jp.date()
+ 
+    # 時刻を判定して基準日を計算
+    if dt_ny.time() < time(17,0):
+        # 17:00未満の場合は前日が基準日
+        reference_date = dt_ny
+    else:
+        # 17:00以降の場合は当日が基準日
+        reference_date = dt_ny + timedelta(days=1)
+
+    reference_date += diff_ny_jp
+    reference_date = reference_date.astimezone(pytz.timezone("Asia/Tokyo"))
+    reference_date  =reference_date.date()
+
+    return reference_date
 
 
 def get_swap_points_dict(start_date,end_date,rename_pair):
