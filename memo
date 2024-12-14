@@ -195,3 +195,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 2024-12-12
     kabu_library.py のget_swap_points_dictメソッドのmissing_rangesに2019-4-1以前の範囲が指定された場合、その前段階ですでにファイルにある範囲のデータをダウンロードしているにも関わらず、scrape_from_oanda関数内でstart_date=2019-4-1,end_date=datetime.now(jst)としてしまうので、またこの範囲でスクレイピングが実行されてしまう。
     →get_swap_points_dictの最初で2019-4-1以前であれば、start_date=2019-4-1,end_date=datetime.now()とすることで、あらかじめ理論値計算に必要な、実際の値を可能な限りスクレイピングすることで解決
+
+2024-12-14
+    kabu_swap.pyで2019-4-1以前の場合にswap_points_dictを獲得すると、2019-3-30が土曜日にも関わらず、スワップポイントの値が０でない状態になる。
+    おそらくkabu_compare_bis_intrestrate_and_oandascraping.pyのcalculate_theory_swap内の辞書output_dataを作成する際に時差の関係で、日付がずれてしまい、本来金曜日の値のはずが土曜日30日のスワップポイントとして表示されていると思われる
