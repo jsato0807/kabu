@@ -15,7 +15,7 @@ import os
 import pandas as pd
 from kabu_library import fetch_currency_data
 from kabu_compare_bis_intrestrate_and_oandascraping import Compare_Swap
-from kabu_library import get_swap_points_dict
+from kabu_library import get_swap_points_dict, get_tokyo_business_date
 from kabu_oanda_swapscraping import arrange_pair_format
 
 
@@ -68,6 +68,11 @@ class SwapCalculator:
             self.fetcher = ScrapeFromOanda(pair,start_date,end_date)
         
         self.swap_points_dict = self.fetcher.swap_points_dict
+
+        if website == "oanda":
+            if start_date.astimezone(pytz.timezone("Asia/Tokyo")) < pytz.timezone("Asia/Tokyo").localize(datetime(2019,4,1)):
+                compare_swap = Compare_Swap(pair,start_date,end_date,order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month",swap_points_dict=self.swap_points_dict)
+                self.swap_points_dict_theory = compare_swap.calculate_theory_swap(start_date,end_date)
 
         self.business_days = self.generate_business_days(pair, start_date, end_date)
 
@@ -215,6 +220,10 @@ class SwapCalculator:
         current_datetime = start_datetime
         added_units = 0
 
+        if not self.is_ny_business_day(current_datetime):   #ポジションの開閉は休日にはできないのでstart_datetime(=current_datetime)は休日であってはならない
+            print("cannot open a position in Saturday and Sunday")
+            exit()
+
         while added_units < num_units:
             current_datetime += pd.Timedelta(interval)
 
@@ -315,15 +324,12 @@ class SwapCalculator:
         return rollover_days
 
     def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
-
         trading_days_set = set(trading_days)
-        rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set)
-
-        if rollover_days == 0:
-            return 0
-        
-        elif rollover_days >= 1:
-            if self.website == "minkabu":
+        if self.website == "minkabu":
+            rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set)
+            if rollover_days == 0:
+                return 0
+            elif rollover_days >= 1:
                 if pair not in self.swap_points_dict:
                     return 0.0
                 swap_value = self.fetcher.swap_points_dict[pair].get('buy' if "Buy" in position else 'sell', 0)
@@ -332,21 +338,45 @@ class SwapCalculator:
                     swap_value /= self.unit_conversion_data[current_date_str]
                 return swap_value * rollover_days * order_size / self.per_order_size
 
-            if self.website == "oanda":
-                data = self.swap_points_dict
-                # swap_value の初期化
-                swap_value = 0
+        if self.website == "oanda":
+            data = self.swap_points_dict  
+            # swap_value の初期化
+            swap_value = 0
 
-                # open_date から current_date までの日付をループ
-                current = open_date               
-                while self.get_ny_business_date(current) < self.get_ny_business_date(current_date):
-                    #date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
-                    date_str = self.get_tokyo_business_date(current).strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
-                    swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
-                    print(f"date_str: {date_str}, swap_value:{swap_value}")
-                    current += timedelta(days=1)  # 次の日に進める
+            # open_date から current_date までの日付をループ
+            current = open_date 
+            next_date = min(current_date, open_date+timedelta(days=1))         
+            while self.get_ny_business_date(current) < self.get_ny_business_date(current_date):
+                if not self.is_ny_business_day(current) or not self.is_ny_business_day(next_date):  #祝日はポジションの開閉は可能（取引可能）だが、祝日は不可能なので休日判定をする。
+                    if not self.is_ny_business_day(current):
+                        current += timedelta(days=1)
 
-                return swap_value * order_size / self.per_order_size    #2019年4月以降はoanda証券のサイトにあるデータはrollover込みの値なのでこれで良いが、それ以前はないので、スワップポイントを計算で求めないといけないので、rollover_daysを掛け合わせないといけない
+                    if not self.is_ny_business_day(next_date):
+                        next_date += timedelta(days=1)
+
+                    continue
+
+                rollover_days = self.calculate_rollover_days(current, next_date, trading_days_set)
+
+                if rollover_days == 0:
+                    current += timedelta(days=1)
+                    next_date += timedelta(days=1)
+                    continue
+
+                #date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
+                current_jst = get_tokyo_business_date(current)
+                date_str = current_jst.strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
+                swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0) if current_jst >= pytz.timezone("Asia/Tokyo").localize(datetime(2019,4,1)).date() else self.swap_points_dict_theory.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0) * rollover_days
+                if current_jst < datetime(2019,4,1).date():
+                    print(f"date_str: {date_str}, swap_value:{swap_value}, rollover_days:{rollover_days}")
+                else:
+                    number_of_days = data.get(date_str, {}).get("number_of_days")
+                    print(f"date_str: {date_str}, swap_value:{swap_value},rollover_days:{rollover_days}, number_of_days:{number_of_days}")
+                
+                current += timedelta(days=1)  # 次の日に進める
+                next_date += timedelta(days=1)  # 次の日に進める
+
+            return swap_value * order_size / self.per_order_size    #2019年4月以降はoanda証券のサイトにあるデータはrollover込みの値なのでこれで良いが、それ以前はないので、スワップポイントを計算で求めないといけないので、rollover_daysを掛け合わせないといけない
 
 
     def get_ny_business_date(self,dt):
@@ -383,38 +413,6 @@ class SwapCalculator:
 
         return reference_date
 
-
-    def get_tokyo_business_date(self,dt):
-        
-        #指定された日時に対して、7:00～翌日6:59の範囲で対応する基準日を返す。
-
-        #Args:
-        #    dt (datetime): 処理対象の日時（タイムゾーン付き）
-
-        #Returns:
-        #    datetime.date: 基準日の日付
-        # 日本時間（JST）のタイムゾーンを設定
-        #jst = pytz.timezone("Asia/Tokyo")
-
-
-        dt_ny = dt.astimezone(pytz.timezone('America/New_York'))
-        dt_jp = dt.astimezone(pytz.timezone('Asia/Tokyo'))
-
-        diff_ny_jp = dt_ny.date() - dt_jp.date()
- 
-        # 時刻を判定して基準日を計算
-        if dt_ny.time() < self.NY_CLOSE_TIME:
-            # 17:00未満の場合は前日が基準日
-            reference_date = dt_ny
-        else:
-            # 17:00以降の場合は当日が基準日
-            reference_date = dt_ny + timedelta(days=1)
-
-        reference_date += diff_ny_jp
-        reference_date = reference_date.astimezone(self.JP_TIMEZONE)
-        reference_date  =reference_date.date()
-
-        return reference_date
 
     def crossover_ny_close(self,start_date,end_date):
         if (end_date - start_date).days >= 1:
@@ -536,155 +534,6 @@ class ScrapeFromOanda:
         if not "_" in pair and not "/" in pair:
             pair = pair[:3] + "/" + pair[3:]
         return pair
-    
-    def scrape_from_oanda(self, pair, start_date, end_date):
-
-        pair = arrange_pair_format(pair)
-
-        jst = pytz.timezone('Asia/Tokyo')
-        try:
-            start_date = start_date.astimezone(jst)
-            end_date = end_date.astimezone(jst)
-        except:
-            pass
-        
-        # 日付をdatetime形式に変換
-        # datetimeオブジェクトであるかチェック
-        """
-        if isinstance(start_date, datetime) and isinstance(end_date, datetime):
-            start_date = start_date.date().strftime("%Y-%m-%d")
-            start_date = datetime.strptime(start_date,"%Y-%m-%d")
-            end_date = end_date.date().strftime("%Y-%m-%d")
-            end_date = datetime.strptime(end_date,"%Y-%m-%d")
-
-        if isinstance(start_date, str) and isinstance(end_date, str):
-            start_date = datetime.strptime(start_date, "%Y-%m-%d")
-            end_date = datetime.strptime(end_date, "%Y-%m-%d")
-        """
-
-
-        # データ取得の制限を確認
-        if start_date < jst.localize(datetime(2019,4,1)):
-            print("2019年4月以前のデータはないので理論値を計算します...")
-            compare_swap = Compare_Swap(pair,start_date,datetime.now(jst),order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month",swap_points_dict=self.swap_points_dict)
-            if end_date > jst.localize(datetime(2019,3,31)):
-                buy_swap, sell_swap = [compare_swap.calculate_theory_swap(start_date,jst.localize(datetime(2019,3,31)).astimezone(pytz.utc))]
-                start_date = jst.localize(datetime(2019, 4, 1))
-                print(buy_swap)
-                exit()
-
-            elif end_date <= jst.localize(datetime(2019,3,31)):
-                buy_swap, sell_swap = [compare_swap.calculate_theory_swap(start_date,end_date)]
-                print(buy_swap)
-                exit()
-                return [buy_swap, sell_swap]
-
-        # データを保存するための辞書
-        all_data = {}
-
-        # Chromeのオプションを設定
-        options = Options()
-        options.add_argument('--headless')  # ヘッドレスモード（ブラウザを表示せずに実行）
-
-        # WebDriverを初期化
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=options)
-
-        # スワップポイントの情報が掲載されているURL
-        url = "https://www.oanda.jp/course/ty3/swap"
-        driver.get(url)
-
-        # 通貨ペアを選択
-        currency_pair = Select(driver.find_element(By.CLASS_NAME, 'st-Select'))
-        currency_pair.select_by_visible_text(pair)  # 引数で指定された通貨ペアを選択
-
-        # 指定された日付範囲で日毎のデータを取得
-        current_date = start_date
-        while current_date <= end_date:
-            # 年月のテキストを作成
-            year_month = current_date.strftime("%Y年%m月")
-
-            # 月の選択
-            month_select = Select(driver.find_elements(By.CLASS_NAME, 'st-Select')[1])
-            try:
-                month_select.select_by_visible_text(year_month)  # 指定された年月を選択
-            except:
-                print(f"{year_month} のデータは存在しません。")
-                current_date += timedelta(days=1)
-                continue
-            
-            # データ取得のために少し待機
-            time_module.sleep(2)
-
-            # テーブルを取得
-            try:
-                swap_table = driver.find_element(By.CLASS_NAME, 'tr-SwapHistory_Table')
-            except:
-                print(f"{year_month} のテーブルが見つかりません。")
-                current_date += timedelta(days=1)
-                continue
-
-            # スクロール処理の追加
-            driver.execute_script("arguments[0].scrollIntoView();", swap_table)
-
-            # テーブルの行を取得し、該当する日付の行からデータを取得
-            rows = swap_table.find_elements(By.TAG_NAME, 'tr')
-            for row in rows[1:]:  # 最初の行はヘッダーなのでスキップ
-                # 日付の列とデータの列を取得
-                date_col = row.find_element(By.TAG_NAME, 'th')
-                data_cols = row.find_elements(By.TAG_NAME, 'td')
-
-
-                # 日付がcurrent_dateと一致するか確認
-                date_text = re.sub(r'（.*?）', '', date_col.text)  # 曜日を除去
-
-                # 各項目を辞書に保存
-                if len(data_cols) == 3:  # 期待するデータ数を確認
-                    sell_text = data_cols[0].text.strip()
-                    buy_text = data_cols[1].text.strip()
-                    days_text = data_cols[2].text.strip()
-
-                    # 日付から「月」と「日」を除外し、日付部分を整数として取得
-                    match = re.match(r'(\d{2})月(\d{2})日', date_text)
-                    if match:
-                        day = int(match.group(2))  # 「日」の部分を整数に変換
-                        date_str = f"{current_date.year}-{current_date.month:02}-{day:02}"  # 年月日形式に変換
-                    else:
-                        print("日付形式が不正です:", date_str)
-                        continue
-                    
-                    all_data[date_str] = {
-                        'sell': float(sell_text) if sell_text else 0,
-                        'buy': float(buy_text) if buy_text else 0,
-                        'number_of_days': int(days_text) if days_text else 0
-                    }
-
-            # 次の月へ進む
-            current_date += timedelta(days=31)
-            current_date = current_date.replace(day=1)  # 次の月の1日に設定
-
-        # WebDriverを終了
-        driver.quit()
-
-
-        # スクレイピングで得た最初と最後の日付を取得
-        dates = sorted(all_data.keys())
-        actual_start_date = dates[0] if dates else start_date
-        actual_end_date = dates[-1] if dates else end_date
-        #csv ファイルとして保存
-        data = [value for value in all_data.values()]
-
-        df = pd.DataFrame(data, index=dates)
-
-        df.reset_index(inplace=True)
-        df.rename(columns={'index': 'date'}, inplace=True)
-
-        pair = pair.replace("/","")
-
-        df.to_csv(f'./csv_dir/kabu_oanda_swapscraping_{pair}_from{actual_start_date}_to{actual_end_date}.csv', index=False, encoding='utf-8')
-        # 取得したデータを返す
-        return df
-
         
     
 
@@ -720,8 +569,8 @@ if __name__ == "__main__":
     print(total_swap_points)
     """
     import datetime as dt_library
-    start_date = datetime(2019,4,1,21,59,tzinfo=dt_library.timezone.utc)
-    end_date = datetime(2019,4,2,22,0,tzinfo=dt_library.timezone.utc)
+    start_date = datetime(2019,3,25,21,59,tzinfo=dt_library.timezone.utc)
+    end_date = datetime(2019,4,5,22,0,tzinfo=dt_library.timezone.utc)
     pair = "EURGBP=X"
     calculator = SwapCalculator("oanda", pair, start_date, end_date)
 
