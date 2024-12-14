@@ -15,9 +15,9 @@ def arrange_pair_format(pair):
     if "=X" in pair:
         pair = pair.replace("=X","")
     if "_" in pair:
-        pair = pair.split("_")
+        currencies = pair.split("_")
     if "/" in pair:
-        pair = pair.split('/')
+        currencies = pair.split('/')
     if not "_" in pair and not "/" in pair:
         currencies = [pair[:3],pair[3:]]
     return currencies
@@ -49,14 +49,6 @@ def scrape_from_oanda(pair, start_date, end_date):
         start_date = datetime.strptime(start_date, "%Y-%m-%d")
         end_date = datetime.strptime(end_date, "%Y-%m-%d")
     """
-
-
-    # データ取得の制限を確認
-    if start_date < jst.localize(datetime(2019,4,1)):
-        print("2019年4月以前のデータはないので、理論値計算のためにstart_date=2019-4-1, end_date=datetime.now(jst)とします.")
-        start_date = jst.localize(datetime(2019,4,1))
-        end_date = datetime.now(jst)
-        
 
     # データを保存するための辞書
     all_data = {}
