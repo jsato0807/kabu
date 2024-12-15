@@ -347,14 +347,13 @@ class SwapCalculator:
             current = open_date 
             next_date = min(current_date, open_date+timedelta(days=1))         
             while self.get_ny_business_date(current) < self.get_ny_business_date(current_date):
-                if not self.is_ny_business_day(current) or not self.is_ny_business_day(next_date):  #祝日はポジションの開閉は可能（取引可能）だが、祝日は不可能なので休日判定をする。
-                    if not self.is_ny_business_day(current):
+                if not current in self.business_days or not next_date in self.business_days:
+                    if not current in self.business_days:
                         current += timedelta(days=1)
-
-                    if not self.is_ny_business_day(next_date):
-                        next_date += timedelta(days=1)
-
+                    if not next_date in self.business_days:
+                        next_date += timedelta(days=1) 
                     continue
+
 
                 rollover_days = self.calculate_rollover_days(current, next_date, trading_days_set)
 
