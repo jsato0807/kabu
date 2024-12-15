@@ -204,3 +204,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 
     また、kabu_library.pyのget_data_range関数が、current_startやcurrent_endに休日を指定してしまうと、データがないため適切に範囲指定できない
     →current_start,current_endに最も近い日付にずらすようなアルゴリズムを追加実装せよ
+
+2024-12-15
+    前日の課題２つ（rollover_daysの計算、get_data_range)が未解決
+    →1つ目はkabu_swap.pyを過去に戻って逐一営業日判定する方法の方が早いかも。比較せよ。
