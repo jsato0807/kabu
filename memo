@@ -208,3 +208,13 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 2024-12-15
     前日の課題２つ（rollover_daysの計算、get_data_range)が未解決
     →1つ目はkabu_swap.pyを過去に戻って逐一営業日判定する方法の方が早いかも。比較せよ。
+
+2024-12-17
+    結局rollover_daysをwebsite ==oandaの時は計算しないことで、大幅な時間短縮には成功した。
+    しかし、計算の不一致が発生し、kabu_swap.pyを遡っても原因不明
+    →check swap 以下でget_total_swap_pointsでスワップポイントを計算する際に、pos[6]をopen_dateとして使用しており、crossover_by_ny_closeメソッド使用前は必ずこのcheck swap以下がadd_swapが０でも実行はされたので、pos[6]が毎回更新されていたが、crossover_by_ny_closeによってpos[6]の値の更新が不規則になり、得られるスワップポイントが検算結果と一致しない
+     よってcrossover_by_ny_closeをコメントアウトすると計算が一致
+    また、rollover_daysが非常に遅いので、要修正
+    →trading_days_set = set(trading_days)が遅い原因
+
+    今は、営業日を最初にintervalに応じてdictを作ってから実行しているが、start_dateとend_dateの期間が長いほど、営業日をinterval=M1で作るのに負荷がかかるから、前のプログラムのようにその都度休日と祝日でないかどうか調べてtimedelta(days=1)を足していく方法の方が計算が早いのではないか。
