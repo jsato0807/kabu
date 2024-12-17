@@ -122,19 +122,23 @@ def fetch_currency_data(pair, start, end, interval):
 def get_data_range(data, current_start, current_end):
     #pay attention to data type; we should change the data type of current_start and current_end to strftime.
     result = {}
-    start_collecting = False
+
     current_start = pd.Timestamp(current_start).tz_localize('UTC')
     current_end = pd.Timestamp(current_end).tz_localize('UTC')
-    for date, values in data.items():
 
-        # 指定された開始日からデータの収集を開始
-        if date == current_start:
-            start_collecting = True
-        if start_collecting:
-            result[date] = values
-        # 指定された終了日でループを終了
-        if date == current_end:
-            break
+    # dataのキー（日付）をSeriesとして取得
+    available_dates = pd.Series(data.keys())
+
+    # 最も近い営業日を検索
+    if current_start not in available_dates:
+        # current_start以降で最も近い日付を取得
+        current_start = available_dates[available_dates >= current_start].min()
+    if current_end not in available_dates:
+        # current_end以前で最も近い日付を取得
+        current_end = available_dates[available_dates <= current_end].max()
+
+    # 指定された範囲内のデータを抽出
+    result = {date: values for date, values in data.items() if current_start <= date <= current_end}
 
     # 辞書をSeriesに変換し、列名を'Close'に指定
     result = pd.Series(result, name='Close')
