@@ -7,6 +7,18 @@ import gdown
 import statistics
 import pytz
 from kabu_oanda_swapscraping import scrape_from_oanda
+from functools import lru_cache
+import time as time_module
+
+def timing_decorator(func):
+    def wrapper(*args, **kwargs):
+        start_time = time_module.time()
+        result = func(*args, **kwargs)
+        elapsed_time = time_module.time() - start_time
+        print(f"Method {func.__name__}: {elapsed_time:.6f} seconds")
+        return result
+    return wrapper
+
 
 def get_file_id(url):
     # 正規表現パターン
@@ -159,7 +171,8 @@ def modified_to_utc_datetime(date):
 
     return date
 
-
+#@timing_decorator
+@lru_cache(maxsize=None)
 def get_tokyo_business_date(dt):
         
     #指定された日時に対して、7:00～翌日6:59の範囲で対応する基準日を返す。
@@ -173,8 +186,12 @@ def get_tokyo_business_date(dt):
     #jst = pytz.timezone("Asia/Tokyo")
 
 
-    dt_ny = dt.astimezone(pytz.timezone('America/New_York'))
-    dt_jp = dt.astimezone(pytz.timezone('Asia/Tokyo'))
+    # 日本時間（JST）とニューヨーク時間（NYT）を取得するためのタイムゾーン
+    jst = pytz.timezone("Asia/Tokyo")
+    ny = pytz.timezone("America/New_York")
+    # 1回のタイムゾーン変換で日本時間とニューヨーク時間を取得
+    dt_jp = dt.astimezone(jst)
+    dt_ny = dt.astimezone(ny)
 
     diff_ny_jp = dt_ny.date() - dt_jp.date()
  
@@ -187,7 +204,7 @@ def get_tokyo_business_date(dt):
         reference_date = dt_ny + timedelta(days=1)
 
     reference_date += diff_ny_jp
-    reference_date = reference_date.astimezone(pytz.timezone("Asia/Tokyo"))
+    reference_date = reference_date.astimezone(jst)
     reference_date  =reference_date.date()
 
     return reference_date
