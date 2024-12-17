@@ -17,6 +17,7 @@ from kabu_library import fetch_currency_data
 from kabu_compare_bis_intrestrate_and_oandascraping import Compare_Swap
 from kabu_library import get_swap_points_dict, get_tokyo_business_date
 from kabu_oanda_swapscraping import arrange_pair_format
+from functools import lru_cache
 
 
 def timing_decorator(func):
@@ -209,7 +210,7 @@ class SwapCalculator:
     
         return business_days_dict
 
-
+    #@timing_decorator
     def add_business_days(self, start_datetime, num_units, trading_days_set, interval="1d", swap_flag=True):
         """
         任意の営業日単位で日付を進める
@@ -248,6 +249,7 @@ class SwapCalculator:
 
 
     # ロールオーバーの日数を計算するメソッド
+    #@timing_decorator
     def calculate_rollover_days(self, open_date, current_date, trading_days_set):
         try:
             rollover_days = (self.add_business_days(current_date, 2, trading_days_set, "1d") - self.add_business_days(open_date, 2, trading_days_set, "1d")).days
@@ -259,11 +261,11 @@ class SwapCalculator:
             current_time = current_date.time()
 
             if open_time <= self.NY_CLOSE_TIME <= current_time:
-                if open_time== self.NY_CLOSE_TIME == current_time:
-                    pass
-                elif open_time == self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != current_time:
-                    pass
-                elif open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == current_time:
+                #if open_time== self.NY_CLOSE_TIME == current_time:
+                #    pass
+                #elif open_time == self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != current_time:
+                #    pass
+                if open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == current_time:
                     rollover_days += 1
                     print("added 1 to rollover_days in 'if open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == current_time' in 'if open_time <= self.NY_CLOSE_TIME <= current_time' ")
                 elif open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != current_time:
@@ -271,56 +273,56 @@ class SwapCalculator:
                     print("added 1 to rollover_days in 'if open_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != current_time' in 'if open_time <= self.NY_CLOSE_TIME <= current_time' ")
 
             elif current_time <= self.NY_CLOSE_TIME <= open_time:
-                if current_time == self.NY_CLOSE_TIME == open_time:
-                    pass
-                elif current_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == open_time:    #open_time=17:00 current_time=16:59
-                    pass
-                elif current_time == self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time:    #open_time=17:01 current_time=17:00
+                #if current_time == self.NY_CLOSE_TIME == open_time:
+                #    pass
+                #elif current_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME == open_time:    #open_time=17:00 current_time=16:59
+                #    pass
+                if current_time == self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time:    #open_time=17:01 current_time=17:00
                     rollover_days += 1
                     print("added 1 to rollover_days in 'if current_time == self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time' in 'elif current_time <= self.NY_CLOSE_TIME <= open_time' ")
-                elif current_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time:    #open_time=17:02 current_time=16:59
-                    pass
+                #elif current_time != self.NY_CLOSE_TIME and self.NY_CLOSE_TIME != open_time:    #open_time=17:02 current_time=16:59
+                #    pass
 
             elif  current_time <= open_time <= self.NY_CLOSE_TIME:
-                if current_time == open_time == self.NY_CLOSE_TIME:
-                    pass
-                elif current_time != open_time and open_time == self.NY_CLOSE_TIME: #open_time=17:00 current_time=16:59
-                    pass
-                elif current_time == open_time and open_time != self.NY_CLOSE_TIME: #open_time=16:59 current_time=16:59
-                    pass
-                elif current_time != open_time and open_time != self.NY_CLOSE_TIME: #open_time=16:59 current_time=16:58
+                #if current_time == open_time == self.NY_CLOSE_TIME:
+                #    pass
+                #elif current_time != open_time and open_time == self.NY_CLOSE_TIME: #open_time=17:00 current_time=16:59
+                #    pass
+                #elif current_time == open_time and open_time != self.NY_CLOSE_TIME: #open_time=16:59 current_time=16:59
+                #    pass
+                if current_time != open_time and open_time != self.NY_CLOSE_TIME: #open_time=16:59 current_time=16:58
                     rollover_days += 1
                     print("added 1 to rollover_days in 'elif current_time != open_time and open_time != self.NY_CLOSE_TIME' in 'elif current_time <= open_time <= self.NY_CLOSE_TIME' ")
 
             elif open_time <= current_time <= self.NY_CLOSE_TIME:
-                if open_time == current_time == self.NY_CLOSE_TIME:
-                    pass
-                elif open_time != current_time and current_time == self.NY_CLOSE_TIME:  #open_time=16:59 current_time=17:00
+                #if open_time == current_time == self.NY_CLOSE_TIME:
+                #    pass
+                if open_time != current_time and current_time == self.NY_CLOSE_TIME:  #open_time=16:59 current_time=17:00
                     rollover_days += 1
                     print("added 1 to rollover_days in 'if open_time != current_time and current_time == self.NY_CLOSE_TIME' in 'elif open_time <= current_time <= self.NY_CLOSE_TIME' ")
-                elif open_time == current_time and current_time != self.NY_CLOSE_TIME:  #open_time=16:59 current_time=16:59
-                    pass
-                elif open_time != current_time and current_time != self.NY_CLOSE_TIME:  #open_time=16:58 current_time=16:59
-                    pass
+                #elif open_time == current_time and current_time != self.NY_CLOSE_TIME:  #open_time=16:59 current_time=16:59
+                #    pass
+                #elif open_time != current_time and current_time != self.NY_CLOSE_TIME:  #open_time=16:58 current_time=16:59
+                #    pass
                 
 
-            elif self.NY_CLOSE_TIME <= open_time <= current_time:
-                if self.NY_CLOSE_TIME == open_time == current_time:
-                    pass
-                elif self.NY_CLOSE_TIME != open_time and open_time == current_time: #open_time=17:01 current_time=17:01
-                    pass
-                elif self.NY_CLOSE_TIME == open_time and open_time != current_time: #open_time=17:00 current_time=17:01
-                    pass
-                elif self.NY_CLOSE_TIME != open_time and open_time != current_time: #open_time=17:01 current_time=17:02
-                    pass
+            #elif self.NY_CLOSE_TIME <= open_time <= current_time:
+            #    if self.NY_CLOSE_TIME == open_time == current_time:
+            #        pass
+            #    elif self.NY_CLOSE_TIME != open_time and open_time == current_time: #open_time=17:01 current_time=17:01
+            #        pass
+            #    elif self.NY_CLOSE_TIME == open_time and open_time != current_time: #open_time=17:00 current_time=17:01
+            #        pass
+            #    elif self.NY_CLOSE_TIME != open_time and open_time != current_time: #open_time=17:01 current_time=17:02
+            #        pass
 
 
             elif self.NY_CLOSE_TIME <= current_time <= open_time:
-                if self.NY_CLOSE_TIME == current_time == open_time:
-                    pass
-                elif self.NY_CLOSE_TIME != current_time and current_time == open_time:  #open_time=17:01 current_time=17:01
-                    pass
-                elif self.NY_CLOSE_TIME == current_time and current_time != open_time:  #open_time=17:01 current_time=17:00
+                #if self.NY_CLOSE_TIME == current_time == open_time:
+                #    pass
+                #elif self.NY_CLOSE_TIME != current_time and current_time == open_time:  #open_time=17:01 current_time=17:01
+                #    pass
+                if self.NY_CLOSE_TIME == current_time and current_time != open_time:  #open_time=17:01 current_time=17:00
                     rollover_days += 1
                     print("added 1 to rollover_days in 'elif self.NY_CLOSE_TIME == current_time and current_time != open_time' in 'elif self.NY_CLOSE_TIME <= current_time <= open_time' ")
                 elif self.NY_CLOSE_TIME != current_time and current_time != open_time:  #open_time=17:02 current_time=17:01
@@ -334,10 +336,11 @@ class SwapCalculator:
             return 0
         return rollover_days
 
+    #@timing_decorator
     def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
-        trading_days_set = set(trading_days)
-        rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set)
         if self.website == "minkabu":
+            trading_days_set = set(trading_days)
+            rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set)
             if rollover_days == 0:
                 return 0
             elif rollover_days >= 1:
@@ -350,27 +353,32 @@ class SwapCalculator:
                 return swap_value * rollover_days * order_size / self.per_order_size
 
         if self.website == "oanda":
-            if rollover_days == 0:
-                return 0
-            elif rollover_days >= 1:
                 data = self.swap_points_dict
                 # swap_value の初期化
                 swap_value = 0
 
                 # open_date から current_date までの日付をループ
-                current = open_date         
-                while self.get_ny_business_date(current) < self.get_ny_business_date(current_date):
-                    #date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
-                    current_jst = get_tokyo_business_date(current)
-                    date_str = current_jst.strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
-                    swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0) if current_jst >= pytz.timezone("Asia/Tokyo").localize(datetime(2019,4,1)).date() else self.swap_points_dict_theory.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
-                    print(f"date_str: {date_str}, swap_value:{swap_value}")
-
-                    current += timedelta(days=1)  # 次の日に進める
+                #current = open_date
+                # リスト内包表現を使用して、日付ごとの swap_value を合計
+                swap_value = sum(
+                    data.get(current_jst.strftime("%Y-%m-%d"), {}).get('buy' if "Buy" in position else 'sell', 0) 
+                    if current_jst >= pytz.timezone("Asia/Tokyo").localize(datetime(2019,4,1)).date() 
+                    else self.swap_points_dict_theory.get(current_jst.strftime("%Y-%m-%d"), {}).get('buy' if "Buy" in position else 'sell', 0)
+                    for current_jst in (get_tokyo_business_date(current) for current in pd.date_range(start=open_date, end=current_date))
+                )
+                #while self.get_ny_business_date(current) < self.get_ny_business_date(current_date):
+                #    #date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
+                #    current_jst = get_tokyo_business_date(current)
+                #    date_str = current_jst.strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
+                #    swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0) if current_jst >= pytz.timezone("Asia/Tokyo").localize(datetime(2019,4,1)).date() else self.swap_points_dict_theory.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
+                #    print(f"date_str: {date_str}, swap_value:{swap_value}")
+#
+                #    current += timedelta(days=1)  # 次の日に進める
 
                 return swap_value * order_size / self.per_order_size    #2019年4月以降はoanda証券のサイトにあるデータはrollover込みの値なのでこれで良いが、それ以前はないので、スワップポイントを計算で求めないといけないので、rollover_daysを掛け合わせないといけない
 
-
+    #@timing_decorator
+    @lru_cache(maxsize=None)
     def get_ny_business_date(self,dt):
         
         #指定された日時に対して、7:00～翌日6:59の範囲で対応する基準日を返す。
