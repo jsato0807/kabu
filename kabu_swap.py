@@ -253,8 +253,7 @@ class SwapCalculator:
     def calculate_rollover_days(self, open_date, current_date, trading_days_set):
         try:
             rollover_days = (self.add_business_days(current_date, 2, trading_days_set, "1d") - self.add_business_days(open_date, 2, trading_days_set, "1d")).days
-
-
+                    
             open_date = open_date.astimezone(pytz.timezone("America/New_York"))
             current_date = current_date.astimezone(pytz.timezone("America/New_York"))
             open_time = open_date.time()
@@ -339,8 +338,8 @@ class SwapCalculator:
     #@timing_decorator
     def get_total_swap_points(self, pair, position, open_date, current_date, order_size, trading_days):
         if self.website == "minkabu":
-            trading_days_set = set(trading_days)
-            rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days_set)
+            #trading_days_set = set(trading_days)
+            rollover_days = self.calculate_rollover_days(open_date, current_date, trading_days)
             if rollover_days == 0:
                 return 0
             elif rollover_days >= 1:
@@ -358,26 +357,26 @@ class SwapCalculator:
                 swap_value = 0
 
                 # open_date から current_date までの日付をループ
-                #current = open_date
+                current = open_date
                 # リスト内包表現を使用して、日付ごとの swap_value を合計
-                swap_value = sum(
-                    data.get(current_jst.strftime("%Y-%m-%d"), {}).get('buy' if "Buy" in position else 'sell', 0) 
-                    if current_jst >= pytz.timezone("Asia/Tokyo").localize(datetime(2019,4,1)).date() 
-                    else self.swap_points_dict_theory.get(current_jst.strftime("%Y-%m-%d"), {}).get('buy' if "Buy" in position else 'sell', 0)
-                    for current_jst in (get_tokyo_business_date(current) for current in pd.date_range(start=open_date, end=current_date))
-                )
-                #while self.get_ny_business_date(current) < self.get_ny_business_date(current_date):
-                #    #date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
-                #    current_jst = get_tokyo_business_date(current)
-                #    date_str = current_jst.strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
-                #    swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0) if current_jst >= pytz.timezone("Asia/Tokyo").localize(datetime(2019,4,1)).date() else self.swap_points_dict_theory.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
-                #    print(f"date_str: {date_str}, swap_value:{swap_value}")
-#
-                #    current += timedelta(days=1)  # 次の日に進める
+                #swap_value = sum(
+                #    data.get(current_jst.strftime("%Y-%m-%d"), {}).get('buy' if "Buy" in position else 'sell', 0) 
+                #    if current_jst >= pytz.timezone("Asia/Tokyo").localize(datetime(2019,4,1)).date() 
+                #    else self.swap_points_dict_theory.get(current_jst.strftime("%Y-%m-%d"), {}).get('buy' if "Buy" in position else 'sell', 0)
+                #    for current_jst in (get_tokyo_business_date(current) for current in pd.date_range(start=open_date, end=current_date))
+                #)
+                while self.get_ny_business_date(current) < self.get_ny_business_date(current_date):
+                    date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
+                    current_jst = get_tokyo_business_date(current)
+                    date_str = current_jst.strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
+                    swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0) if current_jst >= pytz.timezone("Asia/Tokyo").localize(datetime(2019,4,1)).date() else self.swap_points_dict_theory.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
+                    print(f"date_str: {date_str}, swap_value:{swap_value}")
+
+                    current += timedelta(days=1)  # 次の日に進める
 
                 return swap_value * order_size / self.per_order_size    #2019年4月以降はoanda証券のサイトにあるデータはrollover込みの値なのでこれで良いが、それ以前はないので、スワップポイントを計算で求めないといけないので、rollover_daysを掛け合わせないといけない
 
-    #@timing_decorator
+    ##@timing_decorator
     @lru_cache(maxsize=None)
     def get_ny_business_date(self,dt):
         
