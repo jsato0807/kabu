@@ -199,7 +199,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             #check swap
             num_positions = 0
             for pos in positions:
-                if calculator.crossover_ny_close(pos[6],date):
+                if not calculator.crossover_ny_close(pos[6],date):
+                    if not "Closed" in pos[2]:
+                        pos[6] = date
+                else:
                     if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]): #last condition acts when a position is opend and closed in intraday
                         add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                         effective_margin += add_swap
@@ -343,7 +346,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #check swap
             num_positions = 0
             for pos in positions:
-                if calculator.crossover_ny_close(pos[6],date):
+                if not calculator.crossover_ny_close(pos[6],date):
+                    if not "Closed" in pos[2]:
+                        pos[6] = date
+                else:
                     if pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]):
                         add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                         effective_margin += add_swap
@@ -549,7 +555,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #check swap
             num_positions = 0
             for pos in positions:
-                if calculator.crossover_ny_close(pos[6],date):
+                if not calculator.crossover_ny_close(pos[6],date):
+                    if not "Closed" in pos[2]:
+                        pos[6] = date
+                else:
                     if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]):
                         add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                         effective_margin += add_swap
@@ -775,7 +784,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
                 #check swap
             num_positions = 0
             for pos in positions:
-                if calculator.crossover_ny_close(pos[6],date):
+                if not calculator.crossover_ny_close(pos[6],date):
+                    if not "Closed" in pos[2]:
+                        pos[6] = date
+                else:
                     if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]):
                         add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                         effective_margin += add_swap
@@ -940,7 +952,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             #check swap
             num_positions = 0
             for pos in positions:
-                if calculator.crossover_ny_close(pos[6],date):
+                if not calculator.crossover_ny_close(pos[6],date):
+                    if not "Closed" in pos[2]:
+                        pos[6] = date
+                else:
                     if pos[2] == "Buy" or (pos[2] == "Buy-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]) or pos[2] == "Sell" or (pos[2] == "Sell-Closed" and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]):
                         add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                         effective_margin += add_swap
@@ -1156,7 +1171,10 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
             num_positions = 0
             for pos in positions:
                 #check swap
-                if calculator.crossover_ny_close(pos[6],date):
+                if not calculator.crossover_ny_close(pos[6],date):
+                    if not "Closed" in pos[2]:
+                        pos[6] = date
+                else:
                     if ("Buy" in pos[2] and not pos[2].endswith('Closed')) or ("Sell" in pos[2] and not pos[2].endswith('Closed')) or ("Closed" in pos[2] and calculator.add_business_days(pos[6],1,data.index,interval) == date and data.index[pos[1]] != pos[6]):
                         add_swap = calculator.get_total_swap_points(pair,pos[2],pos[6],date,order_size,data.index)
                         effective_margin += add_swap
@@ -1260,11 +1278,11 @@ def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_
 
 
 pair = 'AUDNZD=X'
-interval="1d"
-website = "minkabu" #minkabu or  oanda
+interval="M1"
+website = "oanda" #minkabu or  oanda
 #end_date = datetime.strptime("2021-01-05 05:51:00","%Y-%m-%d %H:%M:%S")#datetime.now() - timedelta(days=7)
 end_date = datetime.strptime("2019-11-30","%Y-%m-%d")#datetime.now() - timedelta(days=7)
-start_date = datetime.strptime("2019-11-02","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+start_date = datetime.strptime("2019-11-1","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 #start_date = datetime.strptime("2021-01-04","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 100000
 grid_start = 1.02
@@ -1283,7 +1301,8 @@ if __name__ == "__main__":
     profit_widths = [0.01]
     densities = [10]
 
-    calculator = SwapCalculator(website,pair,start_date,end_date)
+    calculator = SwapCalculator(website,pair,start_date,end_date,data.index)
+    #calculator = SwapCalculator(website,pair,start_date,end_date)
     
     results = []
     
