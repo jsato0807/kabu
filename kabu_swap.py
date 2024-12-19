@@ -54,7 +54,7 @@ class SwapCalculator:
         'SEK': 'Europe/Stockholm',
     }
     #@timing_decorator
-    def __init__(self, website, pair, start_date, end_date, trading_days_set):
+    def __init__(self, website, pair, start_date, end_date, order_size, trading_days_set):
         self.timezones = self.get_timezones_from_pair(pair)
         self.website = website
         self.each_holidays = self.get_holidays_from_pair(pair,start_date,end_date)  # 祝日データをインスタンスに保持
@@ -598,7 +598,7 @@ if __name__ == "__main__":
     start_date = datetime(2019,3,25,21,59,tzinfo=dt_library.timezone.utc)
     end_date = datetime(2019,4,5,22,0,tzinfo=dt_library.timezone.utc)
     pair = "EURGBP=X"
-    calculator = SwapCalculator("oanda", pair, start_date, end_date, [])
+    calculator = SwapCalculator("oanda", pair, start_date, end_date, order_size,[])
 
     total_swap_points = calculator.get_total_swap_points(pair, "Buy-Forced-Closed", start_date, end_date, order_size, [])
     print(total_swap_points)

@@ -80,7 +80,7 @@ def #delete_file(file_path):
         print(f"The file does not exist: {file_path}")
      
 """
-
+#@timing_decorator
 def traripi_backtest(calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, interval, entry_interval=None, total_threshold=None,strategy='standard', density=1,realized_profit=0, required_margin=0, position_value=0, swap_value=0, effective_margin_max = -np.inf, effective_margin_min = np.inf):
     """
     Perform Trailing Stop strategy backtest on given data.
@@ -1281,8 +1281,8 @@ pair = 'AUDNZD=X'
 interval="M1"
 website = "oanda" #minkabu or  oanda
 #end_date = datetime.strptime("2021-01-05 05:51:00","%Y-%m-%d %H:%M:%S")#datetime.now() - timedelta(days=7)
-end_date = datetime.strptime("2019-11-30","%Y-%m-%d")#datetime.now() - timedelta(days=7)
-start_date = datetime.strptime("2019-11-1","%Y-%m-%d")#datetime.now() - timedelta(days=14)
+end_date = datetime.strptime("2024-10-26","%Y-%m-%d")#datetime.now() - timedelta(days=7)
+start_date = datetime.strptime("2019-3-20","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 #start_date = datetime.strptime("2021-01-04","%Y-%m-%d")#datetime.now() - timedelta(days=14)
 initial_funds = 100000
 grid_start = 1.02
@@ -1301,7 +1301,6 @@ if __name__ == "__main__":
     profit_widths = [0.01]
     densities = [10]
 
-    calculator = SwapCalculator(website,pair,start_date,end_date,data.index)
     #calculator = SwapCalculator(website,pair,start_date,end_date)
     
     results = []
@@ -1312,6 +1311,7 @@ if __name__ == "__main__":
     if "diamond" in strategies and milagroman_list:
         print("hello diamond and {} both".format(milagroman_list))
         for order_size, num_traps, profit_width, strategy, density, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, densities, entry_intervals, total_thresholds):
+            calculator = SwapCalculator(website,pair,start_date,end_date,order_size,data.index)
             effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min  = traripi_backtest(
                calculator ,data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, interval, entry_interval, total_threshold, strategy=strategy, density=density
             )
@@ -1321,6 +1321,7 @@ if __name__ == "__main__":
     elif "diamond" in strategies and not milagroman_list:
         print("hello diamond only")
         for order_size, num_traps, profit_width, strategy, density in product(order_sizes, num_traps_options, profit_widths, strategies, densities):
+            calculator = SwapCalculator(website,pair,start_date,end_date,order_size,data.index)
             effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, _, _, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min = traripi_backtest(
                 calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, interval, entry_interval=None, total_threshold=None, strategy=strategy, density=density
             )
@@ -1332,6 +1333,7 @@ if __name__ == "__main__":
     elif not "diamond" in strategies and milagroman_list:
         print("{} only".format(milagroman_list))
         for order_size, num_traps, profit_width, strategy, entry_interval, total_threshold in product(order_sizes, num_traps_options, profit_widths, strategies, entry_intervals, total_thresholds):
+            calculator = SwapCalculator(website,pair,start_date,end_date,order_size,data.index)
             effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min = traripi_backtest(
                 calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, interval, entry_interval, total_threshold, strategy=strategy, density=None
             )
@@ -1342,6 +1344,7 @@ if __name__ == "__main__":
     elif not "diamond" in strategies and not milagroman_list:
         print("nothing")
         for order_size, num_traps, profit_width, strategy in product(order_sizes, num_traps_options, profit_widths, strategies):
+            calculator = SwapCalculator(website,pair,start_date,end_date,order_size,data.index)
             effective_margin, margin_deposit, realized_profit, position_value, swap_value, required_margin, margin_maintenance_rate, entry_interval, total_threshold, sharp_ratio, max_draw_down, effective_margin_max, effective_margin_min = traripi_backtest(
                 calculator, data, initial_funds, grid_start, grid_end, num_traps, profit_width, order_size, interval, None, None, strategy=strategy, density=None
             )
@@ -1419,3 +1422,4 @@ if __name__ == "__main__":
         plt.legend()
         plt.show()
     """
+    print(f"Initialization Time: {calculator.init_time:.6f} seconds")
