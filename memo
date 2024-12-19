@@ -218,3 +218,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     →trading_days_set = set(trading_days)が遅い原因
 
     今は、営業日を最初にintervalに応じてdictを作ってから実行しているが、start_dateとend_dateの期間が長いほど、営業日をinterval=M1で作るのに負荷がかかるから、前のプログラムのようにその都度休日と祝日でないかどうか調べてtimedelta(days=1)を足していく方法の方が計算が早いのではないか。
+
+2024-12-19
+    →結局self.business_daysではなくself.each_holidaysとする方が時間短縮になるので変更した
+    2019年4月1日以前のスワップの理論値計算で移動平均を計算すると空になるので、修正せよ
