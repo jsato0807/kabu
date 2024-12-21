@@ -225,3 +225,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 
 2024-12-21
     dtype=datetime64[ns] and Timestampというエラーがkabu_library.pyのget_data_rangeで出現
+    →get_data_range内の不等号で比較する値を全てdatetimeにすることで解決
+
+    kabu_swap.pyを2019-4-1以前を含めた時に、2019-3-29におけるすわっぷぽいんとが0になってしまう。
+    →おそらく、2019-4-1を境に参照するスワップカレンダーが変わるので、その境目である3-29はスワップポイントが２営業日後を考慮することからうまく計算できていない。つまり3-29の２営業日後は4-2だが、swap_points_dict_theory２は3-31までしかないため、２営業日後が〇になる
