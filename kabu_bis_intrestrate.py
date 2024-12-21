@@ -31,6 +31,8 @@ def filter_country_data(country_name: str, start_date: str, end_date: str) -> pd
         country_name = country_name.replace("_", " ")
     country_data = data[data['REF_AREA:Reference area'].str.endswith(country_name)].copy()  # コピーを作成
 
+    country_data = country_data[country_data['FREQ:Frequency'] == 'D: Daily']
+
     # 日付を変換し、無効な日付を除外
     country_data.loc[:, 'TIME_PERIOD:Time period or range'] = pd.to_datetime(country_data['TIME_PERIOD:Time period or range'], errors='coerce')
     country_data = country_data.dropna(subset=['TIME_PERIOD:Time period or range'])
