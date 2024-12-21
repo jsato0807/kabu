@@ -1,4 +1,4 @@
-from kabu_library import get_swap_points_dict, modified_to_japan_datetime, modified_to_utc_datetime, get_tokyo_business_date
+from kabu_library import get_swap_points_dict, modified_to_japan_datetime, modified_to_utc_datetime, get_tokyo_business_date, get_data_range
 from kabu_bis_intrestrate import filter_country_data
 import pandas as pd
 from datetime import datetime, timedelta
@@ -33,15 +33,13 @@ class Compare_Swap:
         'NOK': 'Europe/Oslo',
         'SEK': 'Europe/Stockholm',
     }
-    def __init__(self,pair,start_date,final_end,order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month",swap_points_dict=False):
+    def __init__(self,pair,start_date,final_end,order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month",swap_points_dict=[]):
         currencies = arrange_pair_format(pair)
         pair = currencies[0]+"/"+ currencies[1]
 
         rename_pair = pair.replace("/", "")
         
-
-
-        self.swap_data = get_swap_points_dict(start_date,end_date,rename_pair) if not swap_points_dict else swap_points_dict
+        self.swap_data = get_swap_points_dict(start_date,end_date,rename_pair) if len(swap_points_dict)==0 else swap_points_dict
 
         self.start_date = start_date
         self.final_end = final_end
@@ -133,33 +131,12 @@ class Compare_Swap:
         }
         return currency_map.get(currency_code, 'Unknown Country')
 
-    def get_data_range(self, data, current_start, current_end):
-        #pay attention to data type; we should change the data type of current_start and current_end to strftime.
-
-        try:
-            current_start = current_start.strftime("%Y-%m-%d")
-            current_end = current_end.strftime("%Y-%m-%d")
-        except:
-            pass
-
-        result = {}
-        start_collecting = False
-        for date, values in data.items():        
-            # 指定された開始日からデータの収集を開始
-            if date == current_start:
-                start_collecting = True
-            if start_collecting:
-                result[date] = values
-            # 指定された終了日でループを終了
-            if date == current_end:
-                break
-        return result
 
     def calculate_swap_averages(self, current_start, current_end):
 
         total_sell_swap, total_buy_swap, total_days = 0, 0, 0
 
-        filtered_data = self.get_data_range(self.swap_data,current_start,current_end)
+        filtered_data = get_data_range(self.swap_data,current_start,current_end)
 
         buy_values = [data['buy'] for date, data in filtered_data.items()]
         sell_values = [data['sell'] for date, data in filtered_data.items()]
@@ -192,7 +169,7 @@ class Compare_Swap:
                 current_end += relativedelta(days=self.cumulative_period)
 
 
-            filtered_data = self.get_data_range(self.swap_data,start_date.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
+            filtered_data = get_data_range(self.swap_data,start_date.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
             buy_values = [data['buy'] for date, data in filtered_data.items()]
             sell_values = [data['sell'] for date, data in filtered_data.items()]
 
@@ -231,7 +208,7 @@ class Compare_Swap:
         else:
             window_size = self.window_size
 
-        filtered_data = self.get_data_range(self.swap_data,start_date,final_end)
+        filtered_data = get_data_range(self.swap_data,start_date,final_end)
         buy_values = [data['buy'] for date, data in filtered_data.items()]
         sell_values = [data['sell'] for date, data in filtered_data.items()]
 
@@ -244,7 +221,7 @@ class Compare_Swap:
 
 
         results = []
-        print(len(moving_avg_buy)-1)
+        print(f"length of moving_avg_buy - 1: {len(moving_avg_buy)-1}")
         for i in range(len(moving_avg_buy)-1):
             first_key = list(filtered_data.keys())[i]
             last_key = list(filtered_data.keys())[i+self.window_size]

@@ -11,11 +11,12 @@ from functools import lru_cache
 import time as time_module
 
 def timing_decorator(func):
-    def wrapper(*args, **kwargs):
+    def wrapper(self,*args, **kwargs):
         start_time = time_module.time()
-        result = func(*args, **kwargs)
+        result = func(self, *args, **kwargs)
         elapsed_time = time_module.time() - start_time
         print(f"Method {func.__name__}: {elapsed_time:.6f} seconds")
+        self.init_time = elapsed_time  # init_time を動的に追加
         return result
     return wrapper
 
@@ -122,12 +123,18 @@ def fetch_currency_data(pair, start, end, interval):
 def get_data_range(data, current_start, current_end):
     #pay attention to data type; we should change the data type of current_start and current_end to strftime.
     result = {}
-
     current_start = pd.Timestamp(current_start).tz_localize('UTC')
     current_end = pd.Timestamp(current_end).tz_localize('UTC')
 
     # dataのキー（日付）をSeriesとして取得
     available_dates = pd.Series(data.keys())
+
+    # available_dates が文字列型の場合、datetime 型に変換
+    if available_dates.dtype == 'O':  # 'O' はオブジェクト型、つまり文字列型
+        available_dates = pd.to_datetime(available_dates, errors='coerce')
+
+    # available_dates を pd.Timestamp 型に変換して比較可能にする
+    available_dates = available_dates.apply(pd.Timestamp)
 
     # 最も近い営業日を検索
     if current_start not in available_dates:
@@ -257,7 +264,7 @@ def get_swap_points_dict(start_date,end_date,rename_pair):
         return swap_data.set_index('date').to_dict('index')
 
     elif partial_overlap_files:
-        print("Loading data from partial overlap files")
+        print(f"Loading data from partial overlap files:{partial_overlap_files}")
         combined_data = pd.DataFrame()
     
         for filename, file_start, file_end in partial_overlap_files:
@@ -277,10 +284,11 @@ def get_swap_points_dict(start_date,end_date,rename_pair):
         # すべてのデータがcombined_dataに集められた後、重複を削除する
         combined_data = combined_data.drop_duplicates(subset='date', keep='first')
             
+        # **変更点**: `date` 列を datetime64[ns] 型に変換
+        combined_data['date'] = pd.to_datetime(combined_data['date'])
+    
         # 日付順に並べ替え
         combined_data = combined_data.sort_values(by='date').reset_index(drop=True)
-        print(combined_data)
-        exit()
 
         # combined_data['date']をdatetime型に変換し、日本時間 (Asia/Tokyo) のタイムゾーンを設定
         combined_data['date'] = pd.to_datetime(combined_data['date'])
@@ -297,20 +305,42 @@ def get_swap_points_dict(start_date,end_date,rename_pair):
         else:  # すでにタイムゾーンが付与されている場合
             existing_dates = combined_data['date'].dt.tz_convert('Asia/Tokyo')
 
+        
+        # 日付部分だけを文字列に変換
+        combined_data["date"] = combined_data["date"].dt.strftime("%Y-%m-%d")
+
+
         missing_ranges = []
         if target_start < existing_dates.min():
-            missing_ranges.append((target_start, existing_dates.min() - pd.Timedelta(days=1)))
+            missing_ranges.append((target_start, existing_dates.min() - timedelta(days=1)))
         if target_end > existing_dates.max():
-            missing_ranges.append((existing_dates.max() + pd.Timedelta(days=1), target_end))
+            missing_ranges.append((existing_dates.max() + timedelta(days=1), target_end))
+
+
+        combined_data.set_index('date').to_dict('index')
 
         # 不足分をスクレイピング
         for scrape_start, scrape_end in missing_ranges:
             print(f"Scraping data from {scrape_start} to {scrape_end}")
             scraped_data = scrape_from_oanda(rename_pair, scrape_start, scrape_end)
-            combined_data = pd.concat([combined_data, scraped_data])
+            # **変更点**: スクレイピングデータの `date` 列も datetime 型に変換
+            scraped_data['date'] = pd.to_datetime(scraped_data['date'])
+            scraped_data.set_index('date', inplace=True)
+            
+            combined_data = pd.concat([combined_data, scraped_data]).drop_duplicates().sort_values(by="date")
+
+        # dateをキーとし、sell, buy, number_of_daysを値にする辞書を作成
+        result_dict = {
+            row["date"]: {
+                "sell": row["sell"],
+                "buy": row["buy"],
+                "number_of_days": row["number_of_days"]
+            }
+            for _, row in combined_data.iterrows()
+        }
 
         # 最終結果を返す
-        return combined_data.set_index('date').to_dict('index')
+        return result_dict
 
 
     else:
