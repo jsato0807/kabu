@@ -120,21 +120,21 @@ def fetch_currency_data(pair, start, end, interval):
         return df
 
 
-def get_data_range(data, current_start, current_end):
+def get_data_range(data, current_start, current_end):   #current_start and current_end are considered as datetime jst
     #pay attention to data type; we should change the data type of current_start and current_end to strftime.
     result = {}
-    current_start = pd.Timestamp(current_start).tz_localize('UTC')
-    current_end = pd.Timestamp(current_end).tz_localize('UTC')
 
     # dataのキー（日付）をSeriesとして取得
     available_dates = pd.Series(data.keys())
 
     # available_dates が文字列型の場合、datetime 型に変換
-    if available_dates.dtype == 'O':  # 'O' はオブジェクト型、つまり文字列型
-        available_dates = pd.to_datetime(available_dates, errors='coerce')
+    #if available_dates.dtype == 'O':  # 'O' はオブジェクト型、つまり文字列型
+    # 1. 日付を日本時間にローカライズ
+    available_dates = pd.to_datetime(available_dates).dt.tz_localize('Asia/Tokyo')
 
-    # available_dates を pd.Timestamp 型に変換して比較可能にする
-    available_dates = available_dates.apply(pd.Timestamp)
+    # 2. 各要素をPython標準のdatetime型に変換
+    available_dates = available_dates.apply(lambda x: x.to_pydatetime())
+
 
     # 最も近い営業日を検索
     if current_start not in available_dates:
@@ -145,11 +145,8 @@ def get_data_range(data, current_start, current_end):
         current_end = available_dates[available_dates <= current_end].max()
 
     # 指定された範囲内のデータを抽出
-    result = {date: values for date, values in data.items() if current_start <= date <= current_end}
+    result = {date: values for date, values in data.items() if current_start <= pytz.timezone("Asia/Tokyo").localize(datetime.strptime(date, "%Y-%m-%d")) <= current_end}
 
-    # 辞書をSeriesに変換し、列名を'Close'に指定
-    result = pd.Series(result, name='Close')
-    result.index.name = 'Date'
 
     return result
 
@@ -324,8 +321,7 @@ def get_swap_points_dict(start_date,end_date,rename_pair):
             print(f"Scraping data from {scrape_start} to {scrape_end}")
             scraped_data = scrape_from_oanda(rename_pair, scrape_start, scrape_end)
             # **変更点**: スクレイピングデータの `date` 列も datetime 型に変換
-            scraped_data['date'] = pd.to_datetime(scraped_data['date'])
-            scraped_data.set_index('date', inplace=True)
+            #scraped_data['date'] = pd.to_datetime(scraped_data['date'])
             
             combined_data = pd.concat([combined_data, scraped_data]).drop_duplicates().sort_values(by="date")
 

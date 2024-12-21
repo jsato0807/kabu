@@ -169,7 +169,7 @@ class Compare_Swap:
                 current_end += relativedelta(days=self.cumulative_period)
 
 
-            filtered_data = get_data_range(self.swap_data,start_date.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
+            filtered_data = get_data_range(self.swap_data,start_date,current_end)
             buy_values = [data['buy'] for date, data in filtered_data.items()]
             sell_values = [data['sell'] for date, data in filtered_data.items()]
 
@@ -262,10 +262,8 @@ class Compare_Swap:
             current_end = current_end.strftime("%Y-%m-%d")
 
             interest_rate = self.interest_rates[currency]
-            #print(interest_rate)
             #exit()
             interest_rate['TIME_PERIOD:Time period or range'] = pd.to_datetime(interest_rate['TIME_PERIOD:Time period or range'])
-
 
 
             filtered_interest_rate = interest_rate[(current_start <= interest_rate['TIME_PERIOD:Time period or range']) & (interest_rate['TIME_PERIOD:Time period or range'] <= current_end)]
@@ -277,7 +275,7 @@ class Compare_Swap:
             result = df[["TIME_PERIOD:Time period or range", "OBS_VALUE:Observation Value"]]
             result_dict = result.set_index('TIME_PERIOD:Time period or range')['OBS_VALUE:Observation Value'].to_dict()
 
-            interest_list.append(result_dict)
+            interest_list.append(result_dict)       
         return interest_list
 
     def calculate_theory(self,date):
@@ -310,7 +308,7 @@ class Compare_Swap:
             if current_end > final_end:
                 current_end = final_end
 
-            avg_buy, avg_sell = self.calculate_swap_averages(current_start.strftime("%Y-%m-%d"),current_end.strftime("%Y-%m-%d"))
+            avg_buy, avg_sell = self.calculate_swap_averages(current_start,current_end)
 
             valid_theories = [
                 self.calculate_theory(date) 
