@@ -59,6 +59,7 @@ class SwapCalculator:
         self.website = website
         self.each_holidays = self.get_holidays_from_pair(pair,start_date,end_date)  # 祝日データをインスタンスに保持
         #self.business_days = self.generate_business_days(pair, start_date, end_date)
+        self.pair = pair
 
         if website == "minkabu":
             self.per_order_size = 10000 if pair in ['ZARJPY=X', 'MXNJPY=X'] else 1000 #MINKABU
@@ -249,15 +250,15 @@ class SwapCalculator:
             # 土日でなく、かつ祝日でない、もしくはtrading_daysに含まれている場合
             if swap_flag:
                 if (self.is_ny_business_day(current_date) and 
-                    (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),self.arrange_pair_format(pair)[0]) and 
-                     not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])),self.arrange_pair_format(pair)[1]))):
+                    (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),arrange_pair_format(pair)[0]) and 
+                     not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])),arrange_pair_format(pair)[1]))):
                     # NYクローズを跨いでいるかを判定
                     if not self.crossed_ny_close(current_date_before) and self.crossed_ny_close(current_date) or interval == "1d":
                         added_units += 1
             else:
                 if (self.is_ny_business_day(current_date) and 
-                    (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),self.arrange_pair_format(pair)[0]) and 
-                     not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])),self.arrange_pair_format(pair)[1])) 
+                    (not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[0])),arrange_pair_format(pair)[0]) and 
+                     not self.is_holiday(current_date.astimezone(pytz.timezone(self.timezones[1])),arrange_pair_format(pair)[1])) 
                      or current_date in trading_days_set):
                     # NYクローズを跨いでいるかを判定
                     if not self.crossed_ny_close(current_date_before) and self.crossed_ny_close(current_date) or interval == "1d":
@@ -597,7 +598,7 @@ if __name__ == "__main__":
     import datetime as dt_library
     start_date = datetime(2019,3,25,21,59,tzinfo=dt_library.timezone.utc)
     end_date = datetime(2019,4,5,22,0,tzinfo=dt_library.timezone.utc)
-    pair = "EURGBP=X"
+    pair = "AUDNZD=X"
     calculator = SwapCalculator("oanda", pair, start_date, end_date, order_size,[])
 
     total_swap_points = calculator.get_total_swap_points(pair, "Buy-Forced-Closed", start_date, end_date, order_size, [])
