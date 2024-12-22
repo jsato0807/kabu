@@ -230,6 +230,11 @@ class SwapCalculator:
         #start_date = start_date.astimezone(self.NY_TIMEZONE)
 
         current_date = start_date
+
+        # 開始日時が営業日でない場合、最も近い営業日後まで進める
+        while not self.is_ny_business_day(current_date):
+            current_date += pd.Timedelta("1d")
+
         added_units = 0
 
 
