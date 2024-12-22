@@ -15,7 +15,7 @@ import os
 import pandas as pd
 from kabu_library import fetch_currency_data
 from kabu_compare_bis_intrestrate_and_oandascraping import Compare_Swap
-from kabu_library import get_swap_points_dict, get_tokyo_business_date
+from kabu_library import get_swap_points_dict, get_business_date
 from kabu_oanda_swapscraping import arrange_pair_format
 from functools import lru_cache
 #from kabu_library import timing_decorator
@@ -395,7 +395,7 @@ class SwapCalculator:
                 #)
                 while self.get_ny_business_date(current) < self.get_ny_business_date(current_date):
                     date_str = current.astimezone(self.JP_TIMEZONE).strftime("%Y-%m-%d")  # 文字列に変換
-                    current_jst = get_tokyo_business_date(current)
+                    current_jst = get_business_date(current,pytz.timezone("Asia/Tokyo"))
                     date_str = current_jst.strftime("%Y-%m-%d")  # 文字列に変換、currentは日本時間とする
                     swap_value += data.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0) if current_jst >= pytz.timezone("Asia/Tokyo").localize(datetime(2019,4,1)).date() else self.swap_points_dict_theory.get(date_str, {}).get('buy' if "Buy" in position else 'sell', 0)
                     print(f"date_str: {date_str}, swap_value:{swap_value}")
@@ -598,7 +598,7 @@ if __name__ == "__main__":
     import datetime as dt_library
     start_date = datetime(2019,3,25,21,59,tzinfo=dt_library.timezone.utc)
     end_date = datetime(2019,4,5,22,0,tzinfo=dt_library.timezone.utc)
-    pair = "AUDNZD=X"
+    pair = "EURGBP=X"
     calculator = SwapCalculator("oanda", pair, start_date, end_date, order_size,[])
 
     total_swap_points = calculator.get_total_swap_points(pair, "Buy-Forced-Closed", start_date, end_date, order_size, [])

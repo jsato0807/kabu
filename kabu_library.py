@@ -181,7 +181,7 @@ def modified_to_utc_datetime(date):
 
 #@timing_decorator
 @lru_cache(maxsize=None)
-def get_tokyo_business_date(dt):
+def get_business_date(dt,country_zone):
         
     #指定された日時に対して、7:00～翌日6:59の範囲で対応する基準日を返す。
 
@@ -195,13 +195,12 @@ def get_tokyo_business_date(dt):
 
 
     # 日本時間（JST）とニューヨーク時間（NYT）を取得するためのタイムゾーン
-    jst = pytz.timezone("Asia/Tokyo")
     ny = pytz.timezone("America/New_York")
     # 1回のタイムゾーン変換で日本時間とニューヨーク時間を取得
-    dt_jp = dt.astimezone(jst)
+    dt_country = dt.astimezone(country_zone)
     dt_ny = dt.astimezone(ny)
 
-    diff_ny_jp = dt_ny.date() - dt_jp.date()
+    diff_ny_jp = dt_ny.date() - dt_country.date()
  
     # 時刻を判定して基準日を計算
     if dt_ny.time() < time(17,0):
@@ -212,7 +211,7 @@ def get_tokyo_business_date(dt):
         reference_date = dt_ny + timedelta(days=1)
 
     reference_date += diff_ny_jp
-    reference_date = reference_date.astimezone(jst)
+    reference_date = reference_date.astimezone(country_zone)
     reference_date  =reference_date.date()
 
     return reference_date
