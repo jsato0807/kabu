@@ -229,3 +229,12 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 
     kabu_swap.pyを2019-4-1以前を含めた時に、2019-3-29におけるすわっぷぽいんとが0になってしまう。
     →おそらく、2019-4-1を境に参照するスワップカレンダーが変わるので、その境目である3-29はスワップポイントが２営業日後を考慮することからうまく計算できていない。つまり3-29の２営業日後は4-2だが、swap_points_dict_theory２は3-31までしかないため、２営業日後が〇になる
+    →2019-4-2までself.swap_points_dict_theoryに追加した上で、while文をadd_business_daysに追加することで、start_dateが土日の場合でも正しく営業日がカウントできるようにした
+
+2024-12-22
+    cpcvによってデータを分割して最適化をかけ、その結果が過学習しているかどうかをcscvで確かめるコードを書く
+    →うまくいかないかもしれないので保留
+
+2024-12--26
+    ダウンロードしたデータのvolumeから一定の割合を設定することで流動性を考慮せよ(All That Glitters Is Not Gold: Comparing Backtest and Out-of-Sample Performance)
+    Ziplineを使ってみたい
