@@ -243,3 +243,6 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 2024-12--26
     ダウンロードしたデータのvolumeから一定の割合を設定することで流動性を考慮せよ(All That Glitters Is Not Gold: Comparing Backtest and Out-of-Sample Performance)
     Ziplineを使ってみたい
+2024-12-28
+    attention(2017)について調べよ
+    人間の脳の中で行われていることが、実は行列計算なのでは、という内容の論文を調べよ
