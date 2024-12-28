@@ -234,6 +234,11 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 2024-12-22
     cpcvによってデータを分割して最適化をかけ、その結果が過学習しているかどうかをcscvで確かめるコードを書く
     →うまくいかないかもしれないので保留
+    ・感度分析やストレステストを実施せよ（最適化されたパラメータを少しずらして結果が大きく変わらないことを確認）
+    ・パラメータの複雑さをペナルティとして評価関数に追加（AIC,BIC）
+    ・ATR(Average True Range)から理想的なトラップ幅を算出し、その範囲から大幅にズレると結果が著しく悪くなるか確認せよ
+    ・スプレッドを実装せよ（トラップ幅が狭いとそれだけ取引頻度が上がるので、スプレッドによるコストがかかるので結果が変わるはず）
+    ・Sharp ratioだけでは、ISに対して過敏になるためOOSでの値が極端に低くなってしまう→高次モーメントや他の統計量（ボラティリティ、ヘッジ比率など）も組み合わせよ(All That Glitters Is Not Gold: Comparing Backtest and Out-of-Sample Performance)
 
 2024-12--26
     ダウンロードしたデータのvolumeから一定の割合を設定することで流動性を考慮せよ(All That Glitters Is Not Gold: Comparing Backtest and Out-of-Sample Performance)
