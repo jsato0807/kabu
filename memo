@@ -246,3 +246,26 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 2024-12-28
     attention(2017)について調べよ
     人間の脳の中で行われていることが、実は行列計算なのでは、という内容の論文を調べよ
+
+2024-12-30
+    ・モデル駆動型
+        線形回帰
+        garch
+        ブラウン運動
+
+    ・データ駆動型
+    GAN(Quant GANs:Deep Generation of Financial Time Series)やCSDI(CSDI: Conditional Score-based Diffusion Models for Probabilistic Time Series Imputation)
+    でシミュレーションにより、金融時系列データを生成して、それに対して、戦略での最適化をかける
+
+    ・最適化手法を工夫する（cpcv,cscv, sharp ratioにペナルティを加える）
+
+    ・エージェントベースモデルにより異端なトレーダーを再現する
+
+    読みたいけど読めない論文
+    Stock Market Simulation by Micro-Macro GAN
+    Multi-Agent Market Modeling of Foreign Exchange Rates
+    Advances in Agent-Based Computational Finance: Asset Pricing Models from Heterogeneous and Interactive Perspective
+    Introduction to Agent-Based Computational Finance
+    Ideological Foundation and Research Paradigm in Agent-Based Computational Finance
+    Agent-Based Computational Finance and Policy Simulation in Financial Markets: Review and Comment
+    Agent-Based Computational Finance on Complex Financial System Perspective: Progress and Prospects
