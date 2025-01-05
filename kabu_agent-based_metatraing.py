@@ -7,8 +7,8 @@ from deap import base, creator, tools, gp
 # 市場の値動きを生成する遺伝的プログラミング
 class MarketGenerator:
     def __init__(self):
-        # 遺伝的プログラミングの初期設定
-        self.pset = gp.PrimitiveSet("MAIN", 2)  # 需給と流動性を入力
+        # 適応度関数を進化させるための木構造設定
+        self.pset = gp.PrimitiveSet("MAIN", 4)  # supply_and_demand, α, β, slippage
         self.pset.addPrimitive(np.add, 2)
         self.pset.addPrimitive(np.subtract, 2)
         self.pset.addPrimitive(np.multiply, 2)
@@ -26,22 +26,41 @@ class MarketGenerator:
         self.toolbox.register("mate", gp.cxOnePoint)
         self.toolbox.register("mutate", gp.mutUniform, expr=self.toolbox.expr, pset=self.pset)
         self.toolbox.register("select", tools.selTournament, tournsize=3)
-        self.toolbox.register("evaluate", self.evaluate_individual)
+        self.toolbox.register("evaluate", self.evaluate_fitness_function)
 
         self.population = self.toolbox.population(n=10)
 
-    def evaluate_individual(self, individual):
-        # 適応度関数: 生成された市場モデルのボラティリティ
+        # 初期の市場特性を生成
+        self.market_characteristics = [
+            (random.uniform(0, 1, num_agent), random.uniform(0.1, 1), random.uniform(0, 0.5)) for _ in range(100)
+        ]
+
+    def evaluate_fitness_function(self, individual):
+        """
+        適応度関数自体を評価
+        """
         func = gp.compile(individual, self.pset)
-        data = [(random.uniform(-1, 1), random.uniform(0.1, 1)) for _ in range(100)]
-        price_changes = [func(demand, liquidity) for demand, liquidity in data]
-        volatility = np.std(price_changes)
-        return volatility,
+
+        # 適応度関数の評価（エージェントのパフォーマンスを基準）
+        scores = []
+        for agent_actions, alpha, beta, slippage in self.market_characteristics:
+            # エージェントの行動から需給バランスと取引量を計算
+            buy_orders = sum([max(0, action) for action in agent_actions])  # 買い注文量
+            sell_orders = sum([abs(min(0, action)) for action in agent_actions])  # 売り注文量
+
+            # 需給バランス D(t)
+            supply_and_demand = buy_orders - sell_orders
+
+            score = func(supply_and_demand, alpha, beta, slippage)
+            if not np.isnan(score):  # 不正な計算結果を除外
+                scores.append(score)
+
+        return np.mean(scores),
 
     def evolve(self):
-        # GPによる進化
-        tools.Statistics(lambda ind: ind.fitness.values)
-        self.population = tools.selBest(self.population, 5) + tools.selTournament(self.population, 5, tournsize=3)
+        """
+        GPによる進化
+        """
         offspring = self.toolbox.select(self.population, len(self.population))
         offspring = list(map(self.toolbox.clone, offspring))
 
@@ -52,14 +71,56 @@ class MarketGenerator:
             if random.random() < 0.2:
                 self.toolbox.mutate(mutant)
 
+        # 新しい個体を評価
         self.population = offspring
         for ind in self.population:
             ind.fitness.values = self.toolbox.evaluate(ind)
 
+        # 市場特性を更新
+        self.update_market_characteristics()
+
+    def update_market_characteristics(self):
+        """
+        市場特性を需給、流動性、スリッページを基に動的に更新
+        """
+        new_characteristics = []
+
+        for agent_actions, alpha, beta, _ in self.market_characteristics:
+            # エージェントの行動から需給バランスと取引量を計算
+            buy_orders = sum([max(0, action) for action in agent_actions])  # 買い注文量
+            sell_orders = sum([abs(min(0, action)) for action in agent_actions])  # 売り注文量
+
+            # 需給バランス D(t)
+            supply_and_demand = buy_orders - sell_orders
+
+            # 取引量 V(t)
+            volume = buy_orders + sell_orders
+            # 流動性の更新
+            # 流動性は需給バランスの安定性に応じて増減
+            updated_liquidity = alpha * volume - beta * abs(supply_and_demand)
+
+            # スリッページの更新
+            # スリッページは需給の変動と流動性に依存
+            updated_slippage = abs(supply_and_demand) / (updated_liquidity + 1e-6)
+
+            # 需給の更新（外部要因を含むランダムな変動）
+            updated_sd = supply_and_demand + random.uniform(-0.05, 0.05) - 0.02 * updated_slippage
+
+            new_characteristics.append((updated_sd, updated_liquidity, updated_slippage))
+
+        self.market_characteristics = new_characteristics
+
+
+
     def generate_market(self):
-        # 最適な市場モデルを生成
+        """
+        最適な市場モデルを生成
+        """
         best_ind = tools.selBest(self.population, 1)[0]
         return gp.compile(best_ind, self.pset)
+
+
+
 
 
 # 強化学習エージェント
@@ -108,8 +169,9 @@ class MetaLearner:
 
 
 # メインプロセス
+num_agent = 5
 market_gen = MarketGenerator()
-agents = [Agent(input_dim=2) for _ in range(5)]
+agents = [Agent(input_dim=2) for _ in range(num_agent)]
 meta_learner = MetaLearner()
 
 for generation in range(10):
