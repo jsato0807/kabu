@@ -21,8 +21,6 @@ class MarketGenerator:
     def train(self, discriminator_performance):
         """
         生成者を学習
-        - `inputs`: 現在の市場状態
-        - `discriminator_performance`: 各エージェントの総資産から計算される識別者の評価
         """
         with tf.GradientTape() as tape:
             loss = tf.reduce_mean(discriminator_performance)  # 識別が容易な場合に損失を増加
@@ -46,27 +44,31 @@ class RLAgent:
         """
         現在の状態を基に行動を決定
         """
-        return self.model(state[np.newaxis, :]).numpy()[0][0]
+        action = self.model(state[np.newaxis, :]).numpy()[0][0]
+        # キャッシュやポジションを超えないように制約を追加
+        max_buy = self.cash_balance / state[1]  # 現在価格で買える最大量
+        max_sell = self.position  # 売却可能な最大量
+        return tf.clip_by_value(action, -max_sell, max_buy)
 
     def update_assets(self, action, current_price):
         """
-        資産とポジションを更新
+        エージェントの資産とポジションを更新
         """
         if action > 0:  # 買い
             cost = action * current_price
-            if cost <= self.cash_balance:
+            if cost <= self.cash_balance:  # 現金残高が足りる場合のみ購入
                 self.cash_balance -= cost
                 self.position += action
         elif action < 0:  # 売り
-            sell_amount = min(abs(action), self.position)
-            self.cash_balance += sell_amount * current_price
-            self.position -= sell_amount
+            self.cash_balance += abs(action) * current_price
+            self.position -= abs(action)
+        # 資産総額を更新
         self.total_assets = self.cash_balance + self.position * current_price
+
 
     def train(self):
         """
         エージェントを学習
-        - `input_data`: 現在の市場状態（総資産、価格）
         """
         with tf.GradientTape() as tape:
             loss = -self.total_assets  # 総資産の最大化を目指す
@@ -100,7 +102,7 @@ for generation in range(generations):
 
     # エージェントの学習
     for agent in agents:
-        agent.train(np.array([agent.total_assets, states[0]]))
+        agent.train()
 
     # 生成者の学習
     discriminator_performance = np.array([agent.total_assets for agent in agents])  # 総資産が高いほど識別困難
