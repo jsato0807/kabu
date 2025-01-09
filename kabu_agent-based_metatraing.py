@@ -85,8 +85,15 @@ class RLAgent:
             self.long_position.assign_sub(fulfilled_sell)
             self.unfulfilled_sell_orders.assign(remaining_sell)
 
+            # 未成立売り注文をショートポジションとして記録
+            additional_short = remaining_sell - self.short_position
+            self.short_position.assign_add(tf.where(~sell_condition, additional_short, -self.short_position))
+
         # 総資産を更新
-        self.total_assets.assign(self.cash_balance + self.long_position * current_price)
+        self.total_assets.assign(
+            self.cash_balance + self.long_position * current_price - self.short_position * current_price
+        )
+
 
 
 
@@ -164,10 +171,11 @@ for generation in range(generations):
     distribute_unfilled_orders(supply_and_demand, agents)  # 未成立注文をランダムに配分
 
     #取引量を計算
-    volume = tf.reduce_sum(abs(action) for action in actions)
+    volume = tf.reduce_sum([tf.abs(action) for action in actions])
+
 
     for agent in agents:
-        agent.update_assets(action, current_price,supply_and_demand)
+        agent.update_assets(action, current_price)
 
     # エージェントの学習
     for agent in agents:
