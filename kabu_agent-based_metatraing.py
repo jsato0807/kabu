@@ -35,7 +35,8 @@ class MarketGenerator:
 class RLAgent:
     def __init__(self, initial_cash=100000):
         self.cash_balance = tf.Variable(initial_cash, dtype=tf.float32)
-        self.position = tf.Variable(0.0, dtype=tf.float32)
+        self.long_position = tf.Variable(0.0, dtype=tf.float32)  # 買いポジション
+        self.short_position = tf.Variable(0.0, dtype=tf.float32)  # 売りポジション
         self.total_assets = tf.Variable(initial_cash, dtype=tf.float32)
         self.model = tf.keras.Sequential([
             layers.Dense(128, activation='relu', input_dim=2),  # 総資産、価格
@@ -48,41 +49,37 @@ class RLAgent:
         """
         現在の状態を基に行動を決定
         """
-        action = self.model(tf.expand_dims(state, axis=0))[0, 0]
+        action = self.model(state[tf.newaxis, :])[0][0]  # TensorFlow形式の計算を保持
+        # キャッシュやポジションを超えないように制約を追加
         max_buy = self.cash_balance / state[1]  # 現在価格で買える最大量
-        max_sell = self.position  # 売却可能な最大量
+        max_sell = self.long_position  # 売却可能な最大量（ロングポジションのみ）
         return tf.clip_by_value(action, -max_sell, max_buy)
 
     def update_assets(self, action, current_price):
         """
         エージェントの資産とポジションを更新
         """
-        total_action = action + self.unfilled_orders
+        if action > 0:  # 買い
+            cost = action * current_price
+            buy_condition = cost <= self.cash_balance  # 購入可能条件
+            self.cash_balance.assign_sub(tf.where(buy_condition, cost, 0.0))
+            self.long_position.assign_add(tf.where(buy_condition, action, 0.0))
+        elif action < 0:  # 売り
+            sell_amount = abs(action)
+            sell_condition = sell_amount <= self.long_position  # ロングポジション売却条件
+            self.cash_balance.assign_add(tf.where(sell_condition, sell_amount * current_price, 0.0))
+            self.long_position.assign_sub(tf.where(sell_condition, sell_amount, 0.0))
 
-        if total_action > 0:  # 買い
-            cost = total_action * current_price
-            if cost <= self.cash_balance:
-                self.cash_balance.assign_sub(cost)
-                self.position.assign_add(total_action)
-            else:
-                # 資金不足の場合、部分的に買い
-                max_possible_buy = self.cash_balance / current_price
-                self.cash_balance.assign_sub(max_possible_buy * current_price)
-                self.position.assign_add(max_possible_buy)
-                self.unfilled_orders.assign(total_action - max_possible_buy)
-        elif total_action < 0:  # 売り
-            sell_amount = abs(total_action)
-            if sell_amount <= self.position:
-                self.cash_balance.assign_add(sell_amount * current_price)
-                self.position.assign_sub(sell_amount)
-            else:
-                # 保有ポジション不足の場合、部分的に売り
-                self.cash_balance.assign_add(self.position * current_price)
-                self.unfilled_orders.assign(total_action + self.position)
-                self.position.assign(0.0)
+            # ショートポジションの処理
+            additional_short = sell_amount - self.long_position
+            self.short_position.assign_add(tf.where(~sell_condition, additional_short, 0.0))
 
-        # 総資産を更新
-        self.total_assets.assign(self.cash_balance + self.position * current_price)
+        # 資産総額を計算
+        self.total_assets.assign(
+            self.cash_balance
+            + self.long_position * current_price
+            - self.short_position * current_price
+        )
 
 
 
