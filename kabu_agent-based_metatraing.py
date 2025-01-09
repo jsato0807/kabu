@@ -35,9 +35,11 @@ class MarketGenerator:
 class RLAgent:
     def __init__(self, initial_cash=100000):
         self.cash_balance = tf.Variable(initial_cash, dtype=tf.float32)
-        self.long_position = tf.Variable(0.0, dtype=tf.float32)  # 買いポジション
-        self.short_position = tf.Variable(0.0, dtype=tf.float32)  # 売りポジション
+        self.long_position = tf.Variable(0.0, dtype=tf.float32)
+        self.short_position = tf.Variable(0.0, dtype=tf.float32)  # 売り注文の未成立分
         self.total_assets = tf.Variable(initial_cash, dtype=tf.float32)
+        self.unfulfilled_buy_orders = tf.Variable(0.0, dtype=tf.float32)  # 未決済の買い注文
+        self.unfulfilled_sell_orders = tf.Variable(0.0, dtype=tf.float32)  # 未決済の売り注文
         self.model = tf.keras.Sequential([
             layers.Dense(128, activation='relu', input_dim=2),  # 総資産、価格
             layers.Dense(64, activation='relu'),
@@ -49,37 +51,43 @@ class RLAgent:
         """
         現在の状態を基に行動を決定
         """
-        action = self.model(state[tf.newaxis, :])[0][0]  # TensorFlow形式の計算を保持
-        # キャッシュやポジションを超えないように制約を追加
+        action = self.model(state[tf.newaxis, :])[0][0]
         max_buy = self.cash_balance / state[1]  # 現在価格で買える最大量
-        max_sell = self.long_position  # 売却可能な最大量（ロングポジションのみ）
+        max_sell = self.long_position  # 売却可能な最大量
         return tf.clip_by_value(action, -max_sell, max_buy)
 
     def update_assets(self, action, current_price):
         """
-        エージェントの資産とポジションを更新
+        資産とポジションを更新
         """
-        if action > 0:  # 買い
-            cost = action * current_price
-            buy_condition = cost <= self.cash_balance  # 購入可能条件
-            self.cash_balance.assign_sub(tf.where(buy_condition, cost, 0.0))
-            self.long_position.assign_add(tf.where(buy_condition, action, 0.0))
-        elif action < 0:  # 売り
-            sell_amount = abs(action)
-            sell_condition = sell_amount <= self.long_position  # ロングポジション売却条件
-            self.cash_balance.assign_add(tf.where(sell_condition, sell_amount * current_price, 0.0))
-            self.long_position.assign_sub(tf.where(sell_condition, sell_amount, 0.0))
+        # 買い注文処理
+        if action > 0:
+            total_buy = action + self.unfulfilled_buy_orders  # 未成立分を追加
+            cost = total_buy * current_price
 
-            # ショートポジションの処理
-            additional_short = sell_amount - self.long_position
-            self.short_position.assign_add(tf.where(~sell_condition, additional_short, 0.0))
+            buy_condition = cost <= self.cash_balance
+            fulfilled_buy = tf.where(buy_condition, total_buy, self.cash_balance / current_price)
+            remaining_buy = tf.where(buy_condition, 0.0, total_buy - fulfilled_buy)
 
-        # 資産総額を計算
-        self.total_assets.assign(
-            self.cash_balance
-            + self.long_position * current_price
-            - self.short_position * current_price
-        )
+            self.cash_balance.assign_sub(fulfilled_buy * current_price)
+            self.long_position.assign_add(fulfilled_buy)
+            self.unfulfilled_buy_orders.assign(remaining_buy)
+
+        # 売り注文処理
+        elif action < 0:
+            total_sell = abs(action) + self.unfulfilled_sell_orders  # 未成立分を追加
+
+            sell_condition = total_sell <= self.long_position
+            fulfilled_sell = tf.where(sell_condition, total_sell, self.long_position)
+            remaining_sell = tf.where(sell_condition, 0.0, total_sell - fulfilled_sell)
+
+            self.cash_balance.assign_add(fulfilled_sell * current_price)
+            self.long_position.assign_sub(fulfilled_sell)
+            self.unfulfilled_sell_orders.assign(remaining_sell)
+
+        # 総資産を更新
+        self.total_assets.assign(self.cash_balance + self.long_position * current_price)
+
 
 
 
@@ -96,21 +104,26 @@ class RLAgent:
 
 def distribute_unfilled_orders(supply_and_demand, agents):
     """
-    未成立の注文をランダムにエージェントに配分
+    未成立注文をエージェントにランダムに分配
+    - `supply_and_demand`: 需給バランス（正なら買い注文が過剰、負なら売り注文が過剰）
+    - `agents`: 全エージェントのリスト
     """
     num_agents = len(agents)
-    if supply_and_demand > 0:  # 売りが不足して買い注文が未成立
+    if supply_and_demand > 0:
+        # 売り注文は全て成立するが、買い注文の一部が未成立
         unfulfilled_orders = np.random.multinomial(
             supply_and_demand, [1 / num_agents] * num_agents
         )
-        for agent, unfulfilled in zip(agents, unfulfilled_orders):
-            agent.unfilled_orders.assign(agent.unfilled_orders + unfulfilled)
-    elif supply_and_demand < 0:  # 買いが不足して売り注文が未成立
+        for agent, unfulfilled_buy in zip(agents, unfulfilled_orders):
+            agent.unfulfilled_buy_orders.assign_add(float(unfulfilled_buy))
+    elif supply_and_demand < 0:
+        # 買い注文は全て成立するが、売り注文の一部が未成立
         unfulfilled_orders = np.random.multinomial(
             abs(supply_and_demand), [1 / num_agents] * num_agents
         )
-        for agent, unfulfilled in zip(agents, unfulfilled_orders):
-            agent.unfilled_orders.assign(agent.unfilled_orders - unfulfilled)
+        for agent, unfulfilled_sell in zip(agents, unfulfilled_orders):
+            agent.unfulfilled_sell_orders.assign_add(float(unfulfilled_sell))
+
 
 
 
