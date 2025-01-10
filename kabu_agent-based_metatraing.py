@@ -53,7 +53,6 @@ class RLAgent:
         現在の状態を基に行動を決定
         """
         state = tf.convert_to_tensor(state, dtype=tf.float32)
-
         action = self.model(state[tf.newaxis, :])[0][0]
         max_buy = self.cash_balance / state[1]  # 現在価格で買える最大量
         max_sell = self.long_position  # 売却可能な最大量
@@ -102,13 +101,19 @@ class RLAgent:
 
 
 
-    def train(self):
+    def train(self,state):
         """
         エージェントを学習
         """
         with tf.GradientTape() as tape:
+            action = self.model(state[tf.newaxis, :])[0][0]
+            self.update_assets(action,current_price)
             loss = -self.total_assets  # 総資産の最大化を目指す
         gradients = tape.gradient(loss, self.model.trainable_variables)
+        # 勾配の中身を確認
+        #for i, grad in enumerate(gradients):
+        #    print(f"Grad {i}: {grad}")  # 各勾配がゼロでないことを確認
+        #exit()
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 
 
@@ -185,13 +190,9 @@ for generation in range(generations):
     # 取引量を計算
     volume = tf.reduce_sum([tf.abs(action) for action in actions])
 
-    # 各エージェントの資産を更新
+    # 各エージェントの資産を更新、さらに学習
     for agent, action in zip(agents, actions):
-        agent.update_assets(action, current_price)
-
-    # エージェントの学習
-    for agent in agents:
-        agent.train()
+        agent.train([agent.total_assets,current_price])
 
     # 生成者の学習
     discriminator_performance = tf.stack([agent.total_assets for agent in agents])
