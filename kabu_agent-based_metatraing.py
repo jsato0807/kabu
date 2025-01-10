@@ -5,57 +5,47 @@ import os
 
 class MarketGenerator:
     def __init__(self, input_dim=4, output_dim=3):
-        """
-        input_dim: 現在の市場状態（価格、流動性、スリッページ、需給）
-        output_dim: 次の市場状態（価格、流動性、スリッページ）
-        """
         self.model = tf.keras.Sequential([
             layers.Input(shape=(input_dim,)),
             layers.Dense(128, activation='relu'),
             layers.Dense(64, activation='relu'),
-            layers.Dense(output_dim, activation='relu')  # 出力: 価格、流動性、スリッページ
+            layers.Dense(output_dim, activation='relu')
         ])
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002)
 
     def generate(self, inputs):
-        """
-        現在の市場状態を基に次の市場状態を生成
-        """
         return self.model(tf.expand_dims(inputs, axis=0))
 
-    def train(self, discriminator_performance):
+    def train(self, tape, discriminator_performance):
         """
-        生成者を学習
+        生成者の学習
         """
-        with tf.GradientTape() as tape:
-            loss = tf.reduce_mean(discriminator_performance)
+        loss = tf.reduce_mean(discriminator_performance)
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
+
 
 
 class RLAgent:
     def __init__(self, initial_cash=100000):
         self.cash_balance = tf.Variable([initial_cash], dtype=tf.float32)
         self.long_position = tf.Variable([0.0], dtype=tf.float32)
-        self.short_position = tf.Variable([0.0], dtype=tf.float32)  # 売り注文の未成立分
+        self.short_position = tf.Variable([0.0], dtype=tf.float32)
         self.total_assets = tf.Variable([initial_cash], dtype=tf.float32)
-        self.unfulfilled_buy_orders = tf.Variable([0.0], dtype=tf.float32)  # 未決済の買い注文
-        self.unfulfilled_sell_orders = tf.Variable([0.0], dtype=tf.float32)  # 未決済の売り注文
+        self.unfulfilled_buy_orders = tf.Variable([0.0], dtype=tf.float32)
+        self.unfulfilled_sell_orders = tf.Variable([0.0], dtype=tf.float32)
         self.model = tf.keras.Sequential([
-            layers.Dense(128, activation='relu', input_dim=2),  # 総資産、価格
+            layers.Dense(128, activation='relu', input_dim=2),
             layers.Dense(64, activation='relu'),
-            layers.Dense(1, activation='linear')  # 行動（買い/売り）
+            layers.Dense(1, activation='linear')
         ])
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
 
     def act(self, state):
-        """
-        現在の状態を基に行動を決定
-        """
         state = tf.convert_to_tensor(state, dtype=tf.float32)
         action = self.model(state[tf.newaxis, :])[0][0]
-        max_buy = self.cash_balance / state[1]  # 現在価格で買える最大量
-        max_sell = self.long_position  # 売却可能な最大量
+        max_buy = self.cash_balance / state[1]
+        max_sell = self.long_position
         return tf.clip_by_value(action, -tf.squeeze(max_sell), tf.squeeze(max_buy))
 
     def update_assets(self, action, current_price):
@@ -64,56 +54,43 @@ class RLAgent:
         """
         # 買い注文処理
         if action > 0:
-            total_buy = action + self.unfulfilled_buy_orders  # 未成立分を追加
+            total_buy = action + self.unfulfilled_buy_orders
             cost = total_buy * current_price
 
             buy_condition = cost <= self.cash_balance
             fulfilled_buy = tf.where(buy_condition, total_buy, self.cash_balance / current_price)
             remaining_buy = tf.where(buy_condition, 0.0, total_buy - fulfilled_buy)
 
-            self.cash_balance.assign_sub(fulfilled_buy * current_price)
-            self.long_position.assign_add(fulfilled_buy)
-            self.unfulfilled_buy_orders.assign(remaining_buy)
+            self.cash_balance = self.cash_balance - fulfilled_buy * current_price
+            self.long_position = self.long_position + fulfilled_buy
+            self.unfulfilled_buy_orders = remaining_buy
 
         # 売り注文処理
         elif action < 0:
-            total_sell = abs(action) + self.unfulfilled_sell_orders  # 未成立分を追加
+            total_sell = abs(action) + self.unfulfilled_sell_orders
 
             sell_condition = total_sell <= self.long_position
             fulfilled_sell = tf.where(sell_condition, total_sell, self.long_position)
             remaining_sell = tf.where(sell_condition, 0.0, total_sell - fulfilled_sell)
 
-            self.cash_balance.assign_add(fulfilled_sell * current_price)
-            self.long_position.assign_sub(fulfilled_sell)
-            self.unfulfilled_sell_orders.assign(remaining_sell)
+            self.cash_balance = self.cash_balance + fulfilled_sell * current_price
+            self.long_position = self.long_position - fulfilled_sell
+            self.unfulfilled_sell_orders = remaining_sell
 
-            # 未成立売り注文をショートポジションとして記録
             additional_short = remaining_sell - self.short_position
-            self.short_position.assign_add(tf.where(~sell_condition, additional_short, -self.short_position))
+            self.short_position = self.short_position + tf.where(~sell_condition, additional_short, -self.short_position)
 
-        # 総資産を更新
-        self.total_assets.assign(
+        # 総資産を計算
+        self.total_assets = (
             self.cash_balance + self.long_position * current_price - self.short_position * current_price
         )
 
-
-
-
-
-
-    def train(self,state):
+    def train(self, tape):
         """
-        エージェントを学習
+        エージェントの学習
         """
-        with tf.GradientTape() as tape:
-            action = self.model(state[tf.newaxis, :])[0][0]
-            self.update_assets(action,current_price)
-            loss = -self.total_assets  # 総資産の最大化を目指す
+        loss = -self.total_assets  # 総資産の最大化
         gradients = tape.gradient(loss, self.model.trainable_variables)
-        # 勾配の中身を確認
-        #for i, grad in enumerate(gradients):
-        #    print(f"Grad {i}: {grad}")  # 各勾配がゼロでないことを確認
-        #exit()
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 
 
@@ -147,7 +124,7 @@ num_agents = 5
 agents = [RLAgent() for _ in range(num_agents)]
 generator = MarketGenerator()
 states = tf.Variable(np.random.rand(3), dtype=tf.float32)  # 初期市場状態 [価格、流動性、スリッページ]
-supply_and_demand = tf.Variable(0.0, dtype=tf.float32)
+supply_and_demand = tf.Variable([0.0], dtype=tf.float32)
 volume = tf.Variable(0.0, dtype=tf.float32)
 gamma = tf.constant(1.0, dtype=tf.float32)
 
@@ -165,41 +142,55 @@ history = {
 # トレーニングループ
 generations = 10
 for generation in range(generations):
-    actions = []
-    input_data = tf.concat([states, tf.expand_dims(supply_and_demand, axis=0)], axis=0)
+    with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
 
-    # 市場生成
-    generated_states = generator.generate(input_data)[0]
-    current_price, current_liquidity, current_slippage = tf.split(generated_states, num_or_size_splits=3)
+        # 市場生成用の入力データ
+        #input_data = tf.concat([states, tf.expand_dims(supply_and_demand, axis=0)], axis=0)
+        input_data = tf.concat([states, tf.expand_dims(supply_and_demand, axis=[0, 1])], axis=0)
+        generated_states = generator.generate(input_data)[0]
+        current_price, current_liquidity, current_slippage = tf.split(generated_states, num_or_size_splits=3)
 
-    if use_rule_based:
-        # ルールベースで流動性・スリッページを計算
-        k = 1 / (1 + gamma * volume)
-        current_liquidity = 1 / (1 + k * abs(supply_and_demand))
-        current_slippage = abs(supply_and_demand) / (current_liquidity + 1e-6)
+        # 状態更新
+        states = tf.stack([current_price, current_liquidity, current_slippage])
 
-    # 各エージェントの行動を決定
-    for agent in agents:
-        action = agent.act([agent.total_assets,current_price])
-        actions.append(action)
+        # ルールベースでの調整
+        if use_rule_based:
+            k = 1 / (1 + gamma * volume)
+            current_liquidity = 1 / (1 + k * abs(supply_and_demand))
+            current_slippage = abs(supply_and_demand) / (current_liquidity + 1e-6)
 
-    # 需給を計算
-    supply_and_demand = tf.reduce_sum(actions)
-    distribute_unfilled_orders(supply_and_demand, agents)  # 未成立注文をランダムに配分
+        # エージェントの行動
+        actions = [agent.act([agent.total_assets, current_price]) for agent in agents]
+        supply_and_demand = tf.reduce_sum(actions)
 
-    # 取引量を計算
-    volume = tf.reduce_sum([tf.abs(action) for action in actions])
+        # 未成立注文の分配
+        distribute_unfilled_orders(supply_and_demand, agents)
 
-    # 各エージェントの資産を更新、さらに学習
-    for agent, action in zip(agents, actions):
-        agent.train([agent.total_assets,current_price])
+        # 資産更新と学習
+        for agent, action in zip(agents, actions):
+            agent.update_assets(action, current_price)
 
-    # 生成者の学習
-    discriminator_performance = tf.stack([agent.total_assets for agent in agents])
-    generator.train(discriminator_performance)
+        discriminator_performance = tf.stack([agent.total_assets for agent in agents])
 
-    # 状態を更新
-    states = tf.stack([current_price, current_liquidity, current_slippage])
+        # 損失関数
+        gen_loss = discriminator_performance
+        disc_losses = []
+        for agent in agents:
+            disc_loss = -agent.total_assets
+
+    # 勾配の計算
+    gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
+
+    disc_gradients = []
+    for agent, disc_loss in zip(agents,disc_losses):
+        disc_gradient = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
+        disc_gradients.append(disc_gradient)
+
+        # オプティマイザで重みを更新
+    generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
+
+    for agent,disc_gradient in zip(agents,disc_gradients):
+        agent.optimizer.apply_gradients(zip(disc_gradient, agent.model.trainable_variables))
 
     # 各タイムステップのデータを記録
     history["generated_states"].append(generated_states.numpy())
@@ -208,16 +199,16 @@ for generation in range(generations):
     history["liquidity"].append(current_liquidity.numpy())
     history["slippage"].append(current_slippage.numpy())
 
-    print(f"Generation {generation}, Best Agent Assets: {max(agent.total_assets.numpy() for agent in agents):.2f}")
+    print(f"Generation {generation}, Best Agent Assets: {max(float(agent.total_assets.numpy()) for agent in agents):.2f}")
 
     # 進化段階でルールベースを切り替え
     if generation == generations // 2:
         use_rule_based = False
 
 
-    with open("kabu_agent-based_metalearning.txt","w") as f:
+    with open("./txt_dir/kabu_agent-based_metatraining.txt","w") as f:
         f.write(str(history))
 
-    os.chmod("kabu_agent-based_metalearning.txt",0o444)
+    os.chmod("./txt_dir/kabu_agent-based_metatraining.txt",0o444)
 
     print("ファイルを読み取り専用に設定しました")
