@@ -143,14 +143,12 @@ history = {
 generations = 10
 for generation in range(generations):
     with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
-
         # 市場生成用の入力データ
-        #input_data = tf.concat([states, tf.expand_dims(supply_and_demand, axis=0)], axis=0)
-        input_data = tf.concat([states, tf.expand_dims(supply_and_demand, axis=[0, 1])], axis=0)
+        input_data = tf.concat([states, tf.reshape(supply_and_demand, [1])], axis=0)
         generated_states = generator.generate(input_data)[0]
         current_price, current_liquidity, current_slippage = tf.split(generated_states, num_or_size_splits=3)
 
-        # 状態更新
+        # 状態を更新
         states = tf.stack([current_price, current_liquidity, current_slippage])
 
         # ルールベースでの調整
@@ -159,47 +157,45 @@ for generation in range(generations):
             current_liquidity = 1 / (1 + k * abs(supply_and_demand))
             current_slippage = abs(supply_and_demand) / (current_liquidity + 1e-6)
 
-        # エージェントの行動
+        # 各エージェントの行動
         actions = [agent.act([agent.total_assets, current_price]) for agent in agents]
         supply_and_demand = tf.reduce_sum(actions)
 
         # 未成立注文の分配
         distribute_unfilled_orders(supply_and_demand, agents)
 
-        # 資産更新と学習
+        # 資産更新
         for agent, action in zip(agents, actions):
             agent.update_assets(action, current_price)
 
+        # 識別者の評価（discriminator_performance）
         discriminator_performance = tf.stack([agent.total_assets for agent in agents])
 
-        # 損失関数
-        gen_loss = discriminator_performance
-        disc_losses = []
-        for agent in agents:
-            disc_loss = -agent.total_assets
+        # 識別者の損失計算
+        disc_losses = [-agent.total_assets for agent in agents]
 
     # 勾配の計算
-    gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
-
-    disc_gradients = []
-    for agent, disc_loss in zip(agents,disc_losses):
-        disc_gradient = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
-        disc_gradients.append(disc_gradient)
-
-        # オプティマイザで重みを更新
+    # 生成者の勾配
+    gen_gradients = gen_tape.gradient(tf.reduce_mean(discriminator_performance), generator.model.trainable_variables)
     generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
 
-    for agent,disc_gradient in zip(agents,disc_gradients):
-        agent.optimizer.apply_gradients(zip(disc_gradient, agent.model.trainable_variables))
+    # 勾配がNoneでないことを確認
+    if any(grad is None for grad in gen_gradients):
+        raise ValueError("Gradients for generator are None. Check the loss function and computation graph.")
+    # 識別者の勾配
+    for agent, disc_loss in zip(agents, disc_losses):
+        disc_gradients = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
+        agent.optimizer.apply_gradients(zip(disc_gradients, agent.model.trainable_variables))
 
     # 各タイムステップのデータを記録
     history["generated_states"].append(generated_states.numpy())
-    history["actions"].append(actions)
+    history["actions"].append([action.numpy() for action in actions])
     history["agent_assets"].append([agent.total_assets.numpy() for agent in agents])
     history["liquidity"].append(current_liquidity.numpy())
     history["slippage"].append(current_slippage.numpy())
 
-    print(f"Generation {generation}, Best Agent Assets: {max(float(agent.total_assets.numpy()) for agent in agents):.2f}")
+    # 現状を出力
+    print(f"Generation {generation}, Best Agent Assets: {max([agent.total_assets.numpy()[0] for agent in agents]):.2f}")
 
     # 進化段階でルールベースを切り替え
     if generation == generations // 2:
