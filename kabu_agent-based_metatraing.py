@@ -1,9 +1,10 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
+import os
 
 class MarketGenerator:
-    def __init__(self, input_dim=5, output_dim=3):
+    def __init__(self, input_dim=4, output_dim=3):
         """
         input_dim: 現在の市場状態（価格、流動性、スリッページ、需給）
         output_dim: 次の市場状態（価格、流動性、スリッページ）
@@ -12,7 +13,7 @@ class MarketGenerator:
             layers.Input(shape=(input_dim,)),
             layers.Dense(128, activation='relu'),
             layers.Dense(64, activation='relu'),
-            layers.Dense(output_dim, activation='linear')  # 出力: 価格、流動性、スリッページ
+            layers.Dense(output_dim, activation='relu')  # 出力: 価格、流動性、スリッページ
         ])
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002)
 
@@ -145,20 +146,29 @@ gamma = tf.constant(1.0, dtype=tf.float32)
 
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
 
+# 記録用の辞書
+history = {
+    "generated_states": [],  # 生成者の出力: [価格, 流動性, スリッページ]
+    "actions": [],     # 各エージェントの行動
+    "agent_assets": [],       # 各エージェントの総資産
+    "liquidity": [],
+    "slippage" : [],
+}
+
 # トレーニングループ
 generations = 10
 for generation in range(generations):
     actions = []
     input_data = tf.concat([states, tf.expand_dims(supply_and_demand, axis=0)], axis=0)
-    
+
     # 市場生成
     generated_states = generator.generate(input_data)[0]
     current_price, current_liquidity, current_slippage = tf.split(generated_states, num_or_size_splits=3)
 
     if use_rule_based:
         # ルールベースで流動性・スリッページを計算
-        k = 1/(1+gamma*volume)
-        current_liquidity = 1 / (1 + k*abs(supply_and_demand))
+        k = 1 / (1 + gamma * volume)
+        current_liquidity = 1 / (1 + k * abs(supply_and_demand))
         current_slippage = abs(supply_and_demand) / (current_liquidity + 1e-6)
 
     # 各エージェントの行動を決定
@@ -170,11 +180,11 @@ for generation in range(generations):
     supply_and_demand = tf.reduce_sum(actions)
     distribute_unfilled_orders(supply_and_demand, agents)  # 未成立注文をランダムに配分
 
-    #取引量を計算
+    # 取引量を計算
     volume = tf.reduce_sum([tf.abs(action) for action in actions])
 
-
-    for agent in agents:
+    # 各エージェントの資産を更新
+    for agent, action in zip(agents, actions):
         agent.update_assets(action, current_price)
 
     # エージェントの学習
@@ -188,8 +198,23 @@ for generation in range(generations):
     # 状態を更新
     states = tf.stack([current_price, current_liquidity, current_slippage])
 
-    print(f"Generation {generation}, Best Agent Assets: {max(agent.total_assets for agent in agents):.2f}")
+    # 各タイムステップのデータを記録
+    history["generated_states"].append(generated_states.numpy())
+    history["actions"].append(actions)
+    history["agent_assets"].append([agent.total_assets.numpy() for agent in agents])
+    history["liquidity"].append(current_liquidity.numpy())
+    history["slippage"].append(current_slippage.numpy())
+
+    print(f"Generation {generation}, Best Agent Assets: {max(agent.total_assets.numpy() for agent in agents):.2f}")
 
     # 進化段階でルールベースを切り替え
     if generation == generations // 2:
         use_rule_based = False
+
+
+    with open("kabu_agent-based_metalearning.txt","w") as f:
+        f.write(str(history))
+
+    os.chmod("kabu_agent-based_metalearning.txt",0o444)
+
+    print("ファイルを読み取り専用に設定しました")
