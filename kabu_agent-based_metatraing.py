@@ -17,9 +17,6 @@ class MarketGenerator:
         return self.model(tf.expand_dims(inputs, axis=0))
 
     def train(self, tape, discriminator_performance):
-        """
-        生成者の学習
-        """
         loss = tf.reduce_mean(discriminator_performance)
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
@@ -41,16 +38,14 @@ class RLAgent:
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
 
     def act(self, state):
-        # 要素の形状を揃える
-        state = [tf.expand_dims(s, axis=0) if tf.rank(s) == 0 else s for s in state]
-        state = tf.concat(state, axis=0)  # リストをテンソルに結合
-        action = self.model(state[tf.newaxis, :])[0][0]
+        # state の形状を統一して結合
+        state = [tf.reshape(tf.convert_to_tensor(s, dtype=tf.float32), [1]) for s in state]
+        state = tf.concat(state, axis=0)
+        state = tf.reshape(state, [1, -1])  # 形状を統一
+        action = self.model(state)[0][0]
         return action
 
     def update_assets(self, action, current_price):
-        """
-        資産とポジションを更新
-        """
         current_price = tf.convert_to_tensor(current_price, dtype=tf.float32)
 
         if action > 0:  # 買い注文処理
@@ -81,66 +76,35 @@ class RLAgent:
         # 総資産を計算
         self.total_assets = self.cash_balance + self.long_position * current_price - self.short_position * current_price
 
-    def train(self, tape, total_assets):
-        """
-        エージェントの学習
-        """
-        loss = -total_assets  # 総資産の最大化
-        gradients = tape.gradient(loss, self.model.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
-
-    def train(self, tape, total_assets):
-        """
-        エージェントの学習
-        """
-        loss = -total_assets  # 総資産の最大化
+    def train(self, tape):
+        loss = -self.total_assets  # 総資産の最大化
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 
 
 def distribute_unfilled_orders(supply_and_demand, agents):
-    """
-    未成立注文をエージェントにランダムに分配
-    - `supply_and_demand`: 需給バランス（正なら買い注文が過剰、負なら売り注文が過剰）
-    - `agents`: 全エージェントのリスト
-    """
     num_agents = len(agents)
     if supply_and_demand > 0:
-        # 売り注文は全て成立するが、買い注文の一部が未成立
         unfulfilled_orders = np.random.multinomial(
             supply_and_demand, [1 / num_agents] * num_agents
         )
         for agent, unfulfilled_buy in zip(agents, unfulfilled_orders):
-            # 状態を直接更新
-            agent.unfulfilled_buy_orders = agent.unfulfilled_buy_orders + float(unfulfilled_buy)
+            agent.unfulfilled_buy_orders += float(unfulfilled_buy)
     elif supply_and_demand < 0:
-        # 買い注文は全て成立するが、売り注文の一部が未成立
         unfulfilled_orders = np.random.multinomial(
             abs(supply_and_demand), [1 / num_agents] * num_agents
         )
         for agent, unfulfilled_sell in zip(agents, unfulfilled_orders):
-            # 状態を直接更新
-            agent.unfulfilled_sell_orders = agent.unfulfilled_sell_orders + float(unfulfilled_sell)
+            agent.unfulfilled_sell_orders += float(unfulfilled_sell)
 
 
-
-
-
-# 初期化
+# トレーニングループ
 num_agents = 5
 agents = [RLAgent() for _ in range(num_agents)]
 generator = MarketGenerator()
-# statesの初期化（適切な値に設定）
-initial_price = 100.0  # 適切な初期価格
-initial_liquidity = 1.0  # 流動性の初期値
-initial_slippage = 0.01  # スリッページの初期値
 
-states = tf.Variable([initial_price, initial_liquidity, initial_slippage], dtype=tf.float32)  # 初期市場状態 [価格、流動性、スリッページ]
-supply_and_demand = tf.Variable([0.0], dtype=tf.float32)
-volume = tf.Variable(0.0, dtype=tf.float32)
-gamma = tf.constant(1.0, dtype=tf.float32)
-
-use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
+states = tf.constant([100.0, 1.0, 0.01], dtype=tf.float32)
+supply_and_demand = tf.constant(0.0, dtype=tf.float32)
 
 # 記録用の辞書
 history = {
@@ -151,71 +115,36 @@ history = {
     "slippage" : [],
 }
 
-# トレーニングループ
 generations = 10
 for generation in range(generations):
     with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
-        # 市場生成用の入力データ
-        input_data = tf.concat([states, tf.reshape(supply_and_demand, [1])], axis=0)
+        input_data = tf.concat([tf.reshape(states, [-1]), [supply_and_demand]], axis=0)
         generated_states = generator.generate(input_data)[0]
-        current_price, current_liquidity, current_slippage = tf.split(generated_states, num_or_size_splits=3)
+        current_price, current_liquidity, current_slippage = tf.split(generated_states, 3)
 
-        # 状態を更新
         states = tf.stack([current_price, current_liquidity, current_slippage])
 
-        # ルールベースでの調整
-        if use_rule_based:
-            k = 1 / (1 + gamma * volume)
-            current_liquidity = 1 / (1 + k * abs(supply_and_demand))
-            current_slippage = abs(supply_and_demand) / (current_liquidity + 1e-6)
-
-        # 各エージェントの行動
         actions = [agent.act([agent.total_assets, current_price]) for agent in agents]
         supply_and_demand = tf.reduce_sum(actions)
 
-        # 未成立注文の分配
         distribute_unfilled_orders(supply_and_demand, agents)
 
-        # 資産更新
         for agent, action in zip(agents, actions):
             agent.update_assets(action, current_price)
 
-        # 識別者の評価（discriminator_performance）
         discriminator_performance = tf.stack([agent.total_assets for agent in agents])
-
-        # 生成者の損失計算
         gen_loss = tf.reduce_mean(discriminator_performance)
-        #print("Model trainable variables:", generator.model.trainable_variables)
-        #print("Gen loss:", gen_loss)
-        #exit()
-
-
-        # 識別者の損失計算
         disc_losses = [-agent.total_assets for agent in agents]
-        #for agent in agents:
-        #    print("Model trainable variables:", agent.model.trainable_variables)
-        #    print("disc losses:", disc_losses)
-        #    exit()
 
-        print(f"Generated States: {generated_states.numpy()}")
-        print(f"Discriminator Performance: {discriminator_performance.numpy()}")
-        print(f"Gen Loss: {gen_loss.numpy()}")
-
-    # 勾配の計算
-    # 生成者の勾配
     gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
-    print(f"Generator Gradients: {gen_gradients}")
+    generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
 
-    # 識別者の勾配
     for agent, disc_loss in zip(agents, disc_losses):
         disc_gradients = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
-        print(f"Agent Gradients: {disc_gradients}")
-
-        # 識別者の重みを更新
         agent.optimizer.apply_gradients(zip(disc_gradients, agent.model.trainable_variables))
 
-    # 生成者の重みを更新
-    generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
+    print(f"Generation {generation}, Gen Loss: {gen_loss.numpy()}")
+
 
     # 各タイムステップのデータを記録
     history["generated_states"].append(generated_states.numpy())
