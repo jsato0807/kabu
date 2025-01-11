@@ -73,6 +73,9 @@ class RLAgent:
             self.short_position += (1 - sell_condition) * additional_short + sell_condition * -self.short_position
             self.unfulfilled_sell_orders = remaining_sell
 
+        if action == 0:
+            self.cash_balance += action * current_price
+
         # 総資産を計算
         self.total_assets = self.cash_balance + self.long_position * current_price - self.short_position * current_price
 
@@ -81,21 +84,6 @@ class RLAgent:
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
 
-
-def distribute_unfilled_orders(supply_and_demand, agents):
-    num_agents = len(agents)
-    if supply_and_demand > 0:
-        unfulfilled_orders = np.random.multinomial(
-            supply_and_demand, [1 / num_agents] * num_agents
-        )
-        for agent, unfulfilled_buy in zip(agents, unfulfilled_orders):
-            agent.unfulfilled_buy_orders += float(unfulfilled_buy)
-    elif supply_and_demand < 0:
-        unfulfilled_orders = np.random.multinomial(
-            abs(supply_and_demand), [1 / num_agents] * num_agents
-        )
-        for agent, unfulfilled_sell in zip(agents, unfulfilled_orders):
-            agent.unfulfilled_sell_orders += float(unfulfilled_sell)
 
 
 # トレーニングループ
@@ -113,10 +101,12 @@ history = {
     "agent_assets": [],       # 各エージェントの総資産
     "liquidity": [],
     "slippage" : [],
+    "gen_gradients": [],
+    "disc_gradients": [],
 }
 
 # トレーニングループ
-generations = 10000
+generations = 1000
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
 gamma = tf.convert_to_tensor(1,dtype=tf.float32)
 volume = tf.convert_to_tensor(0,dtype=tf.float32)
@@ -144,12 +134,11 @@ for generation in range(generations):
 
         # 各エージェントの行動
         actions = [agent.act([agent.total_assets, current_price]) for agent in agents]
+        print(f"actions:{actions}")
         supply_and_demand = tf.reduce_sum(actions)
 
         volume = tf.reduce_sum([tf.abs(action) for action in actions])
 
-        # 未成立注文の分配
-        distribute_unfilled_orders(supply_and_demand, agents)
 
         # 資産更新
         for agent, action in zip(agents, actions):
@@ -178,15 +167,24 @@ for generation in range(generations):
     history["agent_assets"].append([agent.total_assets.numpy() for agent in agents])
     history["liquidity"].append(current_liquidity.numpy())
     history["slippage"].append(current_slippage.numpy())
+    history["gen_gradients"].append(gen_gradients)
+    for disc_loss in disc_losses:
+        history["disc_gradients"].append(disc_tape.gradient(disc_loss, agent.model.trainable_variables))
 
-    print(f"Generation {generation}, Best Agent Assets: {max(float(agent.total_assets.numpy()) for agent in agents):.2f}")
+    #print(f"Generation {generation}, Best Agent Assets: {max(float(agent.total_assets.numpy()) for agent in agents):.2f}")
+    #print(f"gen_gradients:{gen_gradients}")
+    #exit()
+    for disc_loss in disc_losses:
+        print(f"disc_gradients:{disc_tape.gradient(disc_loss, agent.model.trainable_variables)}")
+
+    exit()
 
     # 進化段階でルールベースを切り替え
     if generation == generations // 2:
         use_rule_based = False
 
 # ファイルへの記録
-with open("kabu_agent-based_metatraining.txt", "w") as f:
+with open("./txt_dir/kabu_agent-based_metatraining.txt", "w") as f:
     f.write(str(history))
-os.chmod("kabu_agent-based_metatraining.txt", 0o444)
+os.chmod("./txt_dir/kabu_agent-based_metatraining.txt", 0o444)
 print("ファイルを読み取り専用に設定しました")
