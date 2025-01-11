@@ -7,8 +7,8 @@ class MarketGenerator:
     def __init__(self, input_dim=4, output_dim=3):
         self.model = tf.keras.Sequential([
             layers.Input(shape=(input_dim,)),
-            layers.Dense(128, activation='relu'),
-            layers.Dense(64, activation='relu'),
+            layers.Dense(128, activation='sigmoid'),
+            layers.Dense(64, activation='sigmoid'),
             layers.Dense(output_dim, activation='relu')
         ])
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002)
@@ -35,8 +35,8 @@ class RLAgent:
         self.unfulfilled_buy_orders = tf.Variable([0.0], dtype=tf.float32)
         self.unfulfilled_sell_orders = tf.Variable([0.0], dtype=tf.float32)
         self.model = tf.keras.Sequential([
-            layers.Dense(128, activation='relu', input_dim=2),
-            layers.Dense(64, activation='relu'),
+            layers.Dense(128, activation='sigmoid', input_dim=2),
+            layers.Dense(64, activation='sigmoid'),
             layers.Dense(1, activation='linear')
         ])
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
@@ -52,6 +52,7 @@ class RLAgent:
         """
         資産とポジションを更新
         """
+        current_price = tf.convert_to_tensor(current_price, dtype=tf.float32)  # current_priceをテンソル化
         # 買い注文処理
         if action > 0:
             total_buy = action + self.unfulfilled_buy_orders
@@ -60,10 +61,9 @@ class RLAgent:
             buy_condition = cost <= self.cash_balance
             fulfilled_buy = tf.where(buy_condition, total_buy, self.cash_balance / current_price)
             remaining_buy = tf.where(buy_condition, 0.0, total_buy - fulfilled_buy)
-
-            self.cash_balance = self.cash_balance - fulfilled_buy * current_price
-            self.long_position = self.long_position + fulfilled_buy
-            self.unfulfilled_buy_orders = remaining_buy
+            self.cash_balance.assign(self.cash_balance - fulfilled_buy * current_price)
+            self.long_position.assign(self.long_position + fulfilled_buy)
+            self.unfulfilled_buy_orders.assign(remaining_buy)
 
         # 売り注文処理
         elif action < 0:
@@ -73,15 +73,29 @@ class RLAgent:
             fulfilled_sell = tf.where(sell_condition, total_sell, self.long_position)
             remaining_sell = tf.where(sell_condition, 0.0, total_sell - fulfilled_sell)
 
-            self.cash_balance = self.cash_balance + fulfilled_sell * current_price
-            self.long_position = self.long_position - fulfilled_sell
-            self.unfulfilled_sell_orders = remaining_sell
+            self.cash_balance.assign(self.cash_balance + fulfilled_sell * current_price)
+            self.long_position.assign(self.long_position - fulfilled_sell)
+            self.unfulfilled_sell_orders.assign(remaining_sell)
 
             additional_short = remaining_sell - self.short_position
-            self.short_position = self.short_position + tf.where(~sell_condition, additional_short, -self.short_position)
+            self.short_position.assign(self.short_position + tf.where(~sell_condition, additional_short, -self.short_position))
+
+        elif action == 0:
+            self.cash_balance.assign(self.cash_balance + action * current_price)
 
         # 総資産を計算
-        self.total_assets = (
+        print(f"action:{action}")
+        if action > 0:
+            print(f"fulfilled_buy:{fulfilled_buy}")
+        if action < 0:
+            print(f"fulfilled_sell:{fulfilled_sell}")
+        print(f"self.cash_balance:{self.cash_balance}")
+        print(f"self.long_position:{self.long_position}")
+        print(f"current_price:{current_price}")
+        print(f"self.short_position:{self.short_position}")
+
+        #exit()
+        self.total_assets.assign(
             self.cash_balance + self.long_position * current_price - self.short_position * current_price
         )
 
@@ -123,7 +137,12 @@ def distribute_unfilled_orders(supply_and_demand, agents):
 num_agents = 5
 agents = [RLAgent() for _ in range(num_agents)]
 generator = MarketGenerator()
-states = tf.Variable(np.random.rand(3), dtype=tf.float32)  # 初期市場状態 [価格、流動性、スリッページ]
+# statesの初期化（適切な値に設定）
+initial_price = 100.0  # 適切な初期価格
+initial_liquidity = 1.0  # 流動性の初期値
+initial_slippage = 0.01  # スリッページの初期値
+
+states = tf.Variable([initial_price, initial_liquidity, initial_slippage], dtype=tf.float32)  # 初期市場状態 [価格、流動性、スリッページ]
 supply_and_demand = tf.Variable([0.0], dtype=tf.float32)
 volume = tf.Variable(0.0, dtype=tf.float32)
 gamma = tf.constant(1.0, dtype=tf.float32)
@@ -171,40 +190,56 @@ for generation in range(generations):
         # 識別者の評価（discriminator_performance）
         discriminator_performance = tf.stack([agent.total_assets for agent in agents])
 
+        # 生成者の損失計算
+        gen_loss = tf.reduce_mean(discriminator_performance)
+        #print("Model trainable variables:", generator.model.trainable_variables)
+        #print("Gen loss:", gen_loss)
+        #exit()
+
+
         # 識別者の損失計算
         disc_losses = [-agent.total_assets for agent in agents]
+        #for agent in agents:
+        #    print("Model trainable variables:", agent.model.trainable_variables)
+        #    print("disc losses:", disc_losses)
+        #    exit()
+
+        print(f"Generated States: {generated_states.numpy()}")
+        print(f"Discriminator Performance: {discriminator_performance.numpy()}")
+        print(f"Gen Loss: {gen_loss.numpy()}")
 
     # 勾配の計算
     # 生成者の勾配
-    gen_gradients = gen_tape.gradient(tf.reduce_mean(discriminator_performance), generator.model.trainable_variables)
-    generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
+    gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
+    print(f"Generator Gradients: {gen_gradients}")
 
-    # 勾配がNoneでないことを確認
-    if any(grad is None for grad in gen_gradients):
-        raise ValueError("Gradients for generator are None. Check the loss function and computation graph.")
     # 識別者の勾配
     for agent, disc_loss in zip(agents, disc_losses):
         disc_gradients = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
+        print(f"Agent Gradients: {disc_gradients}")
+
+        # 識別者の重みを更新
         agent.optimizer.apply_gradients(zip(disc_gradients, agent.model.trainable_variables))
+
+    # 生成者の重みを更新
+    generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
 
     # 各タイムステップのデータを記録
     history["generated_states"].append(generated_states.numpy())
-    history["actions"].append([action.numpy() for action in actions])
+    history["actions"].append(actions)
     history["agent_assets"].append([agent.total_assets.numpy() for agent in agents])
     history["liquidity"].append(current_liquidity.numpy())
     history["slippage"].append(current_slippage.numpy())
 
-    # 現状を出力
-    print(f"Generation {generation}, Best Agent Assets: {max([agent.total_assets.numpy()[0] for agent in agents]):.2f}")
+    print(f"Generation {generation}, Best Agent Assets: {max(float(agent.total_assets.numpy()) for agent in agents):.2f}")
 
     # 進化段階でルールベースを切り替え
     if generation == generations // 2:
         use_rule_based = False
 
-
-    with open("./txt_dir/kabu_agent-based_metatraining.txt","w") as f:
+    # ファイルへの記録
+    with open("kabu_agent-based_metalearning.txt", "w") as f:
         f.write(str(history))
 
-    os.chmod("./txt_dir/kabu_agent-based_metatraining.txt",0o444)
-
+    os.chmod("kabu_agent-based_metalearning.txt", 0o444)
     print("ファイルを読み取り専用に設定しました")
