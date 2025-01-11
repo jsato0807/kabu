@@ -275,3 +275,16 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     Portfolio selection in a multiperiod mean-variance framework(あるかわからない)
 
     statistical mechanics stock simulationでgoogle scholar検索せよ
+    Applications of Statistical Physics in Finance and Economics
+    "Agent-Based Computational Economics" by Moshe Levy
+    "Agent-based Models of Financial Markets" by Samanidou et al.
+    Criticality and market efficiency in a simple realistic model of the stock market
+    Model-Agnostic Meta-Learning Techniques: A State-of-The-Art Short Review
+
+
+2025-1-9
+    生成者に入力データとして流動性とスリッページを与えるか
+    一般的なabcfで採用されるモデルは需給Dに基づく定義式で市場価格を生成し、流動性とスリッページはあくまで結果に過ぎない
+    しかし自分の研究は一般的なabcfと違ってGAN的なアプローチをするため、生成者が各エージェントを騙すように市場価格を生成する必要があるため、とりあえず流動性とスリッページを入力データとして採用
+
+    さらに、生成者への入力データとしての流動性とスリッページは、学習初期で定義式によるそれを採用することで学習を安定させ、学習の途中からは生成者の出力値であるそれに代替することで恣意性をある程度排除する方針。
