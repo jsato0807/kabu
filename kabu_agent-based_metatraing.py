@@ -115,38 +115,64 @@ history = {
     "slippage" : [],
 }
 
-generations = 10
+# トレーニングループ
+generations = 10000
+use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
+gamma = tf.convert_to_tensor(1,dtype=tf.float32)
+volume = tf.convert_to_tensor(0,dtype=tf.float32)
+
 for generation in range(generations):
     with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
+        # 市場生成用の入力データ
         input_data = tf.concat([tf.reshape(states, [-1]), [supply_and_demand]], axis=0)
         generated_states = generator.generate(input_data)[0]
-        current_price, current_liquidity, current_slippage = tf.split(generated_states, 3)
+        current_price, current_liquidity, current_slippage = tf.split(generated_states, num_or_size_splits=3)
 
+        # 状態を更新
+        current_price = tf.reshape(current_price, [])
+        current_liquidity = tf.reshape(current_liquidity, [])
+        current_slippage = tf.reshape(current_slippage, [])
+
+        # ルールベースでの調整
+        if use_rule_based:
+            k = 1 / (1 + gamma * volume)
+            current_liquidity = 1 / (1 + k * abs(supply_and_demand))
+            current_slippage = abs(supply_and_demand) / (current_liquidity + 1e-6)
+
+        # states の更新
         states = tf.stack([current_price, current_liquidity, current_slippage])
 
+        # 各エージェントの行動
         actions = [agent.act([agent.total_assets, current_price]) for agent in agents]
         supply_and_demand = tf.reduce_sum(actions)
 
+        volume = tf.reduce_sum([tf.abs(action) for action in actions])
+
+        # 未成立注文の分配
         distribute_unfilled_orders(supply_and_demand, agents)
 
+        # 資産更新
         for agent, action in zip(agents, actions):
             agent.update_assets(action, current_price)
 
+        # 識別者の評価（discriminator_performance）
         discriminator_performance = tf.stack([agent.total_assets for agent in agents])
+
+        # 生成者の損失計算
         gen_loss = tf.reduce_mean(discriminator_performance)
         disc_losses = [-agent.total_assets for agent in agents]
 
+    # 勾配の計算
+    # 生成者の勾配
     gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
     generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
 
+    # 識別者の勾配
     for agent, disc_loss in zip(agents, disc_losses):
         disc_gradients = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
         agent.optimizer.apply_gradients(zip(disc_gradients, agent.model.trainable_variables))
 
-    print(f"Generation {generation}, Gen Loss: {gen_loss.numpy()}")
-
-
-    # 各タイムステップのデータを記録
+    # 記録用の辞書に状態を追加
     history["generated_states"].append(generated_states.numpy())
     history["actions"].append(actions)
     history["agent_assets"].append([agent.total_assets.numpy() for agent in agents])
@@ -160,7 +186,7 @@ for generation in range(generations):
         use_rule_based = False
 
 # ファイルへの記録
-with open("kabu_agent-based_metalearning.txt", "w") as f:
+with open("kabu_agent-based_metatraining.txt", "w") as f:
     f.write(str(history))
-os.chmod("kabu_agent-based_metalearning.txt", 0o444)
+os.chmod("kabu_agent-based_metatraining.txt", 0o444)
 print("ファイルを読み取り専用に設定しました")
