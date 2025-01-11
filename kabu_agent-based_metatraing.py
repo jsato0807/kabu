@@ -44,9 +44,7 @@ class RLAgent:
     def act(self, state):
         state = tf.convert_to_tensor(state, dtype=tf.float32)
         action = self.model(state[tf.newaxis, :])[0][0]
-        max_buy = self.cash_balance / state[1]
-        max_sell = self.long_position
-        return tf.clip_by_value(action, -tf.squeeze(max_sell), tf.squeeze(max_buy))
+        return action
 
     def update_assets(self, action, current_price):
         """
@@ -59,8 +57,9 @@ class RLAgent:
             cost = total_buy * current_price
 
             buy_condition = cost <= self.cash_balance
-            fulfilled_buy = tf.where(buy_condition, total_buy, self.cash_balance / current_price)
-            remaining_buy = tf.where(buy_condition, 0.0, total_buy - fulfilled_buy)
+            buy_condition = tf.cast(buy_condition, dtype=tf.float32)  # 条件をfloatにキャスト
+            fulfilled_buy = buy_condition * total_buy + (1 - buy_condition) * (self.cash_balance / (current_price + 1e-6))
+            remaining_buy = (1 - buy_condition) * (total_buy - fulfilled_buy)
             self.cash_balance.assign(self.cash_balance - fulfilled_buy * current_price)
             self.long_position.assign(self.long_position + fulfilled_buy)
             self.unfulfilled_buy_orders.assign(remaining_buy)
@@ -70,15 +69,16 @@ class RLAgent:
             total_sell = abs(action) + self.unfulfilled_sell_orders
 
             sell_condition = total_sell <= self.long_position
-            fulfilled_sell = tf.where(sell_condition, total_sell, self.long_position)
-            remaining_sell = tf.where(sell_condition, 0.0, total_sell - fulfilled_sell)
+            sell_condition = tf.cast(sell_condition, dtype=tf.float32)
+            fulfilled_sell = sell_condition * total_sell + (1 - sell_condition) * self.long_position
+            remaining_sell = (1 - sell_condition) * (total_sell - fulfilled_sell)
 
             self.cash_balance.assign(self.cash_balance + fulfilled_sell * current_price)
             self.long_position.assign(self.long_position - fulfilled_sell)
             self.unfulfilled_sell_orders.assign(remaining_sell)
 
             additional_short = remaining_sell - self.short_position
-            self.short_position.assign(self.short_position + tf.where(~sell_condition, additional_short, -self.short_position))
+            self.short_position.assign(self.short_position + (1 - sell_condition) * additional_short + sell_condition * -self.short_position)
 
         elif action == 0:
             self.cash_balance.assign(self.cash_balance + action * current_price)
