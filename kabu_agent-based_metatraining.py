@@ -71,10 +71,10 @@ class RLAgent:
     
     def _remove_position(self, index):
         """
-        指定されたインデックスのポジションを TensorArray から削除する。
+        Remove a position by replacing it with an empty placeholder.
         """
-        positions = [self.positions.read(i) for i in range(self.positions.size()) if i != index]
-        return tf.TensorArray(dtype=tf.float32, size=len(positions), dynamic_size=True).unstack(positions)
+        empty_pos = tf.constant([], dtype=tf.float32)  # 空のテンソル
+        self.positions = self.positions.write(index, empty_pos)
 
 
     def update_assets(self, long_order_size, short_order_size, long_close_position, short_close_position, current_price, total_buy_demand, total_sell_supply, required_margin_rate=0.04, margin_cut_threshold=100.0):
@@ -136,11 +136,14 @@ class RLAgent:
             if size > 0:  # 部分決済の場合
                 pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (size / fulfilled_size)])
                 self.positions = self.positions.write(i, pos)
+                pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, 0, 0])
+                self.closed_positions = self.closed_positions.write(self.closed_positions_index, pos)
+                self.closed_positions_index += 1
             else:  # 完全決済の場合
                 pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, 0, 0])
                 self.closed_positions = self.closed_positions.write(self.closed_positions_index, pos)
                 self.closed_positions_index += 1
-                self.positions = self._remove_position(i)
+                self._remove_position(i)
 
             if pos_type == 1.0:
                 long_close_position -= fulfilled_size
@@ -156,8 +159,11 @@ class RLAgent:
             pos_id, size, pos_type, open_price, _, margin = tf.unstack(pos)
 
             unrealized_profit = size * (current_price - open_price) if pos_type == 1.0 else size * (open_price - current_price)
+            self.effective_margin += unrealized_profit - pos[4]
+            add_required_margin = -pos[5] + current_price * size * required_margin_rate
+            self.required_margin += add_required_margin
 
-            pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin])
+            pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin+add_required_margin])
             self.positions = self.positions.write(pos_id, pos)
 
         # --- 強制ロスカットのチェック ---
