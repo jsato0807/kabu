@@ -45,6 +45,8 @@ class RLAgent:
     def __init__(self, initial_cash=100000):
         self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
         self.closed_positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+        self.positions_index = tf.convert_to_tensor(0.0, dtype=tf.float32)
+        self.closed_positions_index = tf.convert_to_tensor(0.0, dtype=tf.float32)
         self.effective_margin = tf.convert_to_tensor(initial_cash, dtype=tf.float32)
         self.required_margin = tf.convert_to_tensor(0.0, dtype=tf.float32)
         self.margin_deposit = tf.convert_to_tensor(initial_cash, dtype=tf.float32)
@@ -66,175 +68,109 @@ class RLAgent:
         state = tf.reshape(state, [1, -1])  # 形状を統一
         action = self.model(state)[0][0]
         return action
+    
+    def _remove_position(self, index):
+        """
+        指定されたインデックスのポジションを TensorArray から削除する。
+        """
+        positions = [self.positions.read(i) for i in range(self.positions.size()) if i != index]
+        return tf.TensorArray(dtype=tf.float32, size=len(positions), dynamic_size=True).unstack(positions)
 
-    def update_assets(self, long_order_size,short_order_size, long_close_position, short_close_position, current_price, total_buy_demand, total_sell_supply,required_margin_rate=0.04, margin_cut_threshold=100.0):
+
+    def update_assets(self, long_order_size, short_order_size, long_close_position, short_close_position, current_price, total_buy_demand, total_sell_supply, required_margin_rate=0.04, margin_cut_threshold=100.0):
         """
         資産とポジションの更新を実行
         """
         current_price = tf.convert_to_tensor(current_price, dtype=tf.float32)
-    
-        # Buy/Sell Fill Rates の計算
-        buy_fill_rate = tf.minimum(1.0, total_sell_supply / (total_buy_demand + 1e-6))  # 買い注文の成立率
-        sell_fill_rate = tf.minimum(1.0, total_buy_demand / (total_sell_supply + 1e-6))  # 売り注文の成立率 
 
-
-        if  long_order_size > 0:
-            order_margin = long_order_size * current_price * required_margin_rate
-            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin,margin_cut_threshold)
-            if margin_maintenance_flag:
-                return
-            order_capacity = self.effective_margin - (self.required_margin + order_margin)
-            if order_capacity < 0:
-                order_capacity_flag = True
-                print(f'cannot order because of lack of order capacity')
-                return
-            if margin_maintenance_rate > 100 and order_capacity > 0:
-                #self.margin_deposit -= order_size * grid
-                #self.effective_margin -= order_size * grid
-                order_margin -= long_order_size * current_price * required_margin_rate
-                add_required_margin = current_price * long_order_size * required_margin_rate
-                self.required_margin += add_required_margin
-                self.positions.append([long_order_size, i, 'Buy', current_price, 0, add_required_margin,date,0,0])
-                print(f"Opened Buy position at {current_price}, Effective Margin: {self.effective_margin}")
-                #break
-                margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin,margin_cut_threshold)                                   
+        # --- 新規注文処理 ---
+        def process_new_order(order_size, trade_type, margin_rate):
+            if order_size > 0:
+                order_margin = order_size * current_price * margin_rate
+                margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin, margin_cut_threshold)
                 if margin_maintenance_flag:
-                        print("executed loss cut")
-                        return
+                    print(f"Margin cut triggered during {'Buy' if trade_type == 1.0 else 'Sell'} order processing.")
+                    return
+                order_capacity = self.effective_margin - (self.required_margin + order_margin)
+                if order_capacity < 0:
+                    print(f"Cannot process {'Buy' if trade_type == 1.0 else 'Sell'} order due to insufficient order capacity.")
+                    return
+                if margin_maintenance_rate > 100 and order_capacity > 0:
+                    add_required_margin = current_price * order_size * margin_rate
+                    self.required_margin += add_required_margin
+                    pos = tf.stack([self.positions_index, order_size, trade_type, current_price, 0.0, add_required_margin])
+                    self.positions = self.positions.write(self.positions_index, pos)
+                    self.positions_index += 1
+                    print(f"Opened {'Buy' if trade_type == 1.0 else 'Sell'} position at {current_price}, Effective Margin: {self.effective_margin}")
 
-        if  short_order_size > 0:
-            order_margin = short_order_size * current_price * required_margin_rate
-            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin, margin_cut_threshold)
-            if margin_maintenance_flag:
-                return
-            order_capacity = self.effective_margin - (self.required_margin + order_margin)
-            if order_capacity < 0:
-                order_capacity_flag = True
-                print(f'cannot order because of lack of order capacity')
-                return
-            if margin_maintenance_rate > 100 and order_capacity > 0:
-                #self.margin_deposit -= order_size * grid
-                #self.effective_margin -= order_size * grid
-                order_margin -= short_order_size * current_price * required_margin_rate
-                add_required_margin = current_price * short_order_size * required_margin_rate
-                self.required_margin += add_required_margin
-                self.positions.append([short_order_size, i, 'Buy', current_price, 0, add_required_margin,date,0,0])
-                print(f"Opened Buy position at {current_price}, Effective Margin: {self.effective_margin}")
-                #break
-                margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin,margin_cut_threshold)                                   
-                if margin_maintenance_flag:
-                        print("executed loss cut")
-                        return
+        # Process new buy and sell orders
+        process_new_order(long_order_size, 1.0, required_margin_rate)  # Buy
+        process_new_order(short_order_size, -1.0, required_margin_rate)  # Sell
 
-                    
+        # --- ポジション決済処理 ---
+        pos_id_max = self.positions_index - 1  # 現在の最大 ID
+        for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
+            pos = self.positions.read(pos_id)
+            if tf.size(pos) == 0:  # 空ポジションはスキップ
+                continue
+            pos_id, size, pos_type, open_price, unrealized_profit, margin = tf.unstack(pos)
 
-        # Position closure processing
-        for pos in self.positions[:]:   #this means FIFO because you deal with positions in order 
-                if long_close_position > 0:
-                    long_fulfilled_size = min(long_close_position, pos[0])
-                    profit = long_fulfilled_size * (current_price - pos[3])
-                    self.effective_margin += profit - pos[4]
-                    effective_margin_max, effective_margin_min = check_min_max_effective_margin(self.effective_margin, effective_margin_max, effective_margin_min)
-                    self.margin_deposit += profit
-                    self.realized_profit += profit
-                    pos[7] += profit
-                    self.required_margin -= pos[5] * long_fulfilled_size/pos[0]
-                    pos[5] -= pos[5] * long_fulfilled_size/pos[0]
-                    # 決済済みポジションを履歴に保存
-                    closed_pos = pos.copy()  # オブジェクト参照を避けるためコピー
-                    closed_pos[0] = long_fulfilled_size  # 決済済みのサイズに更新
-                    closed_pos[2] = "Buy-Closed"
-                    self.closed_positions.append(closed_pos)
-            
-                    # ポジションの更新
-                    if long_fulfilled_size == pos[0]:  # ポジションが完全に決済された場合
-                        self.positions.remove(pos)
-                    else:  # 部分決済の場合
-                        pos[0] -= long_fulfilled_size  # 残りのサイズを更新
-            
-                    long_close_position -= long_fulfilled_size  # 未決済量を更新
-                    print(f"Closed Sell position at {current_price} with profit {profit} ,open_price {pos[3]}, Effective Margin: {self.effective_margin}")
-                    #break
+            if pos_type == 1.0 and long_close_position > 0:  # Buy
+                close_position = long_close_position
+                profit = close_position * (current_price - open_price)
+            elif pos_type == -1.0 and short_close_position > 0:  # Sell
+                close_position = short_close_position
+                profit = close_position * (open_price - current_price)
+            else:
+                continue
 
-                    margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin,margin_cut_threshold)
-                    if margin_maintenance_flag:
-                            print("executed loss cut")
-                            continue
+            # 決済ロジック
+            fulfilled_size = tf.minimum(close_position, size)
+            self.effective_margin += profit - unrealized_profit
+            self.margin_deposit += profit
+            self.realized_profit += profit
+            self.required_margin -= margin * (fulfilled_size / size)
 
-                if short_close_position > 0:
-                    short_fulfilled_size = min(short_close_position, pos[0])
-                    profit = short_fulfilled_size * (current_price - pos[3])
-                    self.effective_margin += profit - pos[4]
-                    effective_margin_max, effective_margin_min = check_min_max_effective_margin(self.effective_margin, effective_margin_max, effective_margin_min)
-                    self.margin_deposit += profit
+            # 部分決済または完全決済の処理
+            size -= fulfilled_size
+            if size > 0:  # 部分決済の場合
+                pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (size / fulfilled_size)])
+                self.positions = self.positions.write(i, pos)
+            else:  # 完全決済の場合
+                pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, 0, 0])
+                self.closed_positions = self.closed_positions.write(self.closed_positions_index, pos)
+                self.closed_positions_index += 1
+                self.positions = self._remove_position(i)
 
-                    self.realized_profit += profit
-                    pos[7] += profit
-                    self.required_margin -= pos[5] * long_fulfilled_size/pos[0]
-                    pos[5] -= pos[5] * long_fulfilled_size/pos[0]
-                    # 決済済みポジションを履歴に保存
-                    closed_pos = pos.copy()  # オブジェクト参照を避けるためコピー
-                    closed_pos[0] = short_fulfilled_size  # 決済済みのサイズに更新
-                    closed_pos[2] = "Sell-Closed"
-                    self.closed_positions.append(closed_pos)
-            
-                    # ポジションの更新
-                    if short_fulfilled_size == pos[0]:  # ポジションが完全に決済された場合
-                        self.positions.remove(pos)
-                    else:  # 部分決済の場合
-                        pos[0] -= short_fulfilled_size  # 残りのサイズを更新
-            
-                    short_close_position -= short_fulfilled_size  # 未決済量を更新
-                    print(f"Closed Sell position at {current_price} with profit {profit} ,grid {pos[3]}, Effective Margin: {self.effective_margin}")
-                    #break
+            if pos_type == 1.0:
+                long_close_position -= fulfilled_size
+            elif pos_type == -1.0:
+                short_close_position -= fulfilled_size
 
-                    margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin,margin_cut_threshold)
-                    if margin_maintenance_flag:
-                            print("executed loss cut")
-                            continue
+        # --- 含み益の更新 ---
+        pos_id_max = self.positions_index - 1  # 現在の最大 ID
+        for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
+            pos = self.positions.read(pos_id)
+            if tf.size(pos) == 0:  # 空ポジションはスキップ
+                continue
+            pos_id, size, pos_type, open_price, _, margin = tf.unstack(pos)
 
+            unrealized_profit = size * (current_price - open_price) if pos_type == 1.0 else size * (open_price - current_price)
 
-        #含み益の更新
-        for pos in self.positions[:]:
-            if pos[2] == 'Buy':
-                unrealized_profit = pos[0] * (current_price - pos[3])
-            elif pos[2] == "Sell":
-                unrealized_profit = pos[0] * (pos[3] - current_price)
-            
-            self.effective_margin += unrealized_profit -  pos[4]  # Adjust for previous unrealized profit
-            effective_margin_max, effective_margin_min = check_min_max_effective_margin(self.effective_margin, effective_margin_max, effective_margin_min)
-            add_required_margin = -pos[5] + current_price * pos[0] * required_margin_rate
-            self.required_margin += add_required_margin
-            pos[4] = unrealized_profit  # Store current unrealized profit in the position
-            pos[5] += add_required_margin
-            print(f"updated effective margin against price {current_price} , Effective Margin: {self.effective_margin}")
+            pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin])
+            self.positions = self.positions.write(pos_id, pos)
 
-            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin,margin_cut_threshold)
-            if margin_maintenance_flag:
-                    print("executed loss cut")
-                    continue
-    
-
-        # 強制ロスカットのチェック
+        # --- 強制ロスカットのチェック ---
+        margin_maintenance_flag, _ = update_margin_maintenance_rate(self.effective_margin, self.required_margin, margin_cut_threshold)
         if margin_maintenance_flag:
-            for pos in self.positions:
-                if pos[2] == 'Sell' or pos[2] == 'Buy':
-                    if pos[2] == 'Sell':
-                        profit = - (current_price - pos[3]) * short_order_size  # 現在の損失計算
-                    if pos[2] == 'Buy':
-                        profit = (current_price - pos[3]) * long_order_size
-                    self.effective_margin += profit - pos[4] # 損失分を証拠金に反映
-                    effective_margin_max, effective_margin_min = check_min_max_effective_margin(self.effective_margin, effective_margin_max, effective_margin_min)
-                    self.margin_deposit += profit
-                    self.realized_profit += profit
-                    pos[7] += profit
-                    self.required_margin -= pos[5]
-                    pos[5] = 0
-                    pos[2] += "-Forced-Closed"
-                    self.positions.remove(pos)
-                    self.closed_positions.append(pos)
-                    print(f"Forced Closed at {current_price} with grid {pos[3]}, Effective Margin: {self.effective_margin}")
-                    _, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin,margin_cut_threshold)   
+            print("Forced margin cut triggered.")
+            for i in range(self.positions.size()):
+                pos = self.positions.read(i)
+                self.closed_positions = self.closed_positions.write(self.closed_positions_index, pos)
+                self.closed_positions_index += 1
+            self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
+            self.required_margin = 0.0
+
 
 
     def train(self, tape):
