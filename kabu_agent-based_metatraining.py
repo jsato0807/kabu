@@ -170,8 +170,9 @@ class RLAgent:
         margin_maintenance_flag, _ = update_margin_maintenance_rate(self.effective_margin, self.required_margin, margin_cut_threshold)
         if margin_maintenance_flag:
             print("Forced margin cut triggered.")
-            for i in range(self.positions.size()):
-                pos = self.positions.read(i)
+            pos_id_max = self.positions_index - 1  # 現在の最大 ID
+            for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
+                pos = self.positions.read(pos_id)
                 self.closed_positions = self.closed_positions.write(self.closed_positions_index, pos)
                 self.closed_positions_index += 1
             self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
