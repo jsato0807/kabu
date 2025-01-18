@@ -30,26 +30,27 @@ def check_min_max_effective_margin(effective_margin, effective_margin_max, effec
     return effective_margin_max, effective_margin_min
 
 
-def update_margin_maintenance_rate(effective_margin, required_margin, margin_cut_threshold):
+def update_margin_maintenance_rate(effective_margin, required_margin, margin_cut_threshold=100.0):
     if required_margin != 0:  
         margin_maintenance_rate = (effective_margin / required_margin) * 100
     else:
         margin_maintenance_rate = np.inf
 
     if margin_maintenance_rate <= margin_cut_threshold:
-        print(f"Margin maintenance rate is {margin_maintenance_rate}%, below threshold. Forced liquidation triggered.")
+        print(f"Margin maintenance rate is {margin_maintenance_rate}%, below threshold. Forced losscut triggered.")
         return True, margin_maintenance_rate  # フラグと値を返す
     return False, margin_maintenance_rate  # フラグと値を返す
 
 class RLAgent:
     def __init__(self, initial_cash=100000):
-        self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-        self.closed_positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-        self.positions_index = tf.convert_to_tensor(0.0, dtype=tf.float32)
-        self.closed_positions_index = tf.convert_to_tensor(0.0, dtype=tf.float32)
+        self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True,clear_after_read=False)
+        self.closed_positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True,clear_after_read=False)
+        self.positions_index = tf.convert_to_tensor(0, dtype=tf.float32)
+        self.closed_positions_index = tf.convert_to_tensor(0, dtype=tf.float32)
         self.effective_margin = tf.convert_to_tensor(initial_cash, dtype=tf.float32)
         self.required_margin = tf.convert_to_tensor(0.0, dtype=tf.float32)
         self.margin_deposit = tf.convert_to_tensor(initial_cash, dtype=tf.float32)
+        self.realized_profit = tf.convert_to_tensor(0.0, dtype=tf.float32)
         self.long_position = tf.convert_to_tensor(0.0, dtype=tf.float32)
         self.short_position = tf.convert_to_tensor(0.0, dtype=tf.float32)
         self.unfulfilled_buy_orders = tf.convert_to_tensor(0.0, dtype=tf.float32)
@@ -57,7 +58,7 @@ class RLAgent:
         self.model = tf.keras.Sequential([
             layers.Dense(128, activation='sigmoid', input_dim=2),
             layers.Dense(64, activation='sigmoid'),
-            layers.Dense(1, activation='linear')
+            layers.Dense(4, activation='relu')
         ])
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.01)
 
@@ -66,49 +67,55 @@ class RLAgent:
         state = [tf.reshape(tf.convert_to_tensor(s, dtype=tf.float32), [1]) for s in state]
         state = tf.concat(state, axis=0)
         state = tf.reshape(state, [1, -1])  # 形状を統一
-        action = self.model(state)[0][0]
+        action = self.model(state)
         return action
     
     def _remove_position(self, index):
         """
         Remove a position by replacing it with an empty placeholder.
         """
-        empty_pos = tf.constant([], dtype=tf.float32)  # 空のテンソル
-        self.positions = self.positions.write(index, empty_pos)
+        empty_pos = tf.zeros((6,), dtype=tf.float32)  # 現在のポジションの形状に一致させる
+        self.positions = self.positions.write(tf.cast(index, tf.int32), empty_pos)
 
 
-    def update_assets(self, long_order_size, short_order_size, long_close_position, short_close_position, current_price, total_buy_demand, total_sell_supply, required_margin_rate=0.04, margin_cut_threshold=100.0):
+    def process_new_order(self, order_size, trade_type, margin_rate):
+        if order_size > 0:
+            order_margin = order_size * current_price * margin_rate
+            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
+            if margin_maintenance_flag:
+                print(f"Margin cut triggered during {'Buy' if trade_type == 1.0 else 'Sell'} order processing.")
+                return
+            order_capacity = self.effective_margin - (self.required_margin + order_margin)
+            if order_capacity < 0:
+                print(f"Cannot process {'Buy' if trade_type == 1.0 else 'Sell'} order due to insufficient order capacity.")
+                return
+            if margin_maintenance_rate > 100 and order_capacity > 0:
+                add_required_margin = current_price * order_size * margin_rate
+                self.required_margin += add_required_margin
+                pos = tf.stack([self.positions_index, order_size, trade_type, current_price, 0.0, add_required_margin])
+                self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
+
+                self.positions_index += 1
+                print(f"Opened {'Buy' if trade_type==1 else ('Sell' if trade_type == -1 else 'Unknown')} position at {current_price}, required margin: {self.required_margin}")
+                margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
+                if margin_maintenance_flag:
+                    print(f"margin maintenance rate is {margin_maintenance_rate},so loss cut is executed in process_new_order, effective_margin: {self.effective_margin}")
+                    return
+
+
+    def update_assets(self, long_order_size, short_order_size, long_close_position, short_close_position, current_price, required_margin_rate=0.04):
         """
         資産とポジションの更新を実行
         """
         current_price = tf.convert_to_tensor(current_price, dtype=tf.float32)
 
         # --- 新規注文処理 ---
-        def process_new_order(order_size, trade_type, margin_rate):
-            if order_size > 0:
-                order_margin = order_size * current_price * margin_rate
-                margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin, margin_cut_threshold)
-                if margin_maintenance_flag:
-                    print(f"Margin cut triggered during {'Buy' if trade_type == 1.0 else 'Sell'} order processing.")
-                    return
-                order_capacity = self.effective_margin - (self.required_margin + order_margin)
-                if order_capacity < 0:
-                    print(f"Cannot process {'Buy' if trade_type == 1.0 else 'Sell'} order due to insufficient order capacity.")
-                    return
-                if margin_maintenance_rate > 100 and order_capacity > 0:
-                    add_required_margin = current_price * order_size * margin_rate
-                    self.required_margin += add_required_margin
-                    pos = tf.stack([self.positions_index, order_size, trade_type, current_price, 0.0, add_required_margin])
-                    self.positions = self.positions.write(self.positions_index, pos)
-                    self.positions_index += 1
-                    print(f"Opened {'Buy' if trade_type == 1.0 else 'Sell'} position at {current_price}, Effective Margin: {self.effective_margin}")
-
         # Process new buy and sell orders
-        process_new_order(long_order_size, 1.0, required_margin_rate)  # Buy
-        process_new_order(short_order_size, -1.0, required_margin_rate)  # Sell
+        self.process_new_order(long_order_size, 1.0, required_margin_rate)  # Buy
+        self.process_new_order(short_order_size, -1.0, required_margin_rate)  # Sell
 
         # --- ポジション決済処理 ---
-        pos_id_max = self.positions_index - 1  # 現在の最大 ID
+        pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
             pos = self.positions.read(pos_id)
             if tf.size(pos) == 0:  # 空ポジションはスキップ
@@ -134,49 +141,70 @@ class RLAgent:
             # 部分決済または完全決済の処理
             size -= fulfilled_size
             if size > 0:  # 部分決済の場合
-                pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (size / fulfilled_size)])
-                self.positions = self.positions.write(i, pos)
+                pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (1 - fulfilled_size / size)])
+                self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, 0, 0])
-                self.closed_positions = self.closed_positions.write(self.closed_positions_index, pos)
+                self.closed_positions = self.closed_positions.write(tf.cast(self.closed_positions_index, tf.int32), pos)
+
                 self.closed_positions_index += 1
             else:  # 完全決済の場合
                 pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, 0, 0])
-                self.closed_positions = self.closed_positions.write(self.closed_positions_index, pos)
+                self.closed_positions = self.closed_positions.write(tf.cast(self.closed_positions_index, tf.int32), pos)
+
                 self.closed_positions_index += 1
-                self._remove_position(i)
+                self._remove_position(pos_id)
+            print(f"Closed {'Buy' if pos_type==1 else ('Sell' if pos_type == -1 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
 
             if pos_type == 1.0:
                 long_close_position -= fulfilled_size
             elif pos_type == -1.0:
                 short_close_position -= fulfilled_size
 
+            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
+            if margin_maintenance_flag:
+                print(f"margin maintenance rate is {margin_maintenance_rate},so loss cut is executed in position closure process, effective_margin: {self.effective_margin}")
+                return
+
         # --- 含み益の更新 ---
-        pos_id_max = self.positions_index - 1  # 現在の最大 ID
+        pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
             pos = self.positions.read(pos_id)
             if tf.size(pos) == 0:  # 空ポジションはスキップ
                 continue
-            pos_id, size, pos_type, open_price, _, margin = tf.unstack(pos)
+            pos_id, size, pos_type, open_price, before_unrealized_profit, margin = tf.unstack(pos)
 
             unrealized_profit = size * (current_price - open_price) if pos_type == 1.0 else size * (open_price - current_price)
-            self.effective_margin += unrealized_profit - pos[4]
-            add_required_margin = -pos[5] + current_price * size * required_margin_rate
+            self.effective_margin += unrealized_profit - before_unrealized_profit
+            add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin
 
             pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin+add_required_margin])
-            self.positions = self.positions.write(pos_id, pos)
+            self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
+            print(f"updated effective margin against price {current_price} , Effective Margin: {self.effective_margin}")
+
+            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
+            if margin_maintenance_flag:
+                print(f"margin maintenance rate is {margin_maintenance_rate},so loss cut is executed in position  process, effective_margin: {self.effective_margin}")
+                return
 
         # --- 強制ロスカットのチェック ---
-        margin_maintenance_flag, _ = update_margin_maintenance_rate(self.effective_margin, self.required_margin, margin_cut_threshold)
+        margin_maintenance_flag, _ = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
         if margin_maintenance_flag:
             print("Forced margin cut triggered.")
             pos_id_max = self.positions_index - 1  # 現在の最大 ID
             for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
                 pos = self.positions.read(pos_id)
-                self.closed_positions = self.closed_positions.write(self.closed_positions_index, pos)
+                self.closed_positions = self.closed_positions.write(tf.cast(self.closed_positions_index, tf.int32), pos)
+
                 self.closed_positions_index += 1
+                self._remove_position(pos_id)
+            #self.required_margin = 0.0
+
+            # 全ポジションをクリア
             self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-            self.required_margin = 0.0
+            self.positions_index = tf.convert_to_tensor(0, dtype=tf.float32)
+
+            self.required_margin = tf.convert_to_tensor(0.0, dtype=tf.float32)
 
 
 
@@ -207,17 +235,22 @@ history = {
 }
 
 # トレーニングループ
-generations = 1000
+generations = 10
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
 gamma = tf.convert_to_tensor(1,dtype=tf.float32)
 volume = tf.convert_to_tensor(0,dtype=tf.float32)
+actions = tf.TensorArray(dtype=tf.float32, size=len(agents))
+
 
 for generation in range(generations):
     with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
         # 市場生成用の入力データ
         input_data = tf.concat([tf.reshape(states, [-1]), [supply_and_demand]], axis=0)
-        generated_states = generator.generate(input_data)[0]
-        current_price, current_liquidity, current_slippage = tf.split(generated_states, num_or_size_splits=3)
+        # 各要素に 1e-6 を加算して対数を取る
+        log_inputs = tf.math.log(input_data + 1e-6)
+        generated_states = generator.generate(log_inputs)[0]
+        unlog_generated_states = tf.math.exp(generated_states) - 1e-6
+        current_price, current_liquidity, current_slippage = tf.split(unlog_generated_states, num_or_size_splits=3)
 
         # 状態を更新
         current_price = tf.reshape(current_price, [])
@@ -234,16 +267,28 @@ for generation in range(generations):
         states = tf.stack([current_price, current_liquidity, current_slippage])
 
         # 各エージェントの行動
-        actions = [agent.act([agent.effective_margin, current_price]) for agent in agents]
-        print(f"actions:{actions}")
-        supply_and_demand = tf.reduce_sum(actions)
+        #actions = [agent.act([agent.effective_margin, current_price]) for agent in agents]
+        i = 0
+        for agent in agents:
+            # 各要素に 1e-6 を加算して対数を取る
+            log_inputs = tf.math.log([x + 1e-6 for x in [agent.effective_margin, current_price]])
+            unlog_action = tf.math.exp(agent.act(log_inputs)) - 1e-6
+            actions.write(i,unlog_action)
+            print(agent.effective_margin)
+            i += 1
 
-        volume = tf.reduce_sum([tf.abs(action) for action in actions])
+        supply_and_demand = tf.reduce_sum(actions.stack())
 
+        volume = tf.reduce_sum([tf.abs(actions.stack())])
 
         # 資産更新
-        for agent, action in zip(agents, actions):
-            agent.update_assets(action, current_price)
+        print(actions.stack().shape)
+        for agent, action in zip(agents, actions.stack()):
+            # アクションの形状 (1, 4) を (4,) に変換
+            action_flat = tf.reshape(action, [-1])  # 形状 (4,)
+            # 各項目を変数に分解
+            long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
+            agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
 
         # 識別者の評価（discriminator_performance）
         discriminator_performance = tf.stack([agent.effective_margin for agent in agents])
@@ -278,11 +323,17 @@ for generation in range(generations):
     for disc_loss in disc_losses:
         print(f"disc_gradients:{disc_tape.gradient(disc_loss, agent.model.trainable_variables)}")
 
-    exit()
+    #exit()
 
     # 進化段階でルールベースを切り替え
     if generation == generations // 2:
         use_rule_based = False
+
+    print(f"generation:{generation}")
+    print(" ")
+    print(" ")
+    print(" ")
+    print(" ")
 
 # ファイルへの記録
 with open("./txt_dir/kabu_agent-based_metatraining.txt", "w") as f:
