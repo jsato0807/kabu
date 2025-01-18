@@ -44,9 +44,8 @@ def update_margin_maintenance_rate(effective_margin, required_margin, margin_cut
 class RLAgent:
     def __init__(self, initial_cash=100000):
         self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True,clear_after_read=False)
-        self.closed_positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True,clear_after_read=False)
+        self.closed_positions = []
         self.positions_index = tf.convert_to_tensor(0, dtype=tf.float32)
-        self.closed_positions_index = tf.convert_to_tensor(0, dtype=tf.float32)
         self.effective_margin = tf.convert_to_tensor(initial_cash, dtype=tf.float32)
         self.required_margin = tf.convert_to_tensor(0.0, dtype=tf.float32)
         self.margin_deposit = tf.convert_to_tensor(initial_cash, dtype=tf.float32)
@@ -144,14 +143,12 @@ class RLAgent:
                 pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (1 - fulfilled_size / size)])
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, 0, 0])
-                self.closed_positions = self.closed_positions.write(tf.cast(self.closed_positions_index, tf.int32), pos)
+                self.closed_positions.append(pos)
 
-                self.closed_positions_index += 1
             else:  # 完全決済の場合
                 pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, 0, 0])
-                self.closed_positions = self.closed_positions.write(tf.cast(self.closed_positions_index, tf.int32), pos)
+                self.closed_positions.append(pos)
 
-                self.closed_positions_index += 1
                 self._remove_position(pos_id)
             print(f"Closed {'Buy' if pos_type==1 else ('Sell' if pos_type == -1 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
 
@@ -194,9 +191,8 @@ class RLAgent:
             pos_id_max = self.positions_index - 1  # 現在の最大 ID
             for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
                 pos = self.positions.read(pos_id)
-                self.closed_positions = self.closed_positions.write(tf.cast(self.closed_positions_index, tf.int32), pos)
+                self.closed_positions.append(pos)
 
-                self.closed_positions_index += 1
                 self._remove_position(pos_id)
             #self.required_margin = 0.0
 
