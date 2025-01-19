@@ -16,10 +16,19 @@ class MarketGenerator:
     def generate(self, inputs):
         return self.model(tf.expand_dims(inputs, axis=0))
 
-    def train(self, tape, discriminator_performance):
-        loss = tf.reduce_mean(discriminator_performance)
+    """
+    def train(self, tape, discriminator_performance,generation,actions):
+        long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(actions)
+        loss = tf.math.log(current_price + 1e-6) \
+     + tf.math.log(long_order_size + 1e-6) \
+     + tf.math.log(short_order_size + 1e-6) \
+     + tf.math.log(long_close_position + 1e-6) \
+     + tf.math.log(short_close_position + 1e-6)
+        if generation == generations // 2:
+            loss = tf.reduce_mean(discriminator_performance)
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
+    """
 
 
 def check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min):
@@ -129,6 +138,7 @@ class RLAgent:
                 profit = close_position * (open_price - current_price)
             else:
                 continue
+            print(f"close_position:{close_position}, current_price:{current_price},open_price:{open_price}")
 
             # 決済ロジック
             fulfilled_size = tf.minimum(close_position, size)
@@ -177,6 +187,7 @@ class RLAgent:
 
             pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin+add_required_margin])
             self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
+            print(f"unrealized_profit:{unrealized_profit}, before_unrealized_profit:{before_unrealized_profit}")
             print(f"updated effective margin against price {current_price} , Effective Margin: {self.effective_margin}")
 
             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
@@ -203,11 +214,19 @@ class RLAgent:
             self.required_margin = tf.convert_to_tensor(0.0, dtype=tf.float32)
 
 
-
-    def train(self, tape):
-        loss = -self.effective_margin  # 総資産の最大化
+    """
+    def train(self, tape,generation,actions):
+        long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(actions)
+        loss = -(tf.math.log(current_price + 1e-6) \
+     + tf.math.log(long_order_size + 1e-6) \
+     + tf.math.log(short_order_size + 1e-6) \
+     + tf.math.log(long_close_position + 1e-6) \
+     + tf.math.log(short_close_position + 1e-6))
+        if generation == generations // 2:
+            loss = -self.effective_margin  # 総資産の最大化
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
+    """
 
 
 
@@ -235,7 +254,9 @@ generations = 10
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
 gamma = tf.convert_to_tensor(1,dtype=tf.float32)
 volume = tf.convert_to_tensor(0,dtype=tf.float32)
-actions = tf.TensorArray(dtype=tf.float32, size=len(agents))
+actions = tf.TensorArray(dtype=tf.float32, size=len(agents),dynamic_size=True)
+disc_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
+initial_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
 
 
 for generation in range(generations):
@@ -269,9 +290,9 @@ for generation in range(generations):
             # 各要素に 1e-6 を加算して対数を取る
             log_inputs = tf.math.log([x + 1e-6 for x in [agent.effective_margin, current_price]])
             unlog_action = tf.math.exp(agent.act(log_inputs)) - 1e-6
-            actions.write(i,unlog_action)
-            print(agent.effective_margin)
+            actions = actions.write(i,unlog_action)
             i += 1
+        print(f"actions:{actions.stack()}")
 
         supply_and_demand = tf.reduce_sum(actions.stack())
 
@@ -290,18 +311,52 @@ for generation in range(generations):
         discriminator_performance = tf.stack([agent.effective_margin for agent in agents])
 
         # 生成者の損失計算
-        gen_loss = tf.reduce_mean(discriminator_performance)
-        disc_losses = [-agent.effective_margin for agent in agents]
+        #if generation < generations//2:
+        #    i = 0
+        #    for action in (actions.stack()):
+        #        action_flat = tf.reshape(action,[-1])
+        #        long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
+#
+        #        initial_loss = (tf.math.log(current_price + 1e-6) \
+        #                    + tf.math.log(long_order_size + 1e-6) \
+        #                    + tf.math.log(short_order_size + 1e-6) \
+        #                    + tf.math.log(long_close_position + 1e-6) \
+        #                    + tf.math.log(short_close_position + 1e-6))
+        #        initial_losses = initial_losses.write(i,initial_loss)
+        #        disc_losses = disc_losses.write(i,-initial_loss)
+        #        i += 1
+#
+        #    gen_loss = tf.reduce_mean(initial_losses.stack())
+        #    disc_losses = disc_losses.stack()
+#
+        #elif generation >= generations // 2:
+        if generation >= 0:
+            gen_loss = tf.reduce_mean(discriminator_performance)
+            i = 0
+            for agent in agents:
+                disc_losses = disc_losses.write(i,-agent.effective_margin)
+                i += 1
+            disc_losses = disc_losses.stack()
 
     # 勾配の計算
     # 生成者の勾配
+    #print(type(gen_loss))
     gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
+    #print(type(gen_gradients))
+    #print(gen_gradients)
     generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
 
     # 識別者の勾配
+    print(f"disc_losses: {disc_losses}, type: {type(disc_losses)}") 
     for agent, disc_loss in zip(agents, disc_losses):
-        disc_gradients = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
-        agent.optimizer.apply_gradients(zip(disc_gradients, agent.model.trainable_variables))
+        print(f"disc_loss: {disc_loss}, type: {type(disc_loss)}") 
+        print(f"disc_losses: {disc_losses}, type: {type(disc_losses)}")  
+        #print(type(disc_loss))
+        disc_gradient = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
+        #print(type(disc_gradient))
+        print(disc_gradient)
+        #exit()
+        agent.optimizer.apply_gradients(zip(disc_gradient, agent.model.trainable_variables))
 
     # 記録用の辞書に状態を追加
     history["generated_states"].append(generated_states.numpy())
