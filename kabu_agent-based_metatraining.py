@@ -54,15 +54,15 @@ class RLAgent:
     def __init__(self, initial_cash=100000):
         self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True,clear_after_read=False)
         self.closed_positions = []
-        self.positions_index = tf.convert_to_tensor(0, dtype=tf.float32)
-        self.effective_margin = tf.convert_to_tensor(initial_cash, dtype=tf.float32)
-        self.required_margin = tf.convert_to_tensor(0.0, dtype=tf.float32)
-        self.margin_deposit = tf.convert_to_tensor(initial_cash, dtype=tf.float32)
-        self.realized_profit = tf.convert_to_tensor(0.0, dtype=tf.float32)
-        self.long_position = tf.convert_to_tensor(0.0, dtype=tf.float32)
-        self.short_position = tf.convert_to_tensor(0.0, dtype=tf.float32)
-        self.unfulfilled_buy_orders = tf.convert_to_tensor(0.0, dtype=tf.float32)
-        self.unfulfilled_sell_orders = tf.convert_to_tensor(0.0, dtype=tf.float32)
+        self.positions_index = tf.Variable(0, dtype=tf.float32)
+        self.effective_margin = tf.Variable(initial_cash, dtype=tf.float32)
+        self.required_margin = 0
+        self.margin_deposit = tf.Variable(initial_cash, dtype=tf.float32)
+        self.realized_profit = tf.Variable(0.0, dtype=tf.float32)
+        self.long_position = tf.Variable(0.0, dtype=tf.float32)
+        self.short_position = tf.Variable(0.0, dtype=tf.float32)
+        self.unfulfilled_buy_orders = tf.Variable(0.0, dtype=tf.float32)
+        self.unfulfilled_sell_orders = tf.Variable(0.0, dtype=tf.float32)
         self.model = tf.keras.Sequential([
             layers.Dense(128, activation='sigmoid', input_dim=2),
             layers.Dense(64, activation='sigmoid'),
@@ -72,7 +72,7 @@ class RLAgent:
 
     def act(self, state):
         # state の形状を統一して結合
-        state = [tf.reshape(tf.convert_to_tensor(s, dtype=tf.float32), [1]) for s in state]
+        state = [tf.reshape(tf.Variable(s, dtype=tf.float32), [1]) for s in state]
         state = tf.concat(state, axis=0)
         state = tf.reshape(state, [1, -1])  # 形状を統一
         action = self.model(state)
@@ -86,24 +86,27 @@ class RLAgent:
         self.positions = self.positions.write(tf.cast(index, tf.int32), empty_pos)
 
 
-    def process_new_order(self, order_size, trade_type, margin_rate):
+    def process_new_order(self, order_size, trade_type, current_price, margin_rate):
         if order_size > 0:
-            order_margin = order_size * current_price * margin_rate
+            if trade_type == 1:
+                order_margin = (order_size + self.unfulfilled_buy_orders * current_price * margin_rate)
+            if trade_type == -1:
+                order_margin = (order_size + self.unfulfilled_sell_orders * current_price * margin_rate)
             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
             if margin_maintenance_flag:
                 print(f"Margin cut triggered during {'Buy' if trade_type == 1.0 else 'Sell'} order processing.")
                 return
-            order_capacity = self.effective_margin - (self.required_margin + order_margin)
+            order_capacity = (self.effective_margin - (self.required_margin+ order_margin)).numpy()
             if order_capacity < 0:
                 print(f"Cannot process {'Buy' if trade_type == 1.0 else 'Sell'} order due to insufficient order capacity.")
                 return
             if margin_maintenance_rate > 100 and order_capacity > 0:
                 add_required_margin = current_price * order_size * margin_rate
-                self.required_margin += add_required_margin
+                self.required_margin += add_required_margin.numpy()
                 pos = tf.stack([self.positions_index, order_size, trade_type, current_price, 0.0, add_required_margin])
                 self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
 
-                self.positions_index += 1
+                self.positions_index.assign(self.positions_index + 1)
                 print(f"Opened {'Buy' if trade_type==1 else ('Sell' if trade_type == -1 else 'Unknown')} position at {current_price}, required margin: {self.required_margin}")
                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
                 if margin_maintenance_flag:
@@ -115,12 +118,11 @@ class RLAgent:
         """
         資産とポジションの更新を実行
         """
-        current_price = tf.convert_to_tensor(current_price, dtype=tf.float32)
 
         # --- 新規注文処理 ---
         # Process new buy and sell orders
-        self.process_new_order(long_order_size, 1.0, required_margin_rate)  # Buy
-        self.process_new_order(short_order_size, -1.0, required_margin_rate)  # Sell
+        self.process_new_order(long_order_size, 1.0, current_price, required_margin_rate)  # Buy
+        self.process_new_order(short_order_size, -1.0, current_price, required_margin_rate)  # Sell
 
         # --- ポジション決済処理 ---
         pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
@@ -142,10 +144,11 @@ class RLAgent:
 
             # 決済ロジック
             fulfilled_size = tf.minimum(close_position, size)
-            self.effective_margin += profit - unrealized_profit
-            self.margin_deposit += profit
-            self.realized_profit += profit
-            self.required_margin -= margin * (fulfilled_size / size)
+            self.effective_margin.assign(self.effective_margin + profit - unrealized_profit)
+            self.margin_deposit.assign(self.margin_deposit + profit)
+            self.realized_profit.assign(self.realized_profit + profit)
+            add_required_margin = -margin * (fulfilled_size / size)
+            self.required_margin += add_required_margin.numpy()
 
             # 部分決済または完全決済の処理
             size -= fulfilled_size
@@ -163,9 +166,9 @@ class RLAgent:
             print(f"Closed {'Buy' if pos_type==1 else ('Sell' if pos_type == -1 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
 
             if pos_type == 1.0:
-                long_close_position -= fulfilled_size
+                self.unfulfilled_buy_orders.assign(long_close_position - fulfilled_size)
             elif pos_type == -1.0:
-                short_close_position -= fulfilled_size
+                self.unfulfilled_sell_orders.assign(short_close_position - fulfilled_size)
 
             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
             if margin_maintenance_flag:
@@ -181,9 +184,9 @@ class RLAgent:
             pos_id, size, pos_type, open_price, before_unrealized_profit, margin = tf.unstack(pos)
 
             unrealized_profit = size * (current_price - open_price) if pos_type == 1.0 else size * (open_price - current_price)
-            self.effective_margin += unrealized_profit - before_unrealized_profit
+            self.effective_margin.assign(self.effective_margin + unrealized_profit - before_unrealized_profit)
             add_required_margin = -margin + current_price * size * required_margin_rate
-            self.required_margin += add_required_margin
+            self.required_margin += add_required_margin.numpy()
 
             pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin+add_required_margin])
             self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
@@ -209,9 +212,9 @@ class RLAgent:
 
             # 全ポジションをクリア
             self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-            self.positions_index = tf.convert_to_tensor(0, dtype=tf.float32)
+            self.positions_index.assign(0)
 
-            self.required_margin = tf.convert_to_tensor(0.0, dtype=tf.float32)
+            self.required_margin = 0
 
 
     """
@@ -252,14 +255,17 @@ history = {
 # トレーニングループ
 generations = 10
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
-gamma = tf.convert_to_tensor(1,dtype=tf.float32)
-volume = tf.convert_to_tensor(0,dtype=tf.float32)
+gamma = tf.Variable(1,dtype=tf.float32)
+volume = tf.Variable(0,dtype=tf.float32)
 actions = tf.TensorArray(dtype=tf.float32, size=len(agents),dynamic_size=True)
 disc_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
 initial_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
 
 
 for generation in range(generations):
+    #if generation == 1:
+    #    print(f"generation is 1")
+    #    exit()
     with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
         # 市場生成用の入力データ
         input_data = tf.concat([tf.reshape(states, [-1]), [supply_and_demand]], axis=0)
@@ -311,68 +317,79 @@ for generation in range(generations):
         discriminator_performance = tf.stack([agent.effective_margin for agent in agents])
 
         # 生成者の損失計算
-        #if generation < generations//2:
-        #    i = 0
-        #    for action in (actions.stack()):
-        #        action_flat = tf.reshape(action,[-1])
-        #        long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
-#
-        #        initial_loss = (tf.math.log(current_price + 1e-6) \
-        #                    + tf.math.log(long_order_size + 1e-6) \
-        #                    + tf.math.log(short_order_size + 1e-6) \
-        #                    + tf.math.log(long_close_position + 1e-6) \
-        #                    + tf.math.log(short_close_position + 1e-6))
-        #        initial_losses = initial_losses.write(i,initial_loss)
-        #        disc_losses = disc_losses.write(i,-initial_loss)
-        #        i += 1
-#
-        #    gen_loss = tf.reduce_mean(initial_losses.stack())
-        #    disc_losses = disc_losses.stack()
-#
-        #elif generation >= generations // 2:
-        if generation >= 0:
+        if generation < generations//2:
+            i = 0
+            for action in (actions.stack()):
+                action_flat = tf.reshape(action,[-1])
+                long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
+
+                initial_loss = (tf.math.log(current_price + 1e-6) \
+                            + tf.math.log(long_order_size + 1e-6) \
+                            + tf.math.log(short_order_size + 1e-6) \
+                            + tf.math.log(long_close_position + 1e-6) \
+                            + tf.math.log(short_close_position + 1e-6))
+                initial_losses = initial_losses.write(i,initial_loss)
+                disc_losses = disc_losses.write(i,-initial_loss)
+                i += 1
+
+            
+
+            gen_loss = tf.reduce_mean(initial_losses.stack())
+            print(disc_losses.stack().shape)
+            #exit()
+            stacked_disc_losses = disc_losses.stack()
+
+        elif generation >= generations // 2:
+        #if generation >= 0:
             gen_loss = tf.reduce_mean(discriminator_performance)
             i = 0
             for agent in agents:
                 disc_losses = disc_losses.write(i,-agent.effective_margin)
                 i += 1
-            disc_losses = disc_losses.stack()
+            stacked_disc_losses = disc_losses.stack()
 
-    # 勾配の計算
-    # 生成者の勾配
-    #print(type(gen_loss))
-    gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
-    #print(type(gen_gradients))
-    #print(gen_gradients)
-    generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
+        # 勾配の計算
+        # 生成者の勾配
+        print(type(gen_loss))
+        gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
+        #print(type(gen_gradients))
+        print(f"gen_loss: {gen_loss}")
+        print(f"gen_gradients: {gen_gradients}")
 
-    # 識別者の勾配
-    print(f"disc_losses: {disc_losses}, type: {type(disc_losses)}") 
-    for agent, disc_loss in zip(agents, disc_losses):
-        print(f"disc_loss: {disc_loss}, type: {type(disc_loss)}") 
-        print(f"disc_losses: {disc_losses}, type: {type(disc_losses)}")  
-        #print(type(disc_loss))
-        disc_gradient = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
-        #print(type(disc_gradient))
-        print(disc_gradient)
-        #exit()
-        agent.optimizer.apply_gradients(zip(disc_gradient, agent.model.trainable_variables))
+        generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
 
-    # 記録用の辞書に状態を追加
+        # 識別者の勾配
+        print(f"disc_losses: {stacked_disc_losses}, type: {type(disc_losses)}") 
+        disc_gradients = []
+        i = 0
+        for agent, disc_loss in zip(agents, stacked_disc_losses):
+            print(i)
+            print(f"disc_loss: {disc_loss}, type: {type(disc_loss)}") 
+            print(f"disc_losses: {stacked_disc_losses}, type: {type(stacked_disc_losses)}")  
+            #print(type(disc_loss))
+            disc_gradient = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
+            #print(type(disc_gradient))
+            disc_gradients.append(disc_gradient)
+            print(f"disc_gradient:{disc_gradient}")
+            #exit()
+            agent.optimizer.apply_gradients(zip(disc_gradient, agent.model.trainable_variables))
+            i += 1
+
+        print(f"gen_gradients: {gen_gradients}")
+
+        # 記録用の辞書に状態を追加
+        history["disc_gradients"].append(disc_gradients.numpy())
+
     history["generated_states"].append(generated_states.numpy())
     history["actions"].append(actions)
     history["agent_assets"].append([agent.effective_margin.numpy() for agent in agents])
     history["liquidity"].append(current_liquidity.numpy())
     history["slippage"].append(current_slippage.numpy())
     history["gen_gradients"].append(gen_gradients)
-    for disc_loss in disc_losses:
-        history["disc_gradients"].append(disc_tape.gradient(disc_loss, agent.model.trainable_variables))
 
     #print(f"Generation {generation}, Best Agent Assets: {max(float(agent.effective_margin.numpy()) for agent in agents):.2f}")
     #print(f"gen_gradients:{gen_gradients}")
     #exit()
-    for disc_loss in disc_losses:
-        print(f"disc_gradients:{disc_tape.gradient(disc_loss, agent.model.trainable_variables)}")
 
     #exit()
 
