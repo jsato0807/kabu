@@ -82,7 +82,7 @@ class RLAgent:
         """
         Remove a position by replacing it with an empty placeholder.
         """
-        empty_pos = tf.zeros((6,), dtype=tf.float32)  # 現在のポジションの形状に一致させる
+        empty_pos = tf.zeros((7,), dtype=tf.float32)  # 現在のポジションの形状に一致させる
         self.positions = self.positions.write(tf.cast(index, tf.int32), empty_pos)
 
 
@@ -104,7 +104,7 @@ class RLAgent:
             if margin_maintenance_rate > 100 and order_capacity > 0:
                 add_required_margin = current_price * order_size * margin_rate
                 self.required_margin += add_required_margin.numpy()
-                pos = tf.stack([self.positions_index, order_size, trade_type, current_price, tf.Variable(0.0,dtype=tf.float32), add_required_margin])
+                pos = tf.stack([self.positions_index, order_size, trade_type, current_price, tf.Variable(0.0,dtype=tf.float32), add_required_margin, tf.Variable(0.0,dtype=tf.float32)])
                 self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
 
                 self.positions_index.assign(self.positions_index + 1)
@@ -131,7 +131,7 @@ class RLAgent:
             pos = self.positions.read(pos_id)
             if tf.size(pos) == 0:  # 空ポジションはスキップ
                 continue
-            pos_id, size, pos_type, open_price, unrealized_profit, margin = tf.unstack(pos)
+            pos_id, size, pos_type, open_price, unrealized_profit, margin, before_profit = tf.unstack(pos)
 
             if pos_type.numpy() == 1.0 and long_close_position > 0:  # Buy
                 close_position = long_close_position
@@ -154,13 +154,13 @@ class RLAgent:
             # 部分決済または完全決済の処理
             size -= fulfilled_size
             if size > 0:  # 部分決済の場合
-                pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (1 - fulfilled_size / size)])
+                pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (1 - fulfilled_size / size), before_profit+profit])
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
-                pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, 0, 0])
+                pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, before_profit+profit]
                 self.closed_positions.append(pos)
 
             else:  # 完全決済の場合
-                pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, 0, 0])
+                pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, tf.Variable(0,dtype=tf.float32), tf.Variable(0,dtype=tf.float32),before_profit+profit])
                 self.closed_positions.append(pos)
 
                 self._remove_position(pos_id)
@@ -182,14 +182,22 @@ class RLAgent:
             pos = self.positions.read(pos_id)
             if tf.size(pos) == 0:  # 空ポジションはスキップ
                 continue
-            pos_id, size, pos_type, open_price, before_unrealized_profit, margin = tf.unstack(pos)
+            pos_id, size, pos_type, open_price, before_unrealized_profit, margin, before_profit = tf.unstack(pos)
 
             unrealized_profit = size * (current_price - open_price) if pos_type.numpy() == 1.0 else size * (open_price - current_price)
             self.effective_margin.assign(self.effective_margin + unrealized_profit - before_unrealized_profit)
             add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
 
-            pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin+add_required_margin])
+            pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin+add_required_margin,before_profit])
+            print(f"pos_id:{type(pos_id)}")
+            print(f"size:{type(size)}")
+            print(f"pos_type:{type(pos_type)}")
+            print(f"open_price:{type(open_price)}")
+            print(f"unrealized_profit:{type(unrealized_profit)}")
+            print(f"margin:{type(margin)}")
+            print(f"add_required_margin:{type(add_required_margin)}")
+            #exit()
             self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
             print(f"unrealized_profit:{unrealized_profit}, before_unrealized_profit:{before_unrealized_profit}")
             print(f"updated effective margin against price {current_price} , Effective Margin: {self.effective_margin}")
@@ -206,9 +214,18 @@ class RLAgent:
             pos_id_max = self.positions_index - 1  # 現在の最大 ID
             for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
                 pos = self.positions.read(pos_id)
-                self.closed_positions.append(pos)
+                pos_id, size, pos_type, open_price, before_unrealized_profit, margin, before_profit = tf.unstack(pos)
+                profit = (current_price - open_price) * size  # 現在の損失計算
+                self.effective_margin.assign(self.effective_margin + profit - before_unrealized_profit) # 損失分を証拠金に反映
+                effective_margin_max, effective_margin_min = check_min_max_effective_margin(self.effective_margin, effective_margin_max, effective_margin_min)
+                self.margin_deposit.assign(self.margin_deposit + profit)
+                self.realized_profit.assign(self.realized_profit + profit)
+                self.required_margin -= margin
 
                 self._remove_position(pos_id)
+
+                pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, before_profit+profit]
+                self.closed_positions.append(pos)
             #self.required_margin = 0.0
 
             # 全ポジションをクリア
