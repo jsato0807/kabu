@@ -90,9 +90,9 @@ class RLAgent:
         trade_type = tf.Variable(trade_type, dtype=tf.float32)
         if order_size > 0:
             if trade_type.numpy() == 1:
-                order_margin = (order_size + self.unfulfilled_buy_orders * current_price * margin_rate)
+                order_margin = ((order_size + self.unfulfilled_buy_orders) * current_price * margin_rate)
             if trade_type.numpy() == -1:
-                order_margin = (order_size + self.unfulfilled_sell_orders * current_price * margin_rate)
+                order_margin = ((order_size + self.unfulfilled_sell_orders) * current_price * margin_rate)
             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
             if margin_maintenance_flag:
                 print(f"Margin cut triggered during {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order processing.")
@@ -102,9 +102,15 @@ class RLAgent:
                 print(f"Cannot process {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order due to insufficient order capacity.")
                 return
             if margin_maintenance_rate > 100 and order_capacity > 0:
-                add_required_margin = current_price * order_size * margin_rate
-                self.required_margin += add_required_margin.numpy()
-                pos = tf.stack([self.positions_index, order_size, trade_type, current_price, tf.Variable(0.0,dtype=tf.float32), add_required_margin, tf.Variable(0.0,dtype=tf.float32)])
+                if trade_type.numpy() == 1:
+                    add_required_margin = current_price * (order_size+self.unfulfilled_buy_orders) * margin_rate
+                    self.required_margin += add_required_margin.numpy()
+                    pos = tf.stack([self.positions_index, order_size+self.unfulfilled_buy_orders, trade_type, current_price, tf.Variable(0.0,dtype=tf.float32), add_required_margin, tf.Variable(0.0,dtype=tf.float32)])
+                if trade_type.numpy() == -1:
+                    add_required_margin = current_price * (order_size+self.unfulfilled_sell_orders) * margin_rate
+                    self.required_margin += add_required_margin.numpy()
+                    pos = tf.stack([self.positions_index, order_size+self.unfulfilled_sell_orders, trade_type, current_price, tf.Variable(0.0,dtype=tf.float32), add_required_margin, tf.Variable(0.0,dtype=tf.float32)])
+                    
                 self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
 
                 self.positions_index.assign(self.positions_index + 1)
@@ -183,20 +189,23 @@ class RLAgent:
             if tf.size(pos) == 0:  # 空ポジションはスキップ
                 continue
             pos_id, size, pos_type, open_price, before_unrealized_profit, margin, before_profit = tf.unstack(pos)
-
+            print(f"# update of position values")
+            print(f"current_price:{current_price}")
+            print(f"open_price:{open_price}")
+            print(f"size:{size}")
             unrealized_profit = size * (current_price - open_price) if pos_type.numpy() == 1.0 else size * (open_price - current_price)
             self.effective_margin.assign(self.effective_margin + unrealized_profit - before_unrealized_profit)
             add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
 
             pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin+add_required_margin,before_profit])
-            print(f"pos_id:{type(pos_id)}")
-            print(f"size:{type(size)}")
-            print(f"pos_type:{type(pos_type)}")
-            print(f"open_price:{type(open_price)}")
-            print(f"unrealized_profit:{type(unrealized_profit)}")
-            print(f"margin:{type(margin)}")
-            print(f"add_required_margin:{type(add_required_margin)}")
+            #print(f"pos_id:{type(pos_id)}")
+            #print(f"size:{type(size)}")
+            #print(f"pos_type:{type(pos_type)}")
+            #print(f"open_price:{type(open_price)}")
+            #print(f"unrealized_profit:{type(unrealized_profit)}")
+            #print(f"margin:{type(margin)}")
+            #print(f"add_required_margin:{type(add_required_margin)}")
             #exit()
             self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
             print(f"unrealized_profit:{unrealized_profit}, before_unrealized_profit:{before_unrealized_profit}")
