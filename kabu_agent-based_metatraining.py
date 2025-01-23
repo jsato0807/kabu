@@ -163,7 +163,7 @@ class RLAgent:
             # 部分決済または完全決済の処理
             size -= fulfilled_size
             if size > 0:  # 部分決済の場合
-                pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (1 - fulfilled_size / size), before_profit+profit])
+                pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (tf.Variable(1.0,dtype=tf.float32) - fulfilled_size / size), before_profit+profit])
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, before_profit+profit]
                 self.closed_positions.append(pos)
