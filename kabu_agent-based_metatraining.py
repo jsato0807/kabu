@@ -133,10 +133,10 @@ class RLAgent:
                 continue
             pos_id, size, pos_type, open_price, unrealized_profit, margin = tf.unstack(pos)
 
-            if pos_type == 1.0 and long_close_position > 0:  # Buy
+            if pos_type.numpy() == 1.0 and long_close_position > 0:  # Buy
                 close_position = long_close_position
                 profit = close_position * (current_price - open_price)
-            elif pos_type == -1.0 and short_close_position > 0:  # Sell
+            elif pos_type.numpy() == -1.0 and short_close_position > 0:  # Sell
                 close_position = short_close_position
                 profit = close_position * (open_price - current_price)
             else:
@@ -164,11 +164,11 @@ class RLAgent:
                 self.closed_positions.append(pos)
 
                 self._remove_position(pos_id)
-            print(f"Closed {'Buy' if pos_type==1 else ('Sell' if pos_type == -1 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
+            print(f"Closed {'Buy' if pos_type.numpy()==1 else ('Sell' if pos_type.numpy() == -1 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
 
-            if pos_type == 1.0:
+            if pos_type.numpy() == 1.0:
                 self.unfulfilled_buy_orders.assign(long_close_position - fulfilled_size)
-            elif pos_type == -1.0:
+            elif pos_type.numpy() == -1.0:
                 self.unfulfilled_sell_orders.assign(short_close_position - fulfilled_size)
 
             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
@@ -184,7 +184,7 @@ class RLAgent:
                 continue
             pos_id, size, pos_type, open_price, before_unrealized_profit, margin = tf.unstack(pos)
 
-            unrealized_profit = size * (current_price - open_price) if pos_type == 1.0 else size * (open_price - current_price)
+            unrealized_profit = size * (current_price - open_price) if pos_type.numpy() == 1.0 else size * (open_price - current_price)
             self.effective_margin.assign(self.effective_margin + unrealized_profit - before_unrealized_profit)
             add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
