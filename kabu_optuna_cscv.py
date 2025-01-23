@@ -123,8 +123,8 @@ if __name__ == "__main__":
     data = fetch_currency_data(pair, start_date, end_date, interval)
 
     # メインコード
-    period = 50  # 例: 50日ごと
-    n_trials = 50  # 例: 試行回数
+    period = 10  # 例: 10日ごと
+    n_trials = 500  # 例: 試行回数
     margin_matrix, param_trials = compute_effective_margin_matrix(period, n_trials, data)
 
     # 各期間ごとのパラメータとマージン値を結合してDataFrameに変換

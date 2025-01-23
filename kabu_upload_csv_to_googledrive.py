@@ -84,6 +84,9 @@ def upload_csv_files(creds):
 
     # アップロード対象ファイルリストを生成
     files_to_upload = list(unique_files.values())
+    files_to_upload = files_to_upload[21:]
+
+
 
     if not files_to_upload:
         print("No CSV files found to upload.")

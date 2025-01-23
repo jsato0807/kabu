@@ -68,12 +68,13 @@ def generate_samples_from_gmm(samples, n_samples=100):
 
 def estimate_kde(samples, bandwidth=1.0):
     samples = np.array(samples)
+    print(samples.shape)
     
     # PCAによる次元削減
     if samples.shape[0] > samples.shape[1]:
         pca = PCA(n_components=min(samples.shape[1], samples.shape[0] - 1))
         reduced_samples = pca.fit_transform(samples.T).T
-        kde = stats.gaussian_kde(reduced_samples, bw_method=bandwidth)
+        kde = stats.gaussian_kde(reduced_samples.T, bw_method=bandwidth)
     else:
         kde = stats.gaussian_kde(samples.T, bw_method=bandwidth)
         

@@ -1,4 +1,4 @@
-from kabu_library import get_swap_points_dict, modified_to_japan_datetime, modified_to_utc_datetime, get_tokyo_business_date, get_data_range
+from kabu_library import get_swap_points_dict, modified_to_japan_datetime, modified_to_utc_datetime, get_business_date, get_data_range
 from kabu_bis_intrestrate import filter_country_data
 import pandas as pd
 from datetime import datetime, timedelta
@@ -34,6 +34,7 @@ class Compare_Swap:
         'SEK': 'Europe/Stockholm',
     }
     def __init__(self,pair,start_date,final_end,order_size,months_interval=1,window_size=30,cumulative_period=1,cumulative_unit="month",swap_points_dict=[]):
+        self.timezones = self.get_timezones_from_pair(pair)
         currencies = arrange_pair_format(pair)
         pair = currencies[0]+"/"+ currencies[1]
 
@@ -283,8 +284,9 @@ class Compare_Swap:
         pair_splits = self.pair.split("/")
         date_0 = self.change_utc_to_localtimezone(pair_splits[0],date)
         date_1 = self.change_utc_to_localtimezone(pair_splits[1],date)
-        date_0 = date_0.date()
-        date_1 = date_1.date()
+        date_0 = get_business_date(date_0,pytz.timezone(self.timezones[0]))
+        date_1 = get_business_date(date_1,pytz.timezone(self.timezones[1]))
+        
         date_0 = pd.Timestamp(date_0)
         date_1 = pd.Timestamp(date_1)
 
@@ -294,6 +296,10 @@ class Compare_Swap:
             theory = None
 
         return theory
+    
+    def get_timezones_from_pair(self, pair):
+        currencies = arrange_pair_format(pair)
+        return [self.CURRENCY_TIMEZONES.get(currency) for currency in currencies]
 
     def multiple_period_swap_comparison(self,start_date,final_end):
     # 複数periodでのスワップポイント検証
@@ -353,9 +359,10 @@ class Compare_Swap:
         output_data = {}
         start_date = modified_to_utc_datetime(start_date)
         end_date = modified_to_utc_datetime(end_date)
-        end_date = end_date if end_date.astimezone(jst) < jst.localize(datetime(2019,4,1)) else modified_to_utc_datetime(jst.localize(datetime(2019,3,31)))
+        end_date = end_date if end_date.astimezone(jst) < jst.localize(datetime(2019,4,1)) else modified_to_utc_datetime(jst.localize(datetime(2019,4,2))).replace(hour=start_date.hour, minute=start_date.minute)  #you must consider business days, so end_date must be 2019-4-2
 
-        for date in range((end_date - start_date).days+1):
+
+        for date in range((end_date - start_date).days+1+1):    #you must plus 1 because range(n) means turn for sentences between 0 to n-1, but you need also n-th, and plus 1 more because .days round down
             current_date = start_date + timedelta(days=date)
 
             theory = self.calculate_theory(current_date)

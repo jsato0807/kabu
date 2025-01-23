@@ -1,28 +1,14 @@
-import optuna
-import numpy as np
 import pandas as pd
-from typing import List, Tuple, Union
+import numpy as np
 import math
-from datetime import datetime
 from dataclasses import dataclass
 from functools import cached_property
 from itertools import combinations
 from typing import Iterable, List, Optional, Union
+
+import numpy as np
+import pandas as pd
 from numpy.typing import NDArray
-from kabu_swap import get_html, parse_swap_points, rename_swap_points, SwapCalculator
-from kabu_backtest import traripi_backtest, pair, initial_funds, grid_start, grid_end, entry_intervals, total_thresholds, data, start_date, end_date, interval
-import yfinance as yf
-
-# パラメータの設定
-entry_interval = entry_intervals
-total_threshold = total_thresholds
-
-# Swapポイントの取得と計算
-url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
-html = get_html(url)
-swap_points = parse_swap_points(html)
-swap_points = rename_swap_points(swap_points)
-calculator = SwapCalculator(swap_points)
 
 
 @dataclass
@@ -149,7 +135,6 @@ class CombinatorialPurgedCrossValidation:
         self._is_valid_gap_embargo(X)
 
         inds_unique = X.index.unique()
-
         inds_unique_splitted = np.array_split(inds_unique, self.n_splits)
 
         for train_gids, test_gids, labels in zip(
@@ -198,118 +183,42 @@ class CombinatorialPurgedCrossValidation:
                     )
 
 
-# データ取得関数
-def fetch_currency_data(pair: str, start: str, end: str, interval: str) -> pd.DataFrame:
-    """Fetch historical currency pair data from Yahoo Finance."""
+import yfinance as yf
+import pandas as pd
+from datetime import datetime
+
+def fetch_currency_data(pair, start, end, interval):
+    """
+    Fetch historical currency pair data from Yahoo Finance.
+    """
     data = yf.download(pair, start=start, end=end, interval=interval)
-    data = data[['Close']]
-    data.columns = ['Close']  # Rename column to 'Close'
-    data.index.name = 'Date'  # Set index name to 'Date'
+    data = data['Close']
     print(f"Fetched data length: {len(data)}")
     return data
 
+# データの取得
+pair = 'USDJPY=X'  # 例: USD/JPY
+start = '2023-01-01'
+end = '2024-01-01'
+interval = '1d'
 
-# wrapped_objective_functionの定義
-def wrapped_objective_function(params, train_data):
-    num_trap, profit_width, order_size, strategy, density = params
-    
-    # traripi_backtestをtrain_dataに対して実行し、effective_marginを計算
-    effective_margin, _, _, _, _, _, _, _, _, _ = traripi_backtest(
-        calculator, train_data, initial_funds, grid_start, grid_end, num_trap, profit_width, order_size,
-        entry_interval, total_threshold, strategy, density
-    )
-    
-    return effective_margin
+data = fetch_currency_data(pair, start, end, interval)
 
+# データフレームに変換
+X = pd.DataFrame(data)
+X.columns = ['Close']  # 列名を設定
+X.index.name = 'Date'  # インデックス名を設定
 
-# ベイズ最適化のための目的関数
+# CombinatorialPurgedCrossValidation クラスのインスタンス作成
+n_splits = 5
+n_tests = 2
+cv = CombinatorialPurgedCrossValidation(n_splits=n_splits, n_tests=n_tests, purge_gap=2, embargo_gap=1)
 
-def objective(trial, X_train):
-    num_trap = trial.suggest_int('num_trap', 4, 101)
-    profit_width = trial.suggest_float('profit_width', 0.001, 100.0)
-    order_size = trial.suggest_int('order_size', 1, 10) * 1000
-    density = trial.suggest_float('density', 1.0, 10.0)
-    strategy = trial.suggest_categorical('strategy', ["long_only", "short_only", "half_and_half", "diamond"])
+# データを分割する
+for X_train, X_test in cv.split(X):
+    print("Train Data:")
+    print(X_train)
+    print("Test Data:")
+    print(X_test)
+    print("\n" + "="*50 + "\n")
 
-    params = [num_trap, profit_width, order_size, strategy, density]
-
-
-        
-    return wrapped_objective_function(params, X_train)
-
-def idx_of_the_nearest(data, value):
-    idx = np.argmin(np.abs(np.array(data) - value))
-    return idx
-
-
-if __name__ == "__main__":
-
-    # データを取得
-    pair = "AUDNZD=X"
-    end_date = datetime.strptime("2024-01-01", "%Y-%m-%d")
-    start_date = datetime.strptime("2019-06-01", "%Y-%m-%d")
-    data = fetch_currency_data(pair, start_date, end_date, interval)
-
-    # CombinatorialPurgedCrossValidation インスタンスの作成
-    cv = CombinatorialPurgedCrossValidation(n_splits=10, n_tests=4)
-
-    # 結果を保存するリスト
-    results = []
-
-    # 交差検証を行い、各分割でベイズ最適化
-    for X_train, X_test in cv.split(X=data):
-        X_train = X_train['Close']
-        X_test = [X_test[i]['Close'] for i in range(len(X_test))]
-        X_test = pd.concat(X_test)
-
-
-        print(f"Optimizing on split with {len(X_train)} training samples and {len(X_test)} test samples...")
-
-        # 各分割でベイズ最適化を実行
-        study = optuna.create_study(direction="maximize")
-        study.optimize(lambda trial: objective(trial, X_train), n_trials=10)
-
-        best_params = study.best_params
-        best_effective_margin = study.best_value
-
-        # 最適なパラメータでテストセットを評価
-        final_effective_margin = wrapped_objective_function([
-            best_params['num_trap'],
-            best_params['profit_width'],
-            best_params['order_size'],
-            best_params['strategy'],
-            best_params['density']
-        ], X_test)
-
-        # 結果をリストに追加
-        results.append({
-            'train_size': len(X_train),
-            'test_size': len(X_test),
-            'best_params': best_params,
-            'best_effective_margin': best_effective_margin,
-            'final_effective_margin': final_effective_margin
-        })
-
-    # 結果を表示
-# 結果を表示
-with open(f"./txt_dir/kabu_optuna_cpcv_{pair}_{start_date}_{end_date}.txt", "w") as f:
-    final_effective_margins = [result['final_effective_margin'] for result in results]
-    
-    for i, result in enumerate(results):
-        f.write(f"Split {i + 1}:\n")
-        f.write(f"  Training samples: {result['train_size']}\n")
-        f.write(f"  Test samples: {result['test_size']}\n")
-        f.write(f"  Best parameters: {result['best_params']}\n")
-        f.write(f"  Best effective margin (training): {result['best_effective_margin']}\n")
-        f.write(f"  Final effective margin (test): {result['final_effective_margin']}\n")
-        f.write("\n")
-    
-    # 平均と標準偏差を計算して書き出す
-    f.write(f"Final effective margin Mean (test): {np.mean(final_effective_margins)}\n")
-    f.write(f"Final effective margin Standard Deviation (test): {np.std(final_effective_margins)}\n")
-    
-    # 平均に最も近いfinal_effective_marginを見つけて書き出す
-    idx = idx_of_the_nearest(final_effective_margins, np.mean(final_effective_margins))
-    f.write(f"Nearest effective margin to mean: {final_effective_margins[idx]}\n")
-    f.write(f"Nearest effective margin params to mean: {results[idx]}\n")
-    

@@ -40,9 +40,9 @@ def plot_currency_data(ticker1, ticker2, start_date, end_date):
     plt.show()
 
 # 使用例
-ticker1 = 'AUDNZD=X'  # 通貨ペア1
-ticker2 = 'AUDNZD=X'  # 通貨ペア2
-start_date = '2019-05-01'
-end_date = '2024-10-05'
+ticker1 = 'USDJPY=X'  # 通貨ペア1
+ticker2 = 'USDJPY=X'  # 通貨ペア2
+start_date = '2019-04-04'
+end_date = '2024-04-01'
 
 plot_currency_data(ticker1, ticker2, start_date, end_date)

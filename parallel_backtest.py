@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import yfinance as yf
 from itertools import product
-from kabu_swap import SwapCalculator, get_html, parse_swap_points, rename_swap_points
+from kabu_swap import SwapCalculator
 from datetime import datetime, timedelta
 import time
 from multiprocessing import Pool, Manager
@@ -45,7 +45,7 @@ def fetch_currency_data(pair, start, end, interval):
     data = yf.download(pair, start=start, end=end, interval=interval)
     data = data['Close']
     print(f"Fetched data length: {len(data)}")
-    print(data.tail())
+    #print(data.tail())
     #exit()
     return data
 
@@ -1479,12 +1479,9 @@ if __name__ == "__main__":
     num_traps_options = [100]
     profit_widths = [1]
     densities = [2]
-    url = 'https://fx.minkabu.jp/hikaku/moneysquare/spreadswap.html'
-    html = get_html(url)
-    #print(html[:1000])  # デバッグ出力：取得したHTMLの先頭部分を表示
-    swap_points = parse_swap_points(html)
-    swap_points = rename_swap_points(swap_points)
-    calculator = SwapCalculator(swap_points,pair)
+    website = "minkabu"
+
+    calculator = SwapCalculator(website,pair,start_date,end_date,interval=interval)
     
     results = []
     

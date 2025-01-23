@@ -138,7 +138,7 @@ if __name__ == "__main__":
 
     # ボラティリティが小さい順にソートし、上位10個を選択
     results_sorted = sorted(results, key=lambda x: x[1])
-    top_10_combos = results_sorted[:10]
+    top_10_combos = results_sorted[:20]
 
     # 結果を表示
     print("総計のボラティリティが小さい順に上位10個の通貨ペアの組み合わせ:")

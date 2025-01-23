@@ -5,9 +5,9 @@ import pandas as pd
 
 # OANDA API接続情報
 api_token = "c2fad4cffcc5baabf88caeaf45c82d45-fe82c00081ebe4f61910e3160cce1e65"  # OANDAのAPIトークンを設定
-account_id = "001-009-12527404-001"  # OANDAのアカウントIDを設定
+#account_id = "001-009-12527404-001"  # OANDAのアカウントIDを設定
 
-client = oandapyV20.API(access_token=api_token,environment="live")
+client = oandapyV20.API(access_token=api_token, environment="live")
 
 def get_oanda_data(instrument, granularity, count=100):
     """
@@ -19,7 +19,7 @@ def get_oanda_data(instrument, granularity, count=100):
     count (int): 取得するデータの数（デフォルトは100）
     
     Returns:
-    pandas.DataFrame: 取得したデータをDataFrame形式で返す
+    pandas.Series: 取得したデータをSeries形式で返す
     """
     params = {
         "granularity": granularity,
@@ -36,15 +36,17 @@ def get_oanda_data(instrument, granularity, count=100):
         # データフレーム化
         df = pd.DataFrame([{
             'time': candle['time'],
-            'open': float(candle['mid']['o']),
-            'high': float(candle['mid']['h']),
-            'low': float(candle['mid']['l']),
             'close': float(candle['mid']['c'])
         } for candle in data])
         
-        # timeをdatetime形式に変換
+        # timeをdatetime形式に変換し、timeをインデックスに設定
         df['time'] = pd.to_datetime(df['time'])
-        return df
+        df.set_index('time', inplace=True)
+        
+        # closeカラムのみのSeriesに変換
+        series = df['close']
+        
+        return series
     
     except V20Error as err:
         print(f"Error: {err}")
@@ -56,4 +58,5 @@ granularity = "M1"  # 1分足 (M1), 1時間足 (H1), 日足 (D)などを指定
 data = get_oanda_data(instrument, granularity, count=100)
 
 # データの表示
+print(type(data))  # Series型か確認
 print(data)

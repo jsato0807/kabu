@@ -160,6 +160,7 @@ if __name__ == "__main__":
         'density': {'type': 'float', 'low': 0.1, 'high': 10}
     }
 
-    hyper_params = {"k": 10, "pop_size": 4, "num_generations": 10, "mutation_rate": 0.2}
+    hyper_params = {"k": 10, "pop_size": 10, "num_generations": 50, "mutation_rate": 0.2}
 
     main(params, hyper_params)
+

@@ -79,7 +79,7 @@ start_date = "1994-01-01"
 end_date = "2024-10-26"
 interval = "M1"
 
-currencies = ['JPY', 'ZAR', 'MXN', 'TRY', 'NZD', 'AUD', 'EUR', 'GBP', 'USD', 'CAD', 'NOK', 'SEK']
+currencies = ['JPY', 'ZAR', 'MXN', 'TRY', 'CHF', 'NZD', 'AUD', 'EUR', 'GBP', 'USD', 'CAD', 'NOK', 'SEK']
 instruments = generate_currency_pairs(currencies)
 
 # 全体の欠損データを保持するためのリスト
