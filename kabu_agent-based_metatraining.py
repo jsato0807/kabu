@@ -87,23 +87,24 @@ class RLAgent:
 
 
     def process_new_order(self, order_size, trade_type, current_price, margin_rate):
+        trade_type = tf.Variable(trade_type, dtype=tf.float32)
         if order_size > 0:
-            if trade_type == 1:
+            if trade_type.numpy() == 1:
                 order_margin = (order_size + self.unfulfilled_buy_orders * current_price * margin_rate)
-            if trade_type == -1:
+            if trade_type.numpy() == -1:
                 order_margin = (order_size + self.unfulfilled_sell_orders * current_price * margin_rate)
             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
             if margin_maintenance_flag:
-                print(f"Margin cut triggered during {'Buy' if trade_type == 1.0 else 'Sell'} order processing.")
+                print(f"Margin cut triggered during {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order processing.")
                 return
             order_capacity = (self.effective_margin - (self.required_margin+ order_margin)).numpy()
             if order_capacity < 0:
-                print(f"Cannot process {'Buy' if trade_type == 1.0 else 'Sell'} order due to insufficient order capacity.")
+                print(f"Cannot process {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order due to insufficient order capacity.")
                 return
             if margin_maintenance_rate > 100 and order_capacity > 0:
                 add_required_margin = current_price * order_size * margin_rate
                 self.required_margin += add_required_margin.numpy()
-                pos = tf.stack([self.positions_index, order_size, trade_type, current_price, 0.0, add_required_margin])
+                pos = tf.stack([self.positions_index, order_size, trade_type, current_price, tf.Variable(0.0,dtype=tf.float32), add_required_margin])
                 self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
 
                 self.positions_index.assign(self.positions_index + 1)
@@ -354,6 +355,7 @@ for generation in range(generations):
         gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
         #print(type(gen_gradients))
         print(f"gen_loss: {gen_loss}")
+        print(f"generation:{generation}")
         print(f"gen_gradients: {gen_gradients}")
 
         generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
@@ -378,7 +380,7 @@ for generation in range(generations):
         print(f"gen_gradients: {gen_gradients}")
 
         # 記録用の辞書に状態を追加
-        history["disc_gradients"].append(disc_gradients.numpy())
+        history["disc_gradients"].append(disc_gradients)
 
     history["generated_states"].append(generated_states.numpy())
     history["actions"].append(actions)
