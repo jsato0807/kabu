@@ -3,8 +3,9 @@ import tensorflow as tf
 from tensorflow.keras import layers
 import os
 
-class MarketGenerator:
+class MarketGenerator(tf.Module):
     def __init__(self, input_dim=4, output_dim=3):
+        super().__init__()
         self.model = tf.keras.Sequential([
             layers.Input(shape=(input_dim,)),
             layers.Dense(128, activation='sigmoid'),
@@ -50,19 +51,20 @@ def update_margin_maintenance_rate(effective_margin, required_margin, margin_cut
         return True, margin_maintenance_rate  # フラグと値を返す
     return False, margin_maintenance_rate  # フラグと値を返す
 
-class RLAgent:
+class RLAgent(tf.Module):
     def __init__(self, initial_cash=100000):
+        super().__init__()
         self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True,clear_after_read=False)
         self.closed_positions = []
-        self.positions_index = tf.Variable(1, dtype=tf.float32)
-        self.effective_margin = tf.Variable(initial_cash, dtype=tf.float32)
+        self.positions_index = tf.Variable(1, name="positions_index",dtype=tf.float32,trainable=True)
+        self.effective_margin = tf.Variable(initial_cash, name="effective_margin",dtype=tf.float32,trainable=True)
         self.required_margin = 0
-        self.margin_deposit = tf.Variable(initial_cash, dtype=tf.float32)
-        self.realized_profit = tf.Variable(0.0, dtype=tf.float32)
-        self.long_position = tf.Variable(0.0, dtype=tf.float32)
-        self.short_position = tf.Variable(0.0, dtype=tf.float32)
-        self.unfulfilled_buy_orders = tf.Variable(0.0, dtype=tf.float32)
-        self.unfulfilled_sell_orders = tf.Variable(0.0, dtype=tf.float32)
+        self.margin_deposit = tf.Variable(initial_cash, name="margin_deposit",dtype=tf.float32,trainable=True)
+        self.realized_profit = tf.Variable(0.0, name="realized_profit",dtype=tf.float32,trainable=True)
+        self.long_position = tf.Variable(0.0, name="long_position",dtype=tf.float32,trainable=True)
+        self.short_position = tf.Variable(0.0, name="short_position",dtype=tf.float32,trainable=True)
+        self.unfulfilled_buy_orders = tf.Variable(0.0, name="unfulfilled_buy_orders",dtype=tf.float32,trainable=True)
+        self.unfulfilled_sell_orders = tf.Variable(0.0, name="unfulfilled_sell_orders",dtype=tf.float32,trainable=True)
         self.model = tf.keras.Sequential([
             layers.Dense(128, activation='sigmoid', input_dim=2),
             layers.Dense(64, activation='sigmoid'),
@@ -72,7 +74,7 @@ class RLAgent:
 
     def act(self, state):
         # state の形状を統一して結合
-        state = [tf.reshape(tf.Variable(s, dtype=tf.float32), [1]) for s in state]
+        state = [tf.reshape(tf.Variable(s,dtype=tf.float32,trainable=True), [1]) for s in state]
         state = tf.concat(state, axis=0)
         state = tf.reshape(state, [1, -1])  # 形状を統一
         action = self.model(state)
@@ -87,7 +89,7 @@ class RLAgent:
 
 
     def process_new_order(self, order_size, trade_type, current_price, margin_rate):
-        trade_type = tf.Variable(trade_type, dtype=tf.float32)
+        trade_type = tf.Variable(trade_type, name="trade_type",dtype=tf.float32,trainable=True)
         if order_size > 0:
             if trade_type.numpy() == 1:
                 order_margin = ((order_size + self.unfulfilled_buy_orders) * current_price * margin_rate)
@@ -102,18 +104,15 @@ class RLAgent:
                 print(f"Cannot process {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order due to insufficient order capacity.")
                 return
             if margin_maintenance_rate > 100 and order_capacity > 0:
-                if trade_type.numpy() == 1:
-                    add_required_margin = current_price * (order_size+self.unfulfilled_buy_orders) * margin_rate
-                    self.required_margin += add_required_margin.numpy()
-                    pos = tf.stack([self.positions_index, order_size+self.unfulfilled_buy_orders, trade_type, current_price, tf.Variable(0.0,dtype=tf.float32), add_required_margin, tf.Variable(0.0,dtype=tf.float32)])
-                if trade_type.numpy() == -1:
-                    add_required_margin = current_price * (order_size+self.unfulfilled_sell_orders) * margin_rate
-                    self.required_margin += add_required_margin.numpy()
-                    pos = tf.stack([self.positions_index, order_size+self.unfulfilled_sell_orders, trade_type, current_price, tf.Variable(0.0,dtype=tf.float32), add_required_margin, tf.Variable(0.0,dtype=tf.float32)])
+                add_required_margin = tf.multiply(
+                current_price * margin_rate, order_size + self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders
+                )
+                order_size = tf.add(order_size, self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders)
+                pos = tf.stack([self.positions_index, order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
 
                 self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
 
-                self.positions_index.assign(self.positions_index + 1)
+                self.positions_index.assign_add(1)
                 print(f"Opened {'Buy' if trade_type==1 else ('Sell' if trade_type == -1 else 'Unknown')} position at {current_price}, required margin: {self.required_margin}")
                 margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
                 if margin_maintenance_flag:
@@ -121,7 +120,7 @@ class RLAgent:
                     return
 
 
-    def update_assets(self, long_order_size, short_order_size, long_close_position, short_close_position, current_price, required_margin_rate=tf.Variable(0.04, dtype=tf.float32)):
+    def update_assets(self, long_order_size, short_order_size, long_close_position, short_close_position, current_price, required_margin_rate=tf.Variable(0.04, name="required_margin_rate",dtype=tf.float32,trainable=True)):
         """
         資産とポジションの更新を実行
         """
@@ -131,6 +130,10 @@ class RLAgent:
         self.process_new_order(long_order_size, 1.0, current_price, required_margin_rate)  # Buy
         self.process_new_order(short_order_size, -1.0, current_price, required_margin_rate)  # Sell
 
+        #self.effective_margin.assign_add(current_price)
+        #print(f"added current_price to effective_margin: {self.effective_margin}")
+
+        #"""
         # --- ポジション決済処理 ---
         pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
@@ -151,12 +154,12 @@ class RLAgent:
 
             # 決済ロジック
             fulfilled_size = tf.minimum(close_position, size)
-            self.effective_margin.assign(self.effective_margin + profit - unrealized_profit)
+            self.effective_margin.assign_add(profit - unrealized_profit)
             print(f"profit:{type(profit)}")
             print(f"unrealized_profit:{type(unrealized_profit)}")
             #exit()
-            self.margin_deposit.assign(self.margin_deposit + profit)
-            self.realized_profit.assign(self.realized_profit + profit)
+            self.margin_deposit.assign_add(profit)
+            self.realized_profit.assign_add(profit)
             add_required_margin = -margin * (fulfilled_size / size)
             self.required_margin += add_required_margin.numpy()
 
@@ -184,6 +187,7 @@ class RLAgent:
             if margin_maintenance_flag:
                 print(f"margin maintenance rate is {margin_maintenance_rate},so loss cut is executed in position closure process, effective_margin: {self.effective_margin}")
                 return
+
 
         # --- 含み益の更新 ---
         pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
@@ -251,6 +255,8 @@ class RLAgent:
 
             self.required_margin = 0
 
+        #"""
+
 
     """
     def train(self, tape,generation,actions):
@@ -290,8 +296,8 @@ history = {
 # トレーニングループ
 generations = 10
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
-gamma = tf.Variable(1,dtype=tf.float32)
-volume = tf.Variable(0,dtype=tf.float32)
+gamma = tf.Variable(1,name="gamma",dtype=tf.float32,trainable=True)
+volume = tf.Variable(0,name="volume",dtype=tf.float32,trainable=True)
 actions = tf.TensorArray(dtype=tf.float32, size=len(agents),dynamic_size=True)
 disc_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
 initial_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
@@ -307,7 +313,7 @@ for generation in range(generations):
         # 各要素に 1e-6 を加算して対数を取る
         log_inputs = tf.math.log(input_data + 1e-6)
         generated_states = generator.generate(log_inputs)[0]
-        unlog_generated_states = tf.math.exp(generated_states) - 1e-6
+        unlog_generated_states = tf.math.exp(generated_states) - tf.constant(1e-6, dtype=tf.float32)
         current_price, current_liquidity, current_slippage = tf.split(unlog_generated_states, num_or_size_splits=3)
 
         # 状態を更新
@@ -315,11 +321,22 @@ for generation in range(generations):
         current_liquidity = tf.reshape(current_liquidity, [])
         current_slippage = tf.reshape(current_slippage, [])
 
+        #print(f"generated_states: {generated_states}, type: {type(generated_states)}")
+        #watched_vars = gen_tape.watched_variables()
+        #is_watched = any(current_price is var for var in watched_vars)
+        #print(f"current_price watched: {is_watched}")
+
+
+
+        #exit()
+
+
         # ルールベースでの調整
         if use_rule_based:
             k = 1 / (1 + gamma * volume)
-            current_liquidity = 1 / (1 + k * abs(supply_and_demand))
-            current_slippage = abs(supply_and_demand) / (current_liquidity + 1e-6)
+            k = tf.Variable(k, dtype=tf.float32, trainable=False)  # 明示的にテンソル化
+            current_liquidity = 1 / (1 + k * tf.abs(supply_and_demand))
+            current_slippage = tf.abs(supply_and_demand) / (current_liquidity + tf.constant(1e-6, dtype=tf.float32))
 
         # states の更新
         states = tf.stack([current_price, current_liquidity, current_slippage])
@@ -329,8 +346,9 @@ for generation in range(generations):
         i = 0
         for agent in agents:
             # 各要素に 1e-6 を加算して対数を取る
-            log_inputs = tf.math.log([x + 1e-6 for x in [agent.effective_margin, current_price]])
-            unlog_action = tf.math.exp(agent.act(log_inputs)) - 1e-6
+            log_inputs = tf.math.log(tf.stack([agent.effective_margin + 1e-6, current_price + 1e-6]))
+            # ネットワークの出力を処理し、1e-6 を減算
+            unlog_action = tf.math.exp(agent.act(log_inputs)) - tf.constant(1e-6, dtype=tf.float32)
             actions = actions.write(i,unlog_action)
             i += 1
         print(f"actions:{actions.stack()}")
@@ -347,8 +365,11 @@ for generation in range(generations):
             # 各項目を変数に分解
             long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
             agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
+            #agent.effective_margin.assign_add(current_price)
+
 
         # 識別者の評価（discriminator_performance）
+        disc_tape.watch([agent.effective_margin for agent in agents])  # 必要に応じて追跡
         discriminator_performance = tf.stack([agent.effective_margin for agent in agents])
 
         # 生成者の損失計算
@@ -385,7 +406,20 @@ for generation in range(generations):
 
         # 勾配の計算
         # 生成者の勾配
-        print(type(gen_loss))
+        print(f"type of gen_loss{type(gen_loss)}")
+        print("hello")
+        watched = gen_tape.watched_variables()
+        # 名前でフィルタリング
+        specific_var = [var for var in watched if var.name == "effective_margin:0"]
+        print("Specific variable (var1):", specific_var)
+        print("Trainable variables in generator.model:", generator.model.trainable_variables)
+        specific_var = [var for var in watched if var.name == "current_price:0"]
+        print(f"current_price: {current_price}, watched: ", specific_var)
+
+
+
+        #exit()
+
         gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
         #print(type(gen_gradients))
         print(f"gen_loss: {gen_loss}")
@@ -394,24 +428,32 @@ for generation in range(generations):
 
         generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
 
+        #exit()
         # 識別者の勾配
         print(f"disc_losses: {stacked_disc_losses}, type: {type(disc_losses)}") 
         disc_gradients = []
         i = 0
         for agent, disc_loss in zip(agents, stacked_disc_losses):
             print(i)
-            print(f"disc_loss: {disc_loss}, type: {type(disc_loss)}") 
-            print(f"disc_losses: {stacked_disc_losses}, type: {type(stacked_disc_losses)}")  
+            #print(f"disc_loss: {disc_loss}, type: {type(disc_loss)}") 
+            #print(f"disc_losses: {stacked_disc_losses}, type: {type(stacked_disc_losses)}")  
             #print(type(disc_loss))
             disc_gradient = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
             #print(type(disc_gradient))
             disc_gradients.append(disc_gradient)
-            print(f"disc_gradient:{disc_gradient}")
+            #print(f"disc_gradient:{disc_gradient}")
             #exit()
             agent.optimizer.apply_gradients(zip(disc_gradient, agent.model.trainable_variables))
             i += 1
 
         print(f"gen_gradients: {gen_gradients}")
+        if generation == 5:
+            exit()
+
+
+        print("gen_tape variables:", gen_tape.watched_variables())
+        print("disc_tape variables:", disc_tape.watched_variables())
+        #exit()
 
         # 記録用の辞書に状態を追加
         history["disc_gradients"].append(disc_gradients)
