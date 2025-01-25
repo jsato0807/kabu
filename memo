@@ -303,3 +303,6 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 
     新規注文処理のところで、longの後で、shortしているが、これではlongの方が優先的になってしまって対等性が失われている
     どこで計算グラフの情報が落ちてしまっているか調べるために、新規ポジション、決済、損益更新、それぞれをコメントアウトすることで、探索せよ
+    
+    →そもそもself.update_assetesそれ自体をコメントアウトして、self.effective_margin.assign_add(current_price)のような簡単なものに置き換えることで、
+    動作確認を再度行うべし、
