@@ -58,6 +58,7 @@ class RLAgent(tf.Module):
         self.closed_positions = []
         self.positions_index = tf.Variable(1, name="positions_index",dtype=tf.float32,trainable=True)
         self.effective_margin = tf.Variable(initial_cash, name="effective_margin",dtype=tf.float32,trainable=True)
+        self.update_effective_margin = tf.Variable(initial_cash, name="update_effective_margin",dtype=tf.float32,trainable=True)
         self.required_margin = 0
         self.margin_deposit = tf.Variable(initial_cash, name="margin_deposit",dtype=tf.float32,trainable=True)
         self.realized_profit = tf.Variable(0.0, name="realized_profit",dtype=tf.float32,trainable=True)
@@ -315,7 +316,6 @@ for generation in range(generations):
         generated_states = generator.generate(log_inputs)[0]
         unlog_generated_states = tf.math.exp(generated_states) - tf.constant(1e-6, dtype=tf.float32)
         current_price, current_liquidity, current_slippage = tf.split(unlog_generated_states, num_or_size_splits=3)
-
         # 状態を更新
         current_price = tf.reshape(current_price, [])
         current_liquidity = tf.reshape(current_liquidity, [])
@@ -327,16 +327,20 @@ for generation in range(generations):
         #print(f"current_price watched: {is_watched}")
 
 
-
         #exit()
 
 
         # ルールベースでの調整
         if use_rule_based:
-            k = 1 / (1 + gamma * volume)
-            k = tf.Variable(k, dtype=tf.float32, trainable=False)  # 明示的にテンソル化
-            current_liquidity = 1 / (1 + k * tf.abs(supply_and_demand))
-            current_slippage = tf.abs(supply_and_demand) / (current_liquidity + tf.constant(1e-6, dtype=tf.float32))
+            # k を TensorFlow の演算子を使用して計算
+            k = tf.divide(1.0, tf.add(1.0, tf.multiply(gamma, volume)))
+
+            # current_liquidity を TensorFlow の演算子を使用して計算
+            current_liquidity = tf.divide(1.0, tf.add(1.0, tf.multiply(k, tf.abs(supply_and_demand))))
+
+            # current_slippage を TensorFlow の演算子を使用して計算
+            current_slippage = tf.divide(tf.abs(supply_and_demand), tf.add(current_liquidity, tf.constant(1e-6, dtype=tf.float32)))
+
 
         # states の更新
         states = tf.stack([current_price, current_liquidity, current_slippage])
@@ -364,13 +368,13 @@ for generation in range(generations):
             action_flat = tf.reshape(action, [-1])  # 形状 (4,)
             # 各項目を変数に分解
             long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
-            agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
-            #agent.effective_margin.assign_add(current_price)
+            #agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
+            agent.update_effective_margin = agent.effective_margin + current_price
 
 
         # 識別者の評価（discriminator_performance）
         disc_tape.watch([agent.effective_margin for agent in agents])  # 必要に応じて追跡
-        discriminator_performance = tf.stack([agent.effective_margin for agent in agents])
+        #discriminator_performance = tf.stack([agent.effective_margin for agent in agents])
 
         # 生成者の損失計算
         if generation < generations//2:
@@ -397,7 +401,8 @@ for generation in range(generations):
 
         elif generation >= generations // 2:
         #if generation >= 0:
-            gen_loss = tf.reduce_mean(discriminator_performance)
+            #gen_loss = tf.reduce_mean(discriminator_performance)
+            gen_loss = tf.reduce_mean(tf.stack([agent.update_effective_margin for agent in agents]))
             i = 0
             for agent in agents:
                 disc_losses = disc_losses.write(i,-agent.effective_margin)
@@ -406,20 +411,6 @@ for generation in range(generations):
 
         # 勾配の計算
         # 生成者の勾配
-        print(f"type of gen_loss{type(gen_loss)}")
-        print("hello")
-        watched = gen_tape.watched_variables()
-        # 名前でフィルタリング
-        specific_var = [var for var in watched if var.name == "effective_margin:0"]
-        print("Specific variable (var1):", specific_var)
-        print("Trainable variables in generator.model:", generator.model.trainable_variables)
-        specific_var = [var for var in watched if var.name == "current_price:0"]
-        print(f"current_price: {current_price}, watched: ", specific_var)
-
-
-
-        #exit()
-
         gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
         #print(type(gen_gradients))
         print(f"gen_loss: {gen_loss}")
@@ -428,7 +419,9 @@ for generation in range(generations):
 
         generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
 
-        #exit()
+        for agent in agents:
+            agent.effective_margin = agent.update_effective_margin
+        continue
         # 識別者の勾配
         print(f"disc_losses: {stacked_disc_losses}, type: {type(disc_losses)}") 
         disc_gradients = []
