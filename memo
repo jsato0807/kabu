@@ -306,3 +306,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     
     →そもそもself.update_assetesそれ自体をコメントアウトして、self.effective_margin.assign_add(current_price)のような簡単なものに置き換えることで、
     動作確認を再度行うべし、
+
+2025-1-28
+    effective_marginに生成者と識別者の出力値を直接使用した場合は、もう１つの変数を使うことで(update_effective_margin)計算グラフの情報を保持したまま勾配を計算することに成功した。
+    →update_assetes内で、effective_margin以外のすべての計算グラフを保持させたい変数についてもう１つの変数を作り適切に値を更新して勾配が正常に計算できるか確認せよ
