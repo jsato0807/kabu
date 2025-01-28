@@ -10,7 +10,7 @@ class MarketGenerator(tf.Module):
             layers.Input(shape=(input_dim,)),
             layers.Dense(128, activation='sigmoid'),
             layers.Dense(64, activation='sigmoid'),
-            layers.Dense(output_dim, activation='relu')
+            layers.Dense(output_dim, activation='softplus')
         ])
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002)
 
@@ -369,43 +369,49 @@ for generation in range(generations):
             # 各項目を変数に分解
             long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
             #agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
-            agent.update_effective_margin = agent.effective_margin + current_price
-
+            agent.update_effective_margin = agent.effective_margin + current_price * (long_order_size+short_order_size+long_close_position+short_close_position)
+            #print(f"long_order_size:{long_order_size}")
+            #print(f"short_order_size:{short_order_size}")
+            #print(f"long_close_position:{long_close_position}")
+            #print(f"short_close_position:{short_close_position}")
+            print(f"current_price:{current_price}")
+            print(f"update_effective_margin:{agent.update_effective_margin}")
 
         # 識別者の評価（discriminator_performance）
-        disc_tape.watch([agent.effective_margin for agent in agents])  # 必要に応じて追跡
+        #disc_tape.watch([agent.effective_margin for agent in agents])  # 必要に応じて追跡
         #discriminator_performance = tf.stack([agent.effective_margin for agent in agents])
 
         # 生成者の損失計算
-        if generation < generations//2:
-            i = 0
-            for action in (actions.stack()):
-                action_flat = tf.reshape(action,[-1])
-                long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
+        #if generation < generations//2:
+        #    i = 0
+        #    for action in (actions.stack()):
+        #        action_flat = tf.reshape(action,[-1])
+        #        long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
+#
+        #        initial_loss = (tf.math.log(current_price + 1e-6) \
+        #                    + tf.math.log(long_order_size + 1e-6) \
+        #                    + tf.math.log(short_order_size + 1e-6) \
+        #                    + tf.math.log(long_close_position + 1e-6) \
+        #                    + tf.math.log(short_close_position + 1e-6))
+        #        initial_losses = initial_losses.write(i,initial_loss)
+        #        disc_losses = disc_losses.write(i,-initial_loss)
+        #        i += 1
+#
+#            
+#
+#            gen_loss = tf.reduce_mean(initial_losses.stack())
+#            print(disc_losses.stack().shape)
+#            #exit()
+#            stacked_disc_losses = disc_losses.stack()
 
-                initial_loss = (tf.math.log(current_price + 1e-6) \
-                            + tf.math.log(long_order_size + 1e-6) \
-                            + tf.math.log(short_order_size + 1e-6) \
-                            + tf.math.log(long_close_position + 1e-6) \
-                            + tf.math.log(short_close_position + 1e-6))
-                initial_losses = initial_losses.write(i,initial_loss)
-                disc_losses = disc_losses.write(i,-initial_loss)
-                i += 1
-
-            
-
-            gen_loss = tf.reduce_mean(initial_losses.stack())
-            print(disc_losses.stack().shape)
-            #exit()
-            stacked_disc_losses = disc_losses.stack()
-
-        elif generation >= generations // 2:
-        #if generation >= 0:
+        #elif generation >= generations // 2:
+        if generation >= 0:
             #gen_loss = tf.reduce_mean(discriminator_performance)
             gen_loss = tf.reduce_mean(tf.stack([agent.update_effective_margin for agent in agents]))
+            print(f"gen_loss:{gen_loss}")
             i = 0
             for agent in agents:
-                disc_losses = disc_losses.write(i,-agent.effective_margin)
+                disc_losses = disc_losses.write(i,-agent.update_effective_margin)
                 i += 1
             stacked_disc_losses = disc_losses.stack()
 
@@ -413,25 +419,29 @@ for generation in range(generations):
         # 生成者の勾配
         gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
         #print(type(gen_gradients))
-        print(f"gen_loss: {gen_loss}")
-        print(f"generation:{generation}")
-        print(f"gen_gradients: {gen_gradients}")
+        #print(f"gen_loss: {gen_loss}")
+        #print(f"generation:{generation}")
+        #print(f"gen_gradients: {gen_gradients}")
+        #exit()
 
         generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
 
-        for agent in agents:
-            agent.effective_margin = agent.update_effective_margin
-        continue
         # 識別者の勾配
         print(f"disc_losses: {stacked_disc_losses}, type: {type(disc_losses)}") 
         disc_gradients = []
         i = 0
-        for agent, disc_loss in zip(agents, stacked_disc_losses):
+        #for agent, disc_loss in zip(agents, stacked_disc_losses):
+        for agent in agents:
+            disc_loss = disc_losses.read(i)
+            print(disc_loss)
+            #exit()
             print(i)
             #print(f"disc_loss: {disc_loss}, type: {type(disc_loss)}") 
             #print(f"disc_losses: {stacked_disc_losses}, type: {type(stacked_disc_losses)}")  
             #print(type(disc_loss))
             disc_gradient = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
+            print(f"disc_gradient:{disc_gradient}")
+
             #print(type(disc_gradient))
             disc_gradients.append(disc_gradient)
             #print(f"disc_gradient:{disc_gradient}")
@@ -440,13 +450,13 @@ for generation in range(generations):
             i += 1
 
         print(f"gen_gradients: {gen_gradients}")
-        if generation == 5:
-            exit()
 
-
-        print("gen_tape variables:", gen_tape.watched_variables())
-        print("disc_tape variables:", disc_tape.watched_variables())
+        #print("gen_tape variables:", gen_tape.watched_variables())
+        #print("disc_tape variables:", disc_tape.watched_variables())
         #exit()
+
+        for agent in agents:
+            agent.effective_margin = agent.update_effective_margin
 
         # 記録用の辞書に状態を追加
         history["disc_gradients"].append(disc_gradients)
