@@ -304,11 +304,8 @@ disc_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=Tr
 initial_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
 
 
-for generation in range(generations):
-    #if generation == 1:
-    #    print(f"generation is 1")
-    #    exit()
-    with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
+with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
+    for generation in range(generations):
         # 市場生成用の入力データ
         input_data = tf.concat([tf.reshape(states, [-1]), [supply_and_demand]], axis=0)
         # 各要素に 1e-6 を加算して対数を取る
@@ -369,7 +366,7 @@ for generation in range(generations):
             # 各項目を変数に分解
             long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
             #agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
-            agent.update_effective_margin = agent.effective_margin + current_price * (long_order_size+short_order_size+long_close_position+short_close_position)
+            agent.update_effective_margin = current_price * (long_order_size + short_order_size + long_close_position + short_close_position)
             #print(f"long_order_size:{long_order_size}")
             #print(f"short_order_size:{short_order_size}")
             #print(f"long_close_position:{long_close_position}")
@@ -454,7 +451,6 @@ for generation in range(generations):
         #print("gen_tape variables:", gen_tape.watched_variables())
         #print("disc_tape variables:", disc_tape.watched_variables())
         #exit()
-
         for agent in agents:
             agent.effective_margin = agent.update_effective_margin
 
