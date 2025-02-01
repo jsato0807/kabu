@@ -165,14 +165,15 @@ class RLAgent(tf.Module):
                 profit = close_position * (open_price - current_price)
             else:
                 continue
-            print(f"close_position:{close_position}, current_price:{current_price},open_price:{open_price}")
 
             # 決済ロジック
             fulfilled_size = tf.minimum(close_position, size)
             #self.effective_margin.assign_add(profit - unrealized_profit)
             self.update_effective_margin = self.effective_margin + profit - unrealized_profit
-            print(f"profit:{type(profit)}")
-            print(f"unrealized_profit:{type(unrealized_profit)}")
+            self.effective_margin = self.update_effective_margin
+            print(f"profit:{profit}")
+            print(f"unrealized_profit:{unrealized_profit}")
+            print(f"close_position:{close_position}, current_price:{current_price},open_price:{open_price}, effective_margin:{self.effective_margin}")
             #exit()
             self.margin_deposit.assign_add(profit)
             self.realized_profit.assign_add(profit)
@@ -182,12 +183,14 @@ class RLAgent(tf.Module):
             # 部分決済または完全決済の処理
             size -= fulfilled_size
             if size > 0:  # 部分決済の場合
+                print(f"parial payment was executed")
                 pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (tf.Variable(1.0,dtype=tf.float32) - fulfilled_size / size), before_profit+profit])
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, before_profit+profit]
                 self.closed_positions.append(pos)
 
             else:  # 完全決済の場合
+                print(f"all payment was executed")
                 pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, tf.Variable(0,dtype=tf.float32), tf.Variable(0,dtype=tf.float32),before_profit+profit])
                 self.closed_positions.append(pos)
 
@@ -215,15 +218,14 @@ class RLAgent(tf.Module):
             except:
                 continue
             pos_id, size, pos_type, open_price, before_unrealized_profit, margin, before_profit = tf.unstack(pos)
-            print(f"# update of position values")
-            print(f"current_price:{current_price}")
-            print(f"open_price:{open_price}")
-            print(f"size:{size}")
+            #print(f"# update of position values")
+            #print(f"current_price:{current_price}")
+            #print(f"open_price:{open_price}")
+            #print(f"size:{size}")
             unrealized_profit = size * (current_price - open_price) if pos_type.numpy() == 1.0 else size * (open_price - current_price)
             #self.effective_margin.assign(self.effective_margin + unrealized_profit - before_unrealized_profit)
             self.update_effective_margin = self.effective_margin + unrealized_profit - before_unrealized_profit
-            print(f"before_unrealized_profit:{type(before_unrealized_profit)}")
-            print(f"unrealized_profit:{type(unrealized_profit)}")
+            self.effective_margin = self.update_effective_margin
             #exit()
             add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
@@ -239,7 +241,7 @@ class RLAgent(tf.Module):
             #exit()
             self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
             print(f"unrealized_profit:{unrealized_profit}, before_unrealized_profit:{before_unrealized_profit}")
-            print(f"updated effective margin against price {current_price} , Effective Margin: {self.effective_margin}")
+            print(f"updated effective margin against price {current_price} , effective Margin: {self.effective_margin}")
 
             margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
             if margin_maintenance_flag:
@@ -260,6 +262,7 @@ class RLAgent(tf.Module):
                 profit = (current_price - open_price) * size  # 現在の損失計算
                 #self.effective_margin.assign(self.effective_margin + profit - before_unrealized_profit) # 損失分を証拠金に反映
                 self.update_effective_margin = self.effective_margin + profit - before_unrealized_profit
+                self.effective_margin = self.update_effective_margin
                 effective_margin_max, effective_margin_min = check_min_max_effective_margin(self.effective_margin, effective_margin_max, effective_margin_min)
                 self.margin_deposit.assign(self.margin_deposit + profit)
                 #self.margin_deposit += profit
@@ -271,6 +274,7 @@ class RLAgent(tf.Module):
 
                 pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, before_profit+profit]
                 self.closed_positions.append(pos)
+                print(f"Forced Closed at currnt_price:{current_price} with open_price:{open_price}, Effective Margin: {self.effective_margin}")
             #self.required_margin = 0.0
 
             # 全ポジションをクリア
@@ -394,8 +398,8 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
             #print(f"short_order_size:{short_order_size}")
             #print(f"long_close_position:{long_close_position}")
             #print(f"short_close_position:{short_close_position}")
-            print(f"current_price:{current_price}")
-            print(f"update_effective_margin:{agent.update_effective_margin}")
+            #print(f"current_price:{current_price}")
+            #print(f"update_effective_margin:{agent.update_effective_margin}")
 
         # 識別者の評価（discriminator_performance）
         #disc_tape.watch([agent.effective_margin for agent in agents])  # 必要に応じて追跡
@@ -427,11 +431,11 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         #elif generation >= generations // 2:
         if generation >= 0:
             #gen_loss = tf.reduce_mean(discriminator_performance)
-            gen_loss = tf.reduce_mean(tf.stack([agent.update_effective_margin for agent in agents]))
+            gen_loss = tf.reduce_mean(tf.stack([agent.effective_margin for agent in agents]))
             #print(f"gen_loss:{gen_loss}")
             i = 0
             for agent in agents:
-                disc_losses = disc_losses.write(i,-agent.update_effective_margin)
+                disc_losses = disc_losses.write(i,-agent.effective_margin)
                 i += 1
             stacked_disc_losses = disc_losses.stack()
 
@@ -474,18 +478,24 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         #print("gen_tape variables:", gen_tape.watched_variables())
         #print("disc_tape variables:", disc_tape.watched_variables())
         #exit()
-        for agent in agents:
-            agent.effective_margin = agent.update_effective_margin
+
+        #for agent in agents:
+        #    agent.effective_margin = agent.update_effective_margin
+
+        print(f"generation:{generation}")
+        print(" ")
+        print(" ")
+        print(" ")
+        print(" ")
 
         # 記録用の辞書に状態を追加
         history["disc_gradients"].append(disc_gradients)
-
-    history["generated_states"].append(generated_states.numpy())
-    history["actions"].append(actions)
-    history["agent_assets"].append([agent.effective_margin.numpy() for agent in agents])
-    history["liquidity"].append(current_liquidity.numpy())
-    history["slippage"].append(current_slippage.numpy())
-    history["gen_gradients"].append(gen_gradients)
+        history["generated_states"].append(generated_states.numpy())
+        history["actions"].append(actions)
+        history["agent_assets"].append([agent.effective_margin.numpy() for agent in agents])
+        history["liquidity"].append(current_liquidity.numpy())
+        history["slippage"].append(current_slippage.numpy())
+        history["gen_gradients"].append(gen_gradients)
 
     #print(f"Generation {generation}, Best Agent Assets: {max(float(agent.effective_margin.numpy()) for agent in agents):.2f}")
     #print(f"gen_gradients:{gen_gradients}")
@@ -493,15 +503,9 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
 
     #exit()
 
-    # 進化段階でルールベースを切り替え
-    if generation == generations // 2:
-        use_rule_based = False
-
-    print(f"generation:{generation}")
-    print(" ")
-    print(" ")
-    print(" ")
-    print(" ")
+    ## 進化段階でルールベースを切り替え
+    #if generation == generations // 2:
+    #    use_rule_based = False
 
 # ファイルへの記録
 with open("./txt_dir/kabu_agent-based_metatraining.txt", "w") as f:
