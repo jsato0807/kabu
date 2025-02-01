@@ -121,6 +121,7 @@ class RLAgent(tf.Module):
                 add_required_margin = tf.multiply(
                 current_price * margin_rate, order_size + self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders
                 )
+                self.required_margin += add_required_margin
                 order_size = tf.add(order_size, self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders)
                 pos = tf.stack([self.positions_index, order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
 
@@ -177,7 +178,7 @@ class RLAgent(tf.Module):
             #exit()
             self.margin_deposit.assign_add(profit)
             self.realized_profit.assign_add(profit)
-            add_required_margin = -margin * (fulfilled_size / size)
+            add_required_margin = -margin + current_price * (fulfilled_size / size) * required_margin_rate
             self.required_margin += add_required_margin.numpy()
 
             # 部分決済または完全決済の処理
