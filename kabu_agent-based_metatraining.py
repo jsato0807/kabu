@@ -66,6 +66,7 @@ class RLAgent(tf.Module):
         self.short_position = tf.Variable(0.0, name="short_position",dtype=tf.float32,trainable=True)
         self.unfulfilled_buy_orders = tf.Variable(0.0, name="unfulfilled_buy_orders",dtype=tf.float32,trainable=True)
         self.unfulfilled_sell_orders = tf.Variable(0.0, name="unfulfilled_sell_orders",dtype=tf.float32,trainable=True)
+        self.margin_maintenance_rate = np.inf
         self.model = tf.keras.Sequential([
             layers.Dense(128, activation='sigmoid', input_dim=2),
             layers.Dense(64, activation='sigmoid'),
@@ -109,7 +110,7 @@ class RLAgent(tf.Module):
                 order_margin = ((order_size + self.unfulfilled_buy_orders) * current_price * margin_rate)
             if trade_type.numpy() == -1:
                 order_margin = ((order_size + self.unfulfilled_sell_orders) * current_price * margin_rate)
-            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
+            margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
             if margin_maintenance_flag:
                 print(f"Margin cut triggered during {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order processing.")
                 return
@@ -117,7 +118,7 @@ class RLAgent(tf.Module):
             if order_capacity < 0:
                 print(f"Cannot process {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order due to insufficient order capacity.")
                 return
-            if margin_maintenance_rate > 100 and order_capacity > 0:
+            if self.margin_maintenance_rate > 100 and order_capacity > 0:
                 add_required_margin = tf.multiply(
                 current_price * margin_rate, order_size + self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders
                 )
@@ -129,9 +130,9 @@ class RLAgent(tf.Module):
 
                 self.positions_index.assign_add(1)
                 print(f"Opened {'Buy' if trade_type==1 else ('Sell' if trade_type == -1 else 'Unknown')} position at {current_price}, required margin: {self.required_margin}")
-                margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
+                margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
                 if margin_maintenance_flag:
-                    print(f"margin maintenance rate is {margin_maintenance_rate},so loss cut is executed in process_new_order, effective_margin: {self.effective_margin}")
+                    print(f"margin maintenance rate is {self.margin_maintenance_rate},so loss cut is executed in process_new_order, effective_margin: {self.effective_margin}")
                     return
 
 
@@ -205,9 +206,9 @@ class RLAgent(tf.Module):
                 #self.unfulfilled_sell_orders.assign(short_close_position - fulfilled_size)
                 self.unfulfilled_sell_orders = short_close_position - fulfilled_size
 
-            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
+            margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
             if margin_maintenance_flag:
-                print(f"margin maintenance rate is {margin_maintenance_rate},so loss cut is executed in position closure process, effective_margin: {self.effective_margin}")
+                print(f"margin maintenance rate is {self.margin_maintenance_rate},so loss cut is executed in position closure process, effective_margin: {self.effective_margin}")
                 return
 
 
@@ -244,9 +245,9 @@ class RLAgent(tf.Module):
             print(f"unrealized_profit:{unrealized_profit}, before_unrealized_profit:{before_unrealized_profit}")
             print(f"updated effective margin against price {current_price} , effective Margin: {self.effective_margin}")
 
-            margin_maintenance_flag, margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
+            margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
             if margin_maintenance_flag:
-                print(f"margin maintenance rate is {margin_maintenance_rate},so loss cut is executed in position  process, effective_margin: {self.effective_margin}")
+                print(f"margin maintenance rate is {self.margin_maintenance_rate},so loss cut is executed in position  process, effective_margin: {self.effective_margin}")
                 return
 
         # --- 強制ロスカットのチェック ---
@@ -507,6 +508,28 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
     ## 進化段階でルールベースを切り替え
     #if generation == generations // 2:
     #    use_rule_based = False
+
+
+    # Calculate position value
+
+    for agent in agents:
+        position_value = 0
+        if agent.positions:
+            # TensorArray を Python の list に変換
+            positions_list = agent.positions.stack().numpy().tolist()
+
+            position_value += sum(size * (current_price - open_price) if status==1 else
+                         -size * (current_price - open_price) if status==-1 else
+                         0 for _, size, status, open_price, _, _, _ in positions_list)
+        else:
+            position_value = 0
+
+        print(f"預託証拠金:{agent.margin_deposit}")
+        print(f"有効証拠金:{agent.effective_margin}")
+        print(f"ポジション損益:{position_value}")
+        print(f"確定利益:{agent.realized_profit}")
+        print(f"証拠金維持率:{agent.margin_maintenance_rate}")
+        print(f"check total:{agent.margin_deposit+position_value}")
 
 # ファイルへの記録
 with open("./txt_dir/kabu_agent-based_metatraining.txt", "w") as f:
