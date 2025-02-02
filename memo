@@ -327,3 +327,10 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     各エージェントの相関を各タイムステップごとに計算せよ。
     ペアワイズ相関（各タイムステップごとの相関ではなく全期間の収益の時間平均に対する相関）も計算せよ
     gifを使用したアニメーションでヒートマップがどう変化していくか調べよ
+
+2025-2-2
+    完全決済の時にそのポジションは利確されるので、posのadd_required_marginの項目は0になって欲しいが、10^-2 ~ 10^-8のオーダーの値になることがある。
+    →おそらくこの誤差と、最後の有効証拠金=預託証拠金+ポジション損益,の不一致が同じ原因と考えられる
+
+    tensorarrayで保持しているposが計算グラフの情報を保持できているか確認せよ。具体的にはloss=add_required_marginとすることで、current_priceを使用しているadd_required_marginでgradientが計算できるか確認せよ
+    →gen_gradient, disc_gradientsの両方で計算ができたことから、add_required_marginは、生成者の出力地であるcurrent_priceと識別者の出力値であるlong_order_size,short_order_size,long_close_position,short_close_positionの計算グラフの情報を保持していると言える
