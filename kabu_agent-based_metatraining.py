@@ -119,9 +119,12 @@ class RLAgent(tf.Module):
                 print(f"Cannot process {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order due to insufficient order capacity.")
                 return
             if self.margin_maintenance_rate > 100 and order_capacity > 0:
-                add_required_margin = tf.multiply(
-                current_price * margin_rate, order_size + self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders
-                )
+                if trade_type == 1:
+                    order_margin -= (order_size + self.unfulfilled_buy_orders) * current_price * margin_rate
+                    add_required_margin = (order_size + self.unfulfilled_buy_orders) * current_price * margin_rate
+                elif trade_type == -1:
+                    order_margin -= (order_size + self.unfulfilled_sell_orders) * current_price * margin_rate
+                    add_required_margin = (order_size + self.unfulfilled_sell_orders) * current_price * margin_rate
                 self.required_margin += add_required_margin
                 order_size = tf.add(order_size, self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders)
                 pos = tf.stack([self.positions_index, order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
@@ -157,7 +160,8 @@ class RLAgent(tf.Module):
                 pos = self.positions.read(pos_id)
             except:
                 continue
-            pos_id, size, pos_type, open_price, unrealized_profit, margin, before_profit = tf.unstack(pos)
+            pos_id, size, pos_type, open_price, unrealized_profit, margin, _ = tf.unstack(pos)
+
 
             if pos_type.numpy() == 1.0 and long_close_position > 0:  # Buy
                 close_position = long_close_position
@@ -179,21 +183,22 @@ class RLAgent(tf.Module):
             #exit()
             self.margin_deposit.assign_add(profit)
             self.realized_profit.assign_add(profit)
-            add_required_margin = -margin + current_price * (fulfilled_size / size) * required_margin_rate
+            add_required_margin = - current_price * fulfilled_size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
 
             # 部分決済または完全決済の処理
             size -= fulfilled_size
             if size > 0:  # 部分決済の場合
                 print(f"parial payment was executed")
-                pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin * (tf.Variable(1.0,dtype=tf.float32) - fulfilled_size / size), before_profit+profit])
+                pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin+add_required_margin, 0])
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
-                pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, before_profit+profit]
+                pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
 
             else:  # 完全決済の場合
                 print(f"all payment was executed")
-                pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, tf.Variable(0,dtype=tf.float32), tf.Variable(0,dtype=tf.float32),before_profit+profit])
+                pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, tf.Variable(0,dtype=tf.float32), 0, profit]) #we hope margin+add_required_margin==0
+                #print(f"all payment: margin+add_required_margin:{margin+add_required_margin}")
                 self.closed_positions.append(pos)
 
                 self._remove_position(pos_id)
@@ -219,7 +224,8 @@ class RLAgent(tf.Module):
                 pos = self.positions.read(pos_id)
             except:
                 continue
-            pos_id, size, pos_type, open_price, before_unrealized_profit, margin, before_profit = tf.unstack(pos)
+            pos_id, size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
+
             #print(f"# update of position values")
             #print(f"current_price:{current_price}")
             #print(f"open_price:{open_price}")
@@ -232,7 +238,7 @@ class RLAgent(tf.Module):
             add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
 
-            pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin+add_required_margin,before_profit])
+            pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit,add_required_margin,0])
             #print(f"pos_id:{type(pos_id)}")
             #print(f"size:{type(size)}")
             #print(f"pos_type:{type(pos_type)}")
@@ -260,7 +266,7 @@ class RLAgent(tf.Module):
                     pos = self.positions.read(pos_id)
                 except:
                     continue
-                pos_id, size, pos_type, open_price, before_unrealized_profit, margin, before_profit = tf.unstack(pos)
+                pos_id, size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
                 profit = (current_price - open_price) * size  # 現在の損失計算
                 #self.effective_margin.assign(self.effective_margin + profit - before_unrealized_profit) # 損失分を証拠金に反映
                 self.update_effective_margin = self.effective_margin + profit - before_unrealized_profit
@@ -274,7 +280,7 @@ class RLAgent(tf.Module):
 
                 self._remove_position(pos_id)
 
-                pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, before_profit+profit]
+                pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
                 print(f"Forced Closed at currnt_price:{current_price} with open_price:{open_price}, Effective Margin: {self.effective_margin}")
             #self.required_margin = 0.0
@@ -330,7 +336,9 @@ gamma = tf.Variable(1,name="gamma",dtype=tf.float32,trainable=True)
 volume = tf.Variable(0,name="volume",dtype=tf.float32,trainable=True)
 actions = tf.TensorArray(dtype=tf.float32, size=len(agents),dynamic_size=True)
 disc_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
-initial_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
+gen_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
+
+
 
 
 with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
@@ -441,10 +449,34 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
                 i += 1
             stacked_disc_losses = disc_losses.stack()
 
+
+            """
+            #this code is useful for check whether a variable holds the information of calculation graph
+            i = 0
+            for agent in agents:
+                pos_id_max = int(agent.positions_index - 1)  # 現在の最大 ID
+                for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
+                    try:
+                        pos = agent.positions.read(pos_id)
+                    except:
+                        continue
+                    pos_id, size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
+                    print(f"margin:{margin}")
+                    if pos_id >= 1:
+                        break
+
+                disc_losses = disc_losses.write(i,margin)
+                gen_losses = gen_losses.write(i,margin)
+            i += 1
+
+        print(f"gen_losses:{gen_losses.stack().numpy()}")
+
+        gen_loss = tf.reduce_mean(gen_losses.stack())
+        """
         # 勾配の計算
         # 生成者の勾配
         gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
-        #print(type(gen_gradients))
+        #print(f"gen_gradients:{gen_gradients}")
         #print(f"gen_loss: {gen_loss}")
         #print(f"generation:{generation}")
         #print(f"gen_gradients: {gen_gradients}")
@@ -459,7 +491,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         #for agent, disc_loss in zip(agents, stacked_disc_losses):
         for agent in agents:
             disc_loss = disc_losses.read(i)
-            print(disc_loss)
+            print(f"disc_loss:{disc_loss}")
             #exit()
             print(i)
             #print(f"disc_loss: {disc_loss}, type: {type(disc_loss)}") 
