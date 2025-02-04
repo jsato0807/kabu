@@ -183,7 +183,7 @@ class RLAgent(tf.Module):
             #exit()
             self.margin_deposit.assign_add(profit)
             self.realized_profit.assign_add(profit)
-            add_required_margin = - current_price * fulfilled_size * required_margin_rate
+            add_required_margin = - margin * (fulfilled_size/size)
             self.required_margin += add_required_margin.numpy()
 
             # 部分決済または完全決済の処理
