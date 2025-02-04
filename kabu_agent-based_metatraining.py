@@ -82,22 +82,28 @@ class RLAgent(tf.Module):
         action = self.model(state)
         return action
     
+    # `_remove_position()` の修正
     def _remove_position(self, index):
-        """
-        Remove a position by actually deleting it from TensorArray.
-        """
-        index = tf.cast(index, tf.int32)  # index を int32 に変換
-        new_positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-    
-        # すべてのインデックスをループして、新しい TensorArray に詰め直す
-        for i in tf.range(self.positions.size()):
-            if i == index:  # 削除対象の index はスキップ
-                continue
-            
-            pos_value = self.positions.read(i)  # `read()` を 1 回だけ実行
-            new_positions = new_positions.write(new_positions.size(), pos_value)  # ここで書き込み
-    
-        self.positions = new_positions  # `TensorArray` を更新
+        index = tf.cast(index, tf.int32)
+        valid_indices = tf.boolean_mask(
+            tf.range(self.positions.size(), dtype=tf.int32),
+            tf.not_equal(tf.range(self.positions.size(), dtype=tf.int32), index)
+        )
+
+        # 🔥 削除済みの `pos_id` をリストとして保存
+        self.valid_pos_ids = tf.gather(valid_indices, tf.range(tf.shape(valid_indices)[0]))
+
+        filtered_positions = self.positions.gather(valid_indices)
+
+        # 新しい `TensorArray` に入れ直す
+        new_positions = tf.TensorArray(dtype=tf.float32, size=tf.shape(filtered_positions)[0], dynamic_size=True)
+        for i in tf.range(tf.shape(filtered_positions)[0]):
+            new_positions = new_positions.write(i, filtered_positions[i])
+
+        self.positions = new_positions
+        self.positions_index.assign(tf.cast(tf.shape(filtered_positions)[0], tf.float32))  # 🔥 float32 に変換
+
+
 
 
 
@@ -158,7 +164,7 @@ class RLAgent(tf.Module):
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
             try:
                 pos = self.positions.read(pos_id)
-                print(f"pos_id in update of position value{pos_id}: {pos.numpy()}")
+                print(f"In the position closure process, pos_id in update of position value{pos_id}: {pos.numpy()}")
                 if tf.reduce_all(pos == 0.0):
                     print(f"this pos_id is all 0.0 so skipped")
                     continue
@@ -228,13 +234,14 @@ class RLAgent(tf.Module):
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
             try:
                 pos = self.positions.read(pos_id)
-                print(f"pos_id in update of position value{pos_id}: {pos.numpy()}")
+                print(f"In the update position value, pos_id in update of position value{pos_id}: {pos.numpy()}")
                 if tf.reduce_all(pos == 0.0):
                     print(f"this pos_id is all 0.0 so skipped")
                     continue
             except:
                 continue
             pos_id, size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
+            print(f"unstacked pos_id:{pos_id}")
 
             #print(f"# update of position values")
             #print(f"current_price:{current_price}")
@@ -275,7 +282,7 @@ class RLAgent(tf.Module):
             for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
                 try:
                     pos = self.positions.read(pos_id)
-                    print(f"pos_id in update of position value{pos_id}: {pos.numpy()}")
+                    print(f"In the loss cut, pos_id in update of position value{pos_id}: {pos.numpy()}")
                     if tf.reduce_all(pos == 0.0):
                         print(f"this pos_id is all 0.0 so skipped")
                         continue
