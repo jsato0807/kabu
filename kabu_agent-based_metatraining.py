@@ -88,13 +88,17 @@ class RLAgent(tf.Module):
         """
         index = tf.cast(index, tf.int32)  # index を int32 に変換
         new_positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-
+    
         # すべてのインデックスをループして、新しい TensorArray に詰め直す
         for i in tf.range(self.positions.size()):
-            if i != index:  # 指定された index 以外を新しい TensorArray に書き込む
-                new_positions = new_positions.write(new_positions.size(), self.positions.read(i))
-
+            if i == index:  # 削除対象の index はスキップ
+                continue
+            
+            pos_value = self.positions.read(i)  # `read()` を 1 回だけ実行
+            new_positions = new_positions.write(new_positions.size(), pos_value)  # ここで書き込み
+    
         self.positions = new_positions  # `TensorArray` を更新
+
 
 
     def process_new_order(self, order_size, trade_type, current_price, margin_rate):
@@ -152,10 +156,13 @@ class RLAgent(tf.Module):
         # --- ポジション決済処理 ---
         pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
-            pos = self.positions.read(pos_id)
-            print(f"pos_id in update of position value{pos_id}: {pos.numpy()}")
-            if tf.reduce_all(pos == 0.0):
-                print(f"this pos_id is all 0.0 so skipped")
+            try:
+                pos = self.positions.read(pos_id)
+                print(f"pos_id in update of position value{pos_id}: {pos.numpy()}")
+                if tf.reduce_all(pos == 0.0):
+                    print(f"this pos_id is all 0.0 so skipped")
+                    continue
+            except:
                 continue
             pos_id, size, pos_type, open_price, unrealized_profit, margin, _ = tf.unstack(pos)
 
@@ -219,10 +226,13 @@ class RLAgent(tf.Module):
         # --- 含み益の更新 ---
         pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
-            pos = self.positions.read(pos_id)
-            print(f"pos_id in update of position value{pos_id}: {pos.numpy()}")
-            if tf.reduce_all(pos == 0.0):
-                print(f"this pos_id is all 0.0 so skipped")
+            try:
+                pos = self.positions.read(pos_id)
+                print(f"pos_id in update of position value{pos_id}: {pos.numpy()}")
+                if tf.reduce_all(pos == 0.0):
+                    print(f"this pos_id is all 0.0 so skipped")
+                    continue
+            except:
                 continue
             pos_id, size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
 
@@ -263,10 +273,13 @@ class RLAgent(tf.Module):
             print("Forced margin cut triggered.")
             pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
             for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
-                pos = self.positions.read(pos_id)
-                print(f"pos_id in update of position value{pos_id}: {pos.numpy()}")
-                if tf.reduce_all(pos == 0.0):
-                    print(f"this pos_id is all 0.0 so skipped")
+                try:
+                    pos = self.positions.read(pos_id)
+                    print(f"pos_id in update of position value{pos_id}: {pos.numpy()}")
+                    if tf.reduce_all(pos == 0.0):
+                        print(f"this pos_id is all 0.0 so skipped")
+                        continue
+                except:
                     continue
                 pos_id, size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
                 profit = (current_price - open_price) * size  # 現在の損失計算
@@ -399,12 +412,15 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
 
         # 資産更新
         #print(actions.stack().shape)
+        i = 0
         for agent, action in zip(agents, actions.stack()):
             # アクションの形状 (1, 4) を (4,) に変換
             action_flat = tf.reshape(action, [-1])  # 形状 (4,)
             # 各項目を変数に分解
             long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
+            print(f"update_assets of {i}th agent")
             agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
+            i += 1
             #agent.update_effective_margin = current_price * (long_order_size + short_order_size + long_close_position + short_close_position)
             #print(f"long_order_size:{long_order_size}")
             #print(f"short_order_size:{short_order_size}")
@@ -460,6 +476,8 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
                 for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
                     try:
                         pos = agent.positions.read(pos_id)
+                        if tf.reduce_all(pos==0.0):
+                            continue
                     except:
                         continue
                     pos_id, size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
