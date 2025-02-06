@@ -329,12 +329,19 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     gifを使用したアニメーションでヒートマップがどう変化していくか調べよ
 
 2025-2-2
-    完全決済の時にそのポジションは利確されるので、posのadd_required_marginの項目は0になって欲しいが、10^-2 ~ 10^-8のオーダーの値になることがある。
+    ※完全決済の時にそのポジションは利確されるので、posのadd_required_marginの項目は0になって欲しいが、10^-2 ~ 10^-8のオーダーの値になることがある。
     →おそらくこの誤差と、最後の有効証拠金=預託証拠金+ポジション損益,の不一致が同じ原因と考えられる
 
     tensorarrayで保持しているposが計算グラフの情報を保持できているか確認せよ。具体的にはloss=add_required_marginとすることで、current_priceを使用しているadd_required_marginでgradientが計算できるか確認せよ
     →gen_gradient, disc_gradientsの両方で計算ができたことから、add_required_marginは、生成者の出力地であるcurrent_priceと識別者の出力値であるlong_order_size,short_order_size,long_close_position,short_close_positionの計算グラフの情報を保持していると言える
 
 2025-2-4
-    2025-1-23のところでも課題として挙げたが、process_new_orderをlongの後にshortを新規注文するように書いてあるがこれではlongの方が買いやすいというバイアスが生まれるのでだめ
+    ※2025-1-23のところでも課題として挙げたが、process_new_orderをlongの後にshortを新規注文するように書いてあるがこれではlongの方が買いやすいというバイアスが生まれるのでだめ
     updated effective marginのところで、positions.writeとすると例えばpos_id=0であったposがpos_id=1になってpos_id=0のposとして全ての要素が0.0のposが追加されてしまう
+    →pos_idをposから消したことでうまくいった。_remove_positionでgatherを使用したことで、pos_idが前倒しにずれることで、posの１つの要素としてpos_idを採用するとその値と、真のpos_idの値が不一致となる。
+
+2025-2-6
+    ※今は需給に関係なく、各エージェントが自分の資産の範囲内で売買したければ自分の意思だけでそれが可能な設定だが、実際には例えば買い注文をしてもそこで誰かが売ってなければ買うことはできない
+    ※order_sizeそのものをlossとして勾配計算したところ、disc_gradientについて、なぜか1th agentだけが非負で、それ以外のagentが0のままだった。
+    →order_sizeの更新に、effective_marginの更新にupdate_effective_marginを使用したように、new_order_sizeに一度更新した値を入れてからorder_size=new_order_sizeとする方法と、単純にpython演算子+=を使用する方法を試しましたが、lossをorder_sizeとした場合に依然として1th agentだけがdisc_gradientが非負だった。(seed=42)
+    →seed=43に変更すると、1th agentは０となる一方で、2th, 3th agentが非負となった。よって重みの初期値で勾配消失が起きてしまっている。
