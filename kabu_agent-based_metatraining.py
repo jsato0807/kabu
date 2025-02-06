@@ -255,7 +255,7 @@ class RLAgent(tf.Module):
             add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
 
-            pos = tf.stack([size, pos_type, open_price, unrealized_profit,add_required_margin,0])
+            pos = tf.stack([size, pos_type, open_price, unrealized_profit,margin+add_required_margin,0])
             #print(f"pos_id:{type(pos_id)}")
             #print(f"size:{type(size)}")
             #print(f"pos_type:{type(pos_type)}")
