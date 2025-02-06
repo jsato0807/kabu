@@ -131,7 +131,7 @@ class RLAgent(tf.Module):
                     add_required_margin = (order_size + self.unfulfilled_sell_orders) * current_price * margin_rate
                 self.required_margin += add_required_margin
                 order_size = tf.add(order_size, self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders)
-                pos = tf.stack([self.positions_index, order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
+                pos = tf.stack([order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
 
                 self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
 
@@ -170,7 +170,7 @@ class RLAgent(tf.Module):
                     continue
             except:
                 continue
-            pos_id, size, pos_type, open_price, unrealized_profit, margin, _ = tf.unstack(pos)
+            size, pos_type, open_price, unrealized_profit, margin, _ = tf.unstack(pos)
 
 
             if pos_type.numpy() == 1.0 and long_close_position > 0:  # Buy
@@ -200,15 +200,15 @@ class RLAgent(tf.Module):
             size -= fulfilled_size
             if size > 0:  # 部分決済の場合
                 print(f"parial payment was executed")
-                pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit, margin+add_required_margin, 0])
+                pos = tf.stack([size, pos_type, open_price, unrealized_profit, margin+add_required_margin, 0])
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 print(self.positions.stack())
-                pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, profit]
+                pos = [fulfilled_size, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
 
             else:  # 完全決済の場合
                 print(f"all payment was executed")
-                pos = tf.stack([pos_id, fulfilled_size, pos_type, open_price, tf.Variable(0,dtype=tf.float32), 0, profit]) #we hope margin+add_required_margin==0
+                pos = tf.stack([fulfilled_size, pos_type, open_price, tf.Variable(0,dtype=tf.float32), 0, profit]) #we hope margin+add_required_margin==0
                 #print(f"all payment: margin+add_required_margin:{margin+add_required_margin}")
                 self.closed_positions.append(pos)
 
@@ -230,7 +230,7 @@ class RLAgent(tf.Module):
 
 
         # --- 含み益の更新 ---
-        pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
+        pos_id_max = int(self.positions_index)  # 現在の最大 ID
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
             try:
                 pos = self.positions.read(pos_id)
@@ -240,7 +240,7 @@ class RLAgent(tf.Module):
                     continue
             except:
                 continue
-            pos_id, size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
+            size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
             print(f"unstacked pos_id:{pos_id}")
 
             #print(f"# update of position values")
@@ -255,7 +255,7 @@ class RLAgent(tf.Module):
             add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
 
-            pos = tf.stack([pos_id, size, pos_type, open_price, unrealized_profit,add_required_margin,0])
+            pos = tf.stack([size, pos_type, open_price, unrealized_profit,add_required_margin,0])
             #print(f"pos_id:{type(pos_id)}")
             #print(f"size:{type(size)}")
             #print(f"pos_type:{type(pos_type)}")
@@ -266,7 +266,7 @@ class RLAgent(tf.Module):
             #exit()
             self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
             print(f"unrealized_profit:{unrealized_profit}, before_unrealized_profit:{before_unrealized_profit}")
-            print(f"updated effective margin against price {current_price} , effective Margin: {self.effective_margin}")
+            print(f"updated effective margin against price {current_price} , effective Margin: {self.effective_margin}, pos_id:{pos_id}")
             print(self.positions.stack())
 
             margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
@@ -288,7 +288,7 @@ class RLAgent(tf.Module):
                         continue
                 except:
                     continue
-                pos_id, size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
+                size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
                 profit = (current_price - open_price) * size  # 現在の損失計算
                 #self.effective_margin.assign(self.effective_margin + profit - before_unrealized_profit) # 損失分を証拠金に反映
                 self.update_effective_margin = self.effective_margin + profit - before_unrealized_profit
@@ -302,7 +302,7 @@ class RLAgent(tf.Module):
 
                 self._remove_position(pos_id)
 
-                pos = [pos_id, fulfilled_size, pos_type, open_price, 0, 0, profit]
+                pos = [fulfilled_size, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
                 print(f"Forced Closed at currnt_price:{current_price} with open_price:{open_price}, Effective Margin: {self.effective_margin}")
             #self.required_margin = 0.0
@@ -579,7 +579,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
 
             position_value += sum(size * (current_price - open_price) if status==1 else
                          -size * (current_price - open_price) if status==-1 else
-                         0 for _, size, status, open_price, _, _, _ in positions_list)
+                         0 for size, status, open_price, _, _, _ in positions_list)
         else:
             position_value = 0
 
