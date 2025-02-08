@@ -22,9 +22,16 @@ class MarketGenerator(tf.Module):
             layers.Dense(output_dim, activation='softplus')
         ])
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002)
+        
+        # 学習可能なスケール因子
+        self.log_scale_factor = tf.Variable(np.log(100),name="log_scale_factor", dtype=tf.float32, trainable=True)
 
     def generate(self, inputs):
-        return self.model(tf.expand_dims(inputs, axis=0))
+        #print(f"simple the output of MarketGenerator: {self.model(tf.expand_dims(inputs, axis=0))}")
+        #print(f"after mutiplying log_scale_factor to MarketGenerator : {self.model(tf.expand_dims(inputs, axis=0))  * self.log_scale_factor}")
+        #exit()
+        return self.model(tf.expand_dims(inputs, axis=0))  * self.log_scale_factor
+        #return self.model(tf.expand_dims(inputs, axis=0))
 
     """
     def train(self, tape, discriminator_performance,generation,actions):
@@ -127,13 +134,17 @@ class RLAgent(tf.Module):
             if order_capacity < 0:
                 print(f"Cannot process {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order due to insufficient order capacity.")
                 if trade_type == 1:
-                    self.unfulfilled_buy_orders += order_size
-                    #new_unfulfilled_buy_orders = self.unfulfilled_buy_orders + order_size
-                    #self.unfulfilled_buy_orders = new_unfulfilled_buy_orders
+                    #self.unfulfilled_buy_orders += order_size
+                    new_unfulfilled_buy_orders = self.unfulfilled_buy_orders + order_size
+                    self.unfulfilled_buy_orders = new_unfulfilled_buy_orders
                 elif trade_type == -1:
-                    self.unfulfilled_sell_orders += order_size
-                    #new_unfulfilled_sell_orders = self.unfulfilled_sell_orders + order_size
-                    #self.unfulfilled_sell_orders = new_unfulfilled_sell_orders
+                    #self.unfulfilled_sell_orders += order_size
+                    new_unfulfilled_sell_orders = self.unfulfilled_sell_orders + order_size
+                    self.unfulfilled_sell_orders = new_unfulfilled_sell_orders
+                # when cannot buy or sell, you need effective_margin which itself is unchanging and depends on the output of generator and discriminators
+                update_effective_margin = self.effective_margin + current_price * order_size * 0
+                self.effective_margin = update_effective_margin
+                print(self.effective_margin)
                 return
             if self.margin_maintenance_rate > 100 and order_capacity > 0:
                 if trade_type == 1:
@@ -518,8 +529,8 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
                     if pos_id >= 1:
                         break
 
-                disc_losses = disc_losses.write(i,size)
-                gen_losses = gen_losses.write(i,size)
+                #disc_losses = disc_losses.write(i,generator.log_scale_factor)
+                gen_losses = gen_losses.write(i,current_price)
             i += 1
 
         print(f"disc_losses:{disc_losses.stack().numpy()}")
@@ -530,14 +541,16 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
 
         # 勾配の計算
         # 生成者の勾配
-        gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
+        #gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
+        gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables + [generator.log_scale_factor])
         #print(f"gen_gradients:{gen_gradients}")
         #print(f"gen_loss: {gen_loss}")
         #print(f"generation:{generation}")
         print(f"gen_gradients: {gen_gradients}")
         #exit()
-
-        generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
+        print([generator.log_scale_factor] + generator.model.trainable_variables)
+        exit()
+        generator.optimizer.apply_gradients(zip(gen_gradients, [generator.log_scale_factor] + generator.model.trainable_variables))
 
         # 識別者の勾配
         #print(f"disc_losses: {stacked_disc_losses}, type: {type(disc_losses)}") 
@@ -572,6 +585,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         #    agent.effective_margin = agent.update_effective_margin
 
         print(f"generation:{generation}")
+        print(f"log_scale_factor:{generator.log_scale_factor}")
         print(" ")
         print(" ")
         print(" ")
@@ -586,6 +600,10 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         history["slippage"].append(current_slippage.numpy())
         history["gen_gradients"].append(gen_gradients)
 
+        print(f"generator.model.trainable_variables")
+        for var in generator.model.trainable_variables:
+            print(f"{var.name}: {var.numpy()}")
+
     #print(f"Generation {generation}, Best Agent Assets: {max(float(agent.effective_margin.numpy()) for agent in agents):.2f}")
     #print(f"gen_gradients:{gen_gradients}")
     #exit()
@@ -598,7 +616,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
 
 
     # Calculate position value
-
+    i = 0
     for agent in agents:
         position_value = 0
         if agent.positions:
@@ -611,12 +629,31 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         else:
             position_value = 0
 
+        print(f"{i}th agent")
         print(f"預託証拠金:{agent.margin_deposit}")
         print(f"有効証拠金:{agent.effective_margin}")
         print(f"ポジション損益:{position_value}")
         print(f"確定利益:{agent.realized_profit}")
         print(f"証拠金維持率:{agent.margin_maintenance_rate}")
         print(f"check total:{agent.margin_deposit+position_value}")
+        print("\n")
+
+        i += 1
+
+    # 追跡されている変数を取得
+    gen_watched_vars = gen_tape.watched_variables()
+    disc_watched_vars = disc_tape.watched_variables()
+
+
+    # 確認
+    print("Tracked gen Variables:")
+    for var in gen_watched_vars:
+        print(var.name, var.numpy())
+
+    print("Traced disc variables:")
+    for var in disc_watched_vars:
+        print(var.name, var.numpy())
+
 
 # ファイルへの記録
 with open("./txt_dir/kabu_agent-based_metatraining.txt", "w") as f:
