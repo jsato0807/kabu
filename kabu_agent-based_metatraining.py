@@ -2,6 +2,15 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
 import os
+import random
+
+def set_seed(seed=43):
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)  # Python の乱数シード
+    np.random.seed(seed)  # NumPy の乱数シード
+    tf.random.set_seed(seed)  # TensorFlow の乱数シード
+
+set_seed()
 
 class MarketGenerator(tf.Module):
     def __init__(self, input_dim=4, output_dim=3):
@@ -110,10 +119,7 @@ class RLAgent(tf.Module):
     def process_new_order(self, order_size, trade_type, current_price, margin_rate):
         trade_type = tf.Variable(trade_type, name="trade_type",dtype=tf.float32,trainable=True)
         if order_size > 0:
-            if trade_type.numpy() == 1:
-                order_margin = ((order_size + self.unfulfilled_buy_orders) * current_price * margin_rate)
-            if trade_type.numpy() == -1:
-                order_margin = ((order_size + self.unfulfilled_sell_orders) * current_price * margin_rate)
+            order_margin = ((order_size + self.unfulfilled_sell_orders + self.unfulfilled_buy_orders) * current_price * margin_rate)
             margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
             if margin_maintenance_flag:
                 print(f"Margin cut triggered during {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order processing.")
@@ -121,16 +127,34 @@ class RLAgent(tf.Module):
             order_capacity = (self.effective_margin - (self.required_margin+ order_margin)).numpy()
             if order_capacity < 0:
                 print(f"Cannot process {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order due to insufficient order capacity.")
+                if trade_type == 1:
+                    self.unfulfilled_buy_orders += order_size
+                    #new_unfulfilled_buy_orders = self.unfulfilled_buy_orders + order_size
+                    #self.unfulfilled_buy_orders = new_unfulfilled_buy_orders
+                elif trade_type == -1:
+                    self.unfulfilled_sell_orders += order_size
+                    #new_unfulfilled_sell_orders = self.unfulfilled_sell_orders + order_size
+                    #self.unfulfilled_sell_orders = new_unfulfilled_sell_orders
                 return
             if self.margin_maintenance_rate > 100 and order_capacity > 0:
                 if trade_type == 1:
-                    order_margin -= (order_size + self.unfulfilled_buy_orders) * current_price * margin_rate
+                    #order_margin -= (order_size + self.unfulfilled_buy_orders) * current_price * margin_rate
+                    self.unfulfilled_buy_orders.assign(0.0)
                     add_required_margin = (order_size + self.unfulfilled_buy_orders) * current_price * margin_rate
                 elif trade_type == -1:
-                    order_margin -= (order_size + self.unfulfilled_sell_orders) * current_price * margin_rate
+                    #order_margin -= (order_size + self.unfulfilled_sell_orders) * current_price * margin_rate
+                    self.unfulfilled_sell_orders.assign(0.0)
                     add_required_margin = (order_size + self.unfulfilled_sell_orders) * current_price * margin_rate
                 self.required_margin += add_required_margin
-                order_size = tf.add(order_size, self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders)
+                #order_size = tf.add(order_size, self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders)
+                if trade_type == 1:
+                    order_size += self.unfulfilled_buy_orders
+                    #new_order_size = order_size + self.unfulfilled_buy_orders
+                    #order_size = new_order_size
+                if trade_type == -1:
+                    order_size += self.unfulfilled_sell_orders
+                    #new_order_size = order_size + self.unfulfilled_sell_orders
+                    #order_size = new_order_size
                 pos = tf.stack([order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
 
                 self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
@@ -198,8 +222,10 @@ class RLAgent(tf.Module):
 
             # 部分決済または完全決済の処理
             size -= fulfilled_size
+            #new_size = size - fulfilled_size
+            #size = new_size
             if size > 0:  # 部分決済の場合
-                print(f"parial payment was executed")
+                print(f"partial payment was executed")
                 pos = tf.stack([size, pos_type, open_price, unrealized_profit, margin+add_required_margin, 0])
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 print(self.positions.stack())
@@ -216,12 +242,12 @@ class RLAgent(tf.Module):
                 print(self.positions.stack())
             print(f"Closed {'Buy' if pos_type.numpy()==1 else ('Sell' if pos_type.numpy() == -1 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
 
-            if pos_type.numpy() == 1.0:
-                #self.unfulfilled_buy_orders.assign(long_close_position - fulfilled_size)
-                self.unfulfilled_buy_orders = long_close_position - fulfilled_size
-            elif pos_type.numpy() == -1.0:
-                #self.unfulfilled_sell_orders.assign(short_close_position - fulfilled_size)
-                self.unfulfilled_sell_orders = short_close_position - fulfilled_size
+            #if pos_type.numpy() == 1.0:
+            #    #self.unfulfilled_buy_orders.assign(long_close_position - fulfilled_size)
+            #    self.unfulfilled_buy_orders = long_close_position - fulfilled_size
+            #elif pos_type.numpy() == -1.0:
+            #    #self.unfulfilled_sell_orders.assign(short_close_position - fulfilled_size)
+            #    self.unfulfilled_sell_orders = short_close_position - fulfilled_size
 
             margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
             if margin_maintenance_flag:
@@ -425,6 +451,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
             action_flat = tf.reshape(action, [-1])  # 形状 (4,)
             # 各項目を変数に分解
             long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
+            print("\n")
             print(f"update_assets of {i}th agent")
             agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
             i += 1
@@ -487,26 +514,28 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
                             continue
                     except:
                         continue
-                    pos_id, size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
+                    size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
                     print(f"margin:{margin}")
                     if pos_id >= 1:
                         break
 
-                disc_losses = disc_losses.write(i,margin)
-                gen_losses = gen_losses.write(i,margin)
+                disc_losses = disc_losses.write(i,size)
+                gen_losses = gen_losses.write(i,size)
             i += 1
 
+        print(f"disc_losses:{disc_losses.stack().numpy()}")
         print(f"gen_losses:{gen_losses.stack().numpy()}")
 
         gen_loss = tf.reduce_mean(gen_losses.stack())
         """
+
         # 勾配の計算
         # 生成者の勾配
         gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
         #print(f"gen_gradients:{gen_gradients}")
         #print(f"gen_loss: {gen_loss}")
         #print(f"generation:{generation}")
-        #print(f"gen_gradients: {gen_gradients}")
+        print(f"gen_gradients: {gen_gradients}")
         #exit()
 
         generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
@@ -525,7 +554,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
             #print(f"disc_losses: {stacked_disc_losses}, type: {type(stacked_disc_losses)}")  
             #print(type(disc_loss))
             disc_gradient = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
-            #print(f"disc_gradient:{disc_gradient}")
+            print(f"{i}th agents' disc_gradient:{disc_gradient}")
 
             #print(type(disc_gradient))
             disc_gradients.append(disc_gradient)
