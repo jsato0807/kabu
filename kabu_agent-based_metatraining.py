@@ -67,7 +67,6 @@ class RLAgent(tf.Module):
         self.closed_positions = []
         self.positions_index = tf.Variable(0, name="positions_index",dtype=tf.float32,trainable=True)
         self.effective_margin = tf.Variable(initial_cash, name="effective_margin",dtype=tf.float32,trainable=True)
-        self.update_effective_margin = tf.Variable(initial_cash, name="update_effective_margin",dtype=tf.float32,trainable=True)
         self.required_margin = 0
         self.margin_deposit = tf.Variable(initial_cash, name="margin_deposit",dtype=tf.float32,trainable=True)
         self.realized_profit = tf.Variable(0.0, name="realized_profit",dtype=tf.float32,trainable=True)
@@ -209,8 +208,8 @@ class RLAgent(tf.Module):
             # 決済ロジック
             fulfilled_size = tf.minimum(close_position, size)
             #self.effective_margin.assign_add(profit - unrealized_profit)
-            self.update_effective_margin = self.effective_margin + profit - unrealized_profit
-            self.effective_margin = self.update_effective_margin
+            update_effective_margin = self.effective_margin + profit - unrealized_profit
+            self.effective_margin = update_effective_margin
             print(f"profit:{profit}")
             print(f"unrealized_profit:{unrealized_profit}")
             print(f"close_position:{close_position}, current_price:{current_price},open_price:{open_price}, effective_margin:{self.effective_margin}")
@@ -275,8 +274,8 @@ class RLAgent(tf.Module):
             #print(f"size:{size}")
             unrealized_profit = size * (current_price - open_price) if pos_type.numpy() == 1.0 else size * (open_price - current_price)
             #self.effective_margin.assign(self.effective_margin + unrealized_profit - before_unrealized_profit)
-            self.update_effective_margin = self.effective_margin + unrealized_profit - before_unrealized_profit
-            self.effective_margin = self.update_effective_margin
+            update_effective_margin = self.effective_margin + unrealized_profit - before_unrealized_profit
+            self.effective_margin = update_effective_margin
             #exit()
             add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
@@ -317,8 +316,8 @@ class RLAgent(tf.Module):
                 size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
                 profit = (current_price - open_price) * size  # 現在の損失計算
                 #self.effective_margin.assign(self.effective_margin + profit - before_unrealized_profit) # 損失分を証拠金に反映
-                self.update_effective_margin = self.effective_margin + profit - before_unrealized_profit
-                self.effective_margin = self.update_effective_margin
+                update_effective_margin = self.effective_margin + profit - before_unrealized_profit
+                self.effective_margin = update_effective_margin
                 effective_margin_max, effective_margin_min = check_min_max_effective_margin(self.effective_margin, effective_margin_max, effective_margin_min)
                 self.margin_deposit.assign(self.margin_deposit + profit)
                 #self.margin_deposit += profit
