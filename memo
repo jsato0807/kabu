@@ -357,3 +357,4 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     2025-2-2のところにも書いたが、全てが0のposがpositionに追加されてしまう現象が発生。
     →何もしてないのになぜか解決
     ※log_scale_factorを学習の対象にすることには成功したが、学習の方向性の定義が課題。
+    ※2025-2-2にも書いた問題だが、部分決済と完全決済のところで選別基準にsizeと0の大小関係を設定してあるが、fulfilled_size = tf.minimum(close_position, size)という定義でsizeの方が選ばれても、誤差が発生していたとしたら、size -= fulfilled_sizeでsize=0にならない可能性がある。そうすると本来完全決済のはずが、部分決済になってしまい、余計なposがpositionに残る可能性が考えられる。
