@@ -334,6 +334,8 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     →有効証拠金のオーダーと生成者の出力値のオーダーが違いすぎることで、float32だと丸目誤差が10^-3程度でも起きるため、計算が不一致となる
     →log_scale_factorをtrainable=trueのtf.variableとして定義して、current_priceに乗算することで学習の対象とする
     →それではどうやら学習の対象にはならないので、.gradientで勾配計算するときとoptimizer.apply_gradientsを呼び出す時に明示的にgenerator.model.trainable_variables + [generator.log_scale_factor]とすることで、log_scale_factorを学習の対象としたいのだが、謎のエラーがapply_gradientsに対して出るので対処すべし
+    →generatorのモデルの定義の後にself.log_scale_factorをadd_weightで定義して、前述のように.gradientと.apply_gradientsでlog_scale_factorを追加することで学習の対象とすることには成功
+    →しかしなぜか、以前にも見られた、全てが0のposがpositionに追加されてしまう現象がまた発生している
 
     tensorarrayで保持しているposが計算グラフの情報を保持できているか確認せよ。具体的にはloss=add_required_marginとすることで、current_priceを使用しているadd_required_marginでgradientが計算できるか確認せよ
     →gen_gradient, disc_gradientsの両方で計算ができたことから、add_required_marginは、生成者の出力地であるcurrent_priceと識別者の出力値であるlong_order_size,short_order_size,long_close_position,short_close_positionの計算グラフの情報を保持していると言える
@@ -350,3 +352,6 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     →seed=43に変更すると、1th agentは０となる一方で、2th, 3th agentが非負となった。よって重みの初期値で勾配消失が起きてしまっている。
     →order_sizeそのものをlossに使用して勾配消失が起きてしまっても、実際にはeffective_marginをlossに使用するだけなので問題なし。現在seed値を変えれば全てのagentが非負の勾配を持つことがわかっているのでorder_sizeが計算グラフの情報を保有していることを確認できたので問題解決です。
 
+2025-2-9
+    ※2025-2-2のところにも書いたが、全てが0のposがpositionに追加されてしまう現象が発生。
+    ※log_scale_factorを学習の対象にすることには成功したが、学習の方向性の定義が課題。
