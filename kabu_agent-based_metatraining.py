@@ -12,7 +12,7 @@ def set_seed(seed=43):
 
 set_seed()
 
-class MarketGenerator(tf.Module):
+class MarketGenerator(tf.keras.Model):
     def __init__(self, input_dim=4, output_dim=3):
         super().__init__()
         self.model = tf.keras.Sequential([
@@ -23,8 +23,16 @@ class MarketGenerator(tf.Module):
         ])
         self.optimizer = tf.keras.optimizers.Adam(learning_rate=0.0002)
 
+        # `add_weight()` を使用しつつ、tf.Variable に変換して `GradientTape` で追跡できるようにする
+        self.log_scale_factor = self.add_weight(
+                name="log_scale_factor",
+                shape=(),
+                initializer=tf.keras.initializers.Constant(np.log(100)),
+                trainable=True
+            )
+
     def generate(self, inputs):
-        return self.model(tf.expand_dims(inputs, axis=0))
+        return self.model(tf.expand_dims(inputs, axis=0)) * self.log_scale_factor
 
     """
     def train(self, tape, discriminator_performance,generation,actions):
@@ -521,8 +529,8 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
                     if pos_id >= 1:
                         break
 
-                disc_losses = disc_losses.write(i,size)
-                gen_losses = gen_losses.write(i,size)
+                #disc_losses = disc_losses.write(i,size)
+                gen_losses = gen_losses.write(i,generator.log_scale_factor)
             i += 1
 
         print(f"disc_losses:{disc_losses.stack().numpy()}")
@@ -533,14 +541,15 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
 
         # 勾配の計算
         # 生成者の勾配
-        gen_gradients = gen_tape.gradient(gen_loss, generator.model.trainable_variables)
-        #print(f"gen_gradients:{gen_gradients}")
+        gen_gradients = gen_tape.gradient(gen_loss, [generator.log_scale_factor] + generator.model.trainable_variables)
+
+        print(f"gen_gradients:{gen_gradients}")
         #print(f"gen_loss: {gen_loss}")
         #print(f"generation:{generation}")
         print(f"gen_gradients: {gen_gradients}")
         #exit()
 
-        generator.optimizer.apply_gradients(zip(gen_gradients, generator.model.trainable_variables))
+        generator.optimizer.apply_gradients(zip(gen_gradients, [generator.log_scale_factor] + generator.model.trainable_variables))
 
         # 識別者の勾配
         #print(f"disc_losses: {stacked_disc_losses}, type: {type(disc_losses)}") 
@@ -574,7 +583,9 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         #for agent in agents:
         #    agent.effective_margin = agent.update_effective_margin
 
+        #print(f"trainable_variables:{generator.trainable_variables}")
         print(f"generation:{generation}")
+        tf.print(f"log_scale_factor:",generator.log_scale_factor)
         print(" ")
         print(" ")
         print(" ")
@@ -601,7 +612,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
 
 
     # Calculate position value
-
+    i = 0
     for agent in agents:
         position_value = 0
         if agent.positions:
@@ -614,12 +625,15 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         else:
             position_value = 0
 
+        print(f"{i}th agent")
         print(f"預託証拠金:{agent.margin_deposit}")
         print(f"有効証拠金:{agent.effective_margin}")
         print(f"ポジション損益:{position_value}")
         print(f"確定利益:{agent.realized_profit}")
         print(f"証拠金維持率:{agent.margin_maintenance_rate}")
         print(f"check total:{agent.margin_deposit+position_value}")
+        print("\n")
+        i += 1
 
 # ファイルへの記録
 with open("./txt_dir/kabu_agent-based_metatraining.txt", "w") as f:
