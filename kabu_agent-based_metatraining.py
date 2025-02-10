@@ -236,7 +236,7 @@ class RLAgent(tf.Module):
             #size = new_size
             if size > 0:  # 部分決済の場合
                 print(f"partial payment was executed")
-                pos = tf.stack([size, pos_type, open_price, unrealized_profit, margin+add_required_margin, 0])
+                pos = tf.stack([size, pos_type, open_price, 0, margin+add_required_margin, 0])#once substract unrealized_profit from effective_margin, you need not do it agagin in the process of update pos, so you have to set unrealized_profit to 0.
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 print(self.positions.stack())
                 pos = [fulfilled_size, pos_type, open_price, 0, 0, profit]
@@ -249,6 +249,7 @@ class RLAgent(tf.Module):
                 self.closed_positions.append(pos)
 
                 self._remove_position(pos_id)
+                print("after removeing position")
                 print(self.positions.stack())
             print(f"Closed {'Buy' if pos_type.numpy()==1 else ('Sell' if pos_type.numpy() == -1 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
 
@@ -284,9 +285,12 @@ class RLAgent(tf.Module):
             #print(f"open_price:{open_price}")
             #print(f"size:{size}")
             unrealized_profit = size * (current_price - open_price) if pos_type.numpy() == 1.0 else size * (open_price - current_price)
+            print(f"unrealized_profit in update of unrealized profit: {unrealized_profit}, pos_type:{pos_type}")
             #self.effective_margin.assign(self.effective_margin + unrealized_profit - before_unrealized_profit)
+            print(f"right before updating effective_margin:{self.effective_margin}")
             update_effective_margin = self.effective_margin + unrealized_profit - before_unrealized_profit
             self.effective_margin = update_effective_margin
+            print(f"right after updating effective_margin:{self.effective_margin}")
             #exit()
             add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
@@ -337,6 +341,8 @@ class RLAgent(tf.Module):
                 self.required_margin -= margin
 
                 self._remove_position(pos_id)
+                print("after removing position")
+                print(self.positions.stack())
 
                 pos = [fulfilled_size, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
@@ -616,20 +622,27 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
     for agent in agents:
         position_value = 0
         if agent.positions:
+            print("🔍 Before position_value calculation, positions:")
+            print(agent.positions.stack())
             # TensorArray を Python の list に変換
-            positions_list = agent.positions.stack().numpy().tolist()
+            positions_tensor = agent.positions.stack()
+            #positions_list = agent.positions.stack().numpy().tolist()
 
-            position_value += sum(size * (current_price - open_price) if status==1 else
-                         -size * (current_price - open_price) if status==-1 else
-                         0 for size, status, open_price, _, _, _ in positions_list)
+            #position_value += sum(size * (current_price - open_price) if status==1 else
+            #             -size * (current_price - open_price) if status==-1 else
+            #             0 for size, status, open_price, _, _, _ in positions_list)
+            position_value = tf.reduce_sum(
+                positions_tensor[:, 0] * tf.math.sign(positions_tensor[:, 1]) * (current_price - positions_tensor[:, 2])
+                )
+
         else:
             position_value = 0
 
         print(f"{i}th agent")
-        print(f"預託証拠金:{agent.margin_deposit}")
+        print(f"預託証拠金:{agent.margin_deposit.numpy()}")
         print(f"有効証拠金:{agent.effective_margin}")
         print(f"ポジション損益:{position_value}")
-        print(f"確定利益:{agent.realized_profit}")
+        print(f"確定利益:{agent.realized_profit.numpy()}")
         print(f"証拠金維持率:{agent.margin_maintenance_rate}")
         print(f"check total:{agent.margin_deposit+position_value}")
         print("\n")
