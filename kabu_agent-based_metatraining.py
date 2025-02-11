@@ -123,55 +123,62 @@ class RLAgent(tf.Module):
 
 
 
-    def process_new_order(self, order_size, trade_type, current_price, margin_rate):
-        trade_type = tf.Variable(trade_type, name="trade_type",dtype=tf.float32,trainable=True)
-        if order_size > 0:
-            order_margin = ((order_size + self.unfulfilled_sell_orders + self.unfulfilled_buy_orders) * current_price * margin_rate)
+    def process_new_order(self, long_order_size, short_order_size, current_price, margin_rate):
+        #trade_type = tf.Variable(trade_type, name="trade_type",dtype=tf.float32,trainable=True)
+        if long_order_size > 0 and short_order_size > 0:
+            order_margin = ((long_order_size + short_order_size + self.unfulfilled_sell_orders + self.unfulfilled_buy_orders) * current_price * margin_rate)
             margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
             if margin_maintenance_flag:
-                print(f"Margin cut triggered during {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order processing.")
+                #print(f"Margin cut triggered during {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order processing.")
+                print(f"Margin cut triggered during order processing.")
                 return
             order_capacity = (self.effective_margin - (self.required_margin+ order_margin)).numpy()
             if order_capacity < 0:
-                print(f"Cannot process {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order due to insufficient order capacity.")
-                if trade_type == 1:
-                    #self.unfulfilled_buy_orders += order_size
-                    new_unfulfilled_buy_orders = self.unfulfilled_buy_orders + order_size
-                    self.unfulfilled_buy_orders = new_unfulfilled_buy_orders
-                elif trade_type == -1:
-                    #self.unfulfilled_sell_orders += order_size
-                    new_unfulfilled_sell_orders = self.unfulfilled_sell_orders + order_size
-                    self.unfulfilled_sell_orders = new_unfulfilled_sell_orders
+                #print(f"Cannot process {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order due to insufficient order capacity.")
+                print(f"Cannot process order due to insufficient order capacity.")
+                #if trade_type == 1:
+                #self.unfulfilled_buy_orders += order_size
+                new_unfulfilled_buy_orders = self.unfulfilled_buy_orders + long_order_size
+                self.unfulfilled_buy_orders = new_unfulfilled_buy_orders
+                #elif trade_type == -1:
+                #self.unfulfilled_sell_orders += order_size
+                new_unfulfilled_sell_orders = self.unfulfilled_sell_orders + short_order_size
+                self.unfulfilled_sell_orders = new_unfulfilled_sell_orders
                 # when cannot buy or sell, you need effective_margin which itself is unchanging and depends on the output of generator and discriminators
-                update_effective_margin = self.effective_margin + current_price * order_size * 0
+                update_effective_margin = self.effective_margin + current_price * (long_order_size+short_order_size) * 0
                 self.effective_margin = update_effective_margin
                 return
             if self.margin_maintenance_rate > 100 and order_capacity > 0:
-                if trade_type == 1:
-                    #order_margin -= (order_size + self.unfulfilled_buy_orders) * current_price * margin_rate
-                    self.unfulfilled_buy_orders.assign(0.0)
-                    add_required_margin = (order_size + self.unfulfilled_buy_orders) * current_price * margin_rate
-                elif trade_type == -1:
-                    #order_margin -= (order_size + self.unfulfilled_sell_orders) * current_price * margin_rate
-                    self.unfulfilled_sell_orders.assign(0.0)
-                    add_required_margin = (order_size + self.unfulfilled_sell_orders) * current_price * margin_rate
-                self.required_margin += add_required_margin
+                #if trade_type == 1:
+                #order_margin -= (order_size + self.unfulfilled_buy_orders) * current_price * margin_rate
+                #self.unfulfilled_buy_orders.assign(0.0)
+                #add_required_margin = (order_size + self.unfulfilled_buy_orders) * current_price * margin_rate
+                #elif trade_type == -1:
+                #order_margin -= (order_size + self.unfulfilled_sell_orders) * current_price * margin_rate
+                #self.unfulfilled_sell_orders.assign(0.0)
+                long_add_required_margin = (long_order_size + self.unfulfilled_buy_orders) * current_price * margin_rate
+                short_add_required_margin = (short_order_size + self.unfulfilled_sell_orders) * current_price * margin_rate
+                self.required_margin += long_add_required_margin + short_add_required_margin
                 #order_size = tf.add(order_size, self.unfulfilled_buy_orders if trade_type == 1 else self.unfulfilled_sell_orders)
-                if trade_type == 1:
-                    order_size += self.unfulfilled_buy_orders
+                if long_order_size > 0:
+                    long_order_size += self.unfulfilled_buy_orders
+                    self.unfulfilled_buy_orders.assign(0)
+                    pos = tf.stack([long_order_size, tf.Variable(1, name="trade_type",dtype=tf.float32,trainable=True), current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), long_add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
                     #new_order_size = order_size + self.unfulfilled_buy_orders
                     #order_size = new_order_size
-                if trade_type == -1:
-                    order_size += self.unfulfilled_sell_orders
+                if short_order_size > 0:
+                    short_order_size += self.unfulfilled_sell_orders
+                    self.unfulfilled_sell_orders.assign(0)
+                    pos = tf.stack([short_order_size, tf.Variable(-1, name="trade_type",dtype=tf.float32,trainable=True), current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), short_add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
                     #new_order_size = order_size + self.unfulfilled_sell_orders
                     #order_size = new_order_size
-                pos = tf.stack([order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
+                #pos = tf.stack([order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
 
                 self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
 
                 self.positions_index.assign_add(1)
                 print(self.positions_index)
-                print(f"Opened {'Buy' if trade_type==1 else ('Sell' if trade_type == -1 else 'Unknown')} position at {current_price}, required margin: {self.required_margin}")
+                print(f"Opened position at {current_price}, required margin: {self.required_margin}")
                 print(self.positions.stack())
                 margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
                 if margin_maintenance_flag:
@@ -625,15 +632,15 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
             print("🔍 Before position_value calculation, positions:")
             print(agent.positions.stack())
             # TensorArray を Python の list に変換
-            positions_tensor = agent.positions.stack()
-            #positions_list = agent.positions.stack().numpy().tolist()
+            #positions_tensor = agent.positions.stack()
+            positions_list = agent.positions.stack().numpy().tolist()
 
-            #position_value += sum(size * (current_price - open_price) if status==1 else
-            #             -size * (current_price - open_price) if status==-1 else
-            #             0 for size, status, open_price, _, _, _ in positions_list)
-            position_value = tf.reduce_sum(
-                positions_tensor[:, 0] * tf.math.sign(positions_tensor[:, 1]) * (current_price - positions_tensor[:, 2])
-                )
+            position_value += sum(size * (current_price - open_price) if status==1 else
+                         -size * (current_price - open_price) if status==-1 else
+                         0 for size, status, open_price, _, _, _ in positions_list)
+            #position_value = tf.reduce_sum(
+            #    positions_tensor[:, 0] * tf.math.sign(positions_tensor[:, 1]) * (current_price - positions_tensor[:, 2])
+            #    )
 
         else:
             position_value = 0
