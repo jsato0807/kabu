@@ -378,6 +378,101 @@ class RLAgent(tf.Module):
 
 
 
+def match_orders(agents, actions, current_price, required_margin_rate):
+    """
+    各エージェントの新規注文と決済注文を需給に基づいて処理し、未決済注文と決済注文の相殺も考慮する。
+    """
+
+    # 🔹 1️⃣ 各エージェントの新規注文 & 決済注文を取得
+    buy_orders = []
+    sell_orders = []
+    long_close_orders = []
+    short_close_orders = []
+
+    for agent, action in zip(agents, actions.stack()):
+        action_flat = tf.reshape(action, [-1])  # 形状 (4,)
+        long_order_size,short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
+
+        total_long_order = long_order_size + agent.unfulfilled_buy_orders
+        total_short_order = short_order_size + agent.unfulfilled_sell_orders
+        total_long_close = long_close_position + agent.unfulfilled_long_closes
+        total_short_close = short_close_position + agent.unfulfilled_short_closes
+
+        if total_long_order > 0:
+            buy_orders.append(total_long_order)
+        if total_short_order > 0:
+            sell_orders.append(total_short_order)
+
+        if total_long_close > 0:
+            long_close_orders.append(total_long_close)
+        if total_short_close > 0:
+            short_close_orders.append(total_short_close)
+
+    # 🔹 2️⃣ 新規注文の処理（買いと売りを同時に処理）
+    total_buy = sum(buy_orders)
+    total_sell = sum(sell_orders)
+    executed_volume = min(total_buy, total_sell)  # 約定できる最大量
+
+    if executed_volume > 0:
+        for agent, buy_size, sell_size in zip(agents, buy_orders, sell_orders):
+            buy_ratio = buy_size / total_buy if total_buy > 0 else 0
+            sell_ratio = sell_size / total_sell if total_sell > 0 else 0
+
+            executed_buy_size = executed_volume * buy_ratio
+            executed_sell_size = executed_volume * sell_ratio
+
+            # ✅ 買いと売りを同時に処理
+            agent.process_new_order(executed_buy_size, executed_sell_size, current_price, required_margin_rate)
+
+    # 🔹 未決済の注文を持ち越し
+    remaining_buy = total_buy - executed_volume
+    remaining_sell = total_sell - executed_volume
+
+    # 🔹 3️⃣ 決済注文の処理（ロング決済とショート決済を同時に処理）
+    total_long_close = sum(long_close_orders)
+    total_short_close = sum(short_close_orders)
+    executed_close_volume = min(total_long_close, total_short_close)  # 決済可能な最大量
+
+    if executed_close_volume > 0:
+        for agent, long_close_size, short_close_size in zip(agents, long_close_orders, short_close_orders):
+            long_close_ratio = long_close_size / total_long_close if total_long_close > 0 else 0
+            short_close_ratio = short_close_size / total_short_close if total_short_close > 0 else 0
+
+            executed_long_close_size = executed_close_volume * long_close_ratio
+            executed_short_close_size = executed_close_volume * short_close_ratio
+
+            # ✅ ロング決済とショート決済を同時に処理
+            agent.process_position_closure(executed_long_close_size, executed_short_close_size, current_price)
+
+    # 🔹 未決済の決済注文を持ち越し
+    remaining_long_close = total_long_close - executed_close_volume
+    remaining_short_close = total_short_close - executed_close_volume
+
+    # 🔹 4️⃣ 新規注文と決済注文の未約定部分を相殺する処理
+    total_buy_side = remaining_buy + remaining_short_close
+    total_sell_side = remaining_sell + remaining_long_close
+    executed_cross_volume = min(total_buy_side, total_sell_side)  # 相殺可能な最大注文量
+
+    if executed_cross_volume > 0:
+        executed_buys = executed_cross_volume * (remaining_buy / total_buy_side) if total_buy_side > 0 else 0
+        executed_shorts = executed_cross_volume * (remaining_short_close / total_buy_side) if total_buy_side > 0 else 0
+
+        executed_sells = executed_cross_volume * (remaining_sell / total_sell_side) if total_sell_side > 0 else 0
+        executed_longs = executed_cross_volume * (remaining_long_close / total_sell_side) if total_sell_side > 0 else 0
+
+        # ✅ 新規注文と決済注文の相殺を同時に処理
+        for agent,buy_size,sell_size,long_size,short_size in zip(agents,buy_orders,sell_orders,long_close_size,short_close_size):
+            buy_ratio = buy_size/total_buy if total_buy > 0 else 0
+            sell_ratio = sell_size/total_sell if total_sell > 0 else 0
+            long_ratio = long_size/total_long_close if total_long_close > 0 else 0
+            short_ratio = short_size/total_short_close if total_short_close > 0 else 0
+            executed_buy = executed_buys * buy_ratio
+            executed_sell = executed_sells * sell_ratio
+            executed_long = executed_longs * long_ratio
+            executed_short = executed_shorts * short_ratio
+            agent.process_new_order(executed_buy, executed_sell, current_price, required_margin_rate)
+            agent.process_position_closure(executed_long, executed_short, current_price)
+
 # トレーニングループ
 num_agents = 5
 agents = [RLAgent() for _ in range(num_agents)]
