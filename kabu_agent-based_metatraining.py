@@ -164,21 +164,27 @@ class RLAgent(tf.Module):
                     long_order_size += self.unfulfilled_buy_orders
                     self.unfulfilled_buy_orders.assign(0)
                     pos = tf.stack([long_order_size, tf.Variable(1, name="trade_type",dtype=tf.float32,trainable=True), current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), long_add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
+                    print(f"Opened Buy position at {current_price}, add_required margin: {long_add_required_margin}")
+                    self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
+                    self.positions_index.assign_add(1)
                     #new_order_size = order_size + self.unfulfilled_buy_orders
                     #order_size = new_order_size
                 if short_order_size > 0:
                     short_order_size += self.unfulfilled_sell_orders
                     self.unfulfilled_sell_orders.assign(0)
                     pos = tf.stack([short_order_size, tf.Variable(-1, name="trade_type",dtype=tf.float32,trainable=True), current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), short_add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
+                    print(f"Opened Sell position at {current_price}, add_required margin: {short_add_required_margin}")
+                    self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
+                    self.positions_index.assign_add(1)
                     #new_order_size = order_size + self.unfulfilled_sell_orders
                     #order_size = new_order_size
                 #pos = tf.stack([order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
 
-                self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
+                #self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
 
-                self.positions_index.assign_add(1)
+                #self.positions_index.assign_add(1)
                 print(self.positions_index)
-                print(f"Opened position at {current_price}, required margin: {self.required_margin}")
+                #print(f"Opened position at {current_price}, required margin: {self.required_margin}")
                 print(self.positions.stack())
                 margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
                 if margin_maintenance_flag:
@@ -193,8 +199,7 @@ class RLAgent(tf.Module):
 
         # --- 新規注文処理 ---
         # Process new buy and sell orders
-        self.process_new_order(long_order_size, 1.0, current_price, required_margin_rate)  # Buy
-        self.process_new_order(short_order_size, -1.0, current_price, required_margin_rate)  # Sell
+        self.process_new_order(long_order_size, short_order_size, current_price, required_margin_rate)
 
         #self.effective_margin.assign_add(current_price)
         #print(f"added current_price to effective_margin: {self.effective_margin}")
@@ -476,6 +481,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
             long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
             print("\n")
             print(f"update_assets of {i}th agent")
+            print(f"long_order_size:{long_order_size}, short_order_size:{short_order_size}")
             agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
             i += 1
             #agent.update_effective_margin = current_price * (long_order_size + short_order_size + long_close_position + short_close_position)
