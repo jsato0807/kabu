@@ -368,3 +368,6 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     ・比例分配
     ・ランダム分配
     ・均等分配
+    とりあえず比例配分で、match_ordersを実装したが、
+    １、今のままでprocess_new_order内でorder_margin < 0となって新規注文が実行されなかった場合にこのままで正常に動作するのか
+    ２、process_position_closureにもprocess_new_order内で計算処理しているunfulfilled~orders変数のように、閉じれなかった決済注文をunfulfilledとしておくべきかどうか 
