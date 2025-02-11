@@ -192,19 +192,7 @@ class RLAgent(tf.Module):
                     return
 
 
-    def update_assets(self, long_order_size, short_order_size, long_close_position, short_close_position, current_price, required_margin_rate=tf.Variable(0.04, name="required_margin_rate",dtype=tf.float32,trainable=True)):
-        """
-        資産とポジションの更新を実行
-        """
-
-        # --- 新規注文処理 ---
-        # Process new buy and sell orders
-        self.process_new_order(long_order_size, short_order_size, current_price, required_margin_rate)
-
-        #self.effective_margin.assign_add(current_price)
-        #print(f"added current_price to effective_margin: {self.effective_margin}")
-
-        #"""
+    def process_position_closure(self,long_close_position,short_close_position,current_price):
         # --- ポジション決済処理 ---
         pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
@@ -278,6 +266,10 @@ class RLAgent(tf.Module):
                 return
 
 
+    def process_position_update(self, current_price, required_margin_rate):
+        """
+        資産とポジションの更新を実行
+        """
         # --- 含み益の更新 ---
         pos_id_max = int(self.positions_index)  # 現在の最大 ID
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
@@ -356,7 +348,7 @@ class RLAgent(tf.Module):
                 print("after removing position")
                 print(self.positions.stack())
 
-                pos = [fulfilled_size, pos_type, open_price, 0, 0, profit]
+                pos = [size, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
                 print(f"Forced Closed at currnt_price:{current_price} with open_price:{open_price}, Effective Margin: {self.effective_margin}")
             #self.required_margin = 0.0
@@ -408,6 +400,7 @@ history = {
 # トレーニングループ
 generations = 10
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
+required_margin_rate=tf.Variable(0.04, name="required_margin_rate",dtype=tf.float32,trainable=True)
 gamma = tf.Variable(1,name="gamma",dtype=tf.float32,trainable=True)
 volume = tf.Variable(0,name="volume",dtype=tf.float32,trainable=True)
 actions = tf.TensorArray(dtype=tf.float32, size=len(agents),dynamic_size=True)
@@ -482,7 +475,10 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
             print("\n")
             print(f"update_assets of {i}th agent")
             print(f"long_order_size:{long_order_size}, short_order_size:{short_order_size}")
-            agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
+            #agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
+            agent.process_new_order(long_order_size,short_order_size,current_price,required_margin_rate)
+            agent.process_position_closure(long_close_position,short_close_position,current_price)
+            agent.process_position_update(current_price,required_margin_rate)
             i += 1
             #agent.update_effective_margin = current_price * (long_order_size + short_order_size + long_close_position + short_close_position)
             #print(f"long_order_size:{long_order_size}")
