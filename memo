@@ -329,7 +329,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     gifを使用したアニメーションでヒートマップがどう変化していくか調べよ
 
 2025-2-2
-    ※完全決済の時にそのポジションは利確されるので、posのadd_required_marginの項目は0になって欲しいが、10^-2 ~ 10^-8のオーダーの値になることがある。
+    完全決済の時にそのポジションは利確されるので、posのadd_required_marginの項目は0になって欲しいが、10^-2 ~ 10^-8のオーダーの値になることがある。
     →おそらくこの誤差と、最後の有効証拠金=預託証拠金+ポジション損益,の不一致が同じ原因と考えられる
     →有効証拠金のオーダーと生成者の出力値のオーダーが違いすぎることで、float32だと丸目誤差が10^-3程度でも起きるため、計算が不一致となる
     →log_scale_factorをtrainable=trueのtf.variableとして定義して、current_priceに乗算することで学習の対象とする
@@ -342,7 +342,8 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     →gen_gradient, disc_gradientsの両方で計算ができたことから、add_required_marginは、生成者の出力地であるcurrent_priceと識別者の出力値であるlong_order_size,short_order_size,long_close_position,short_close_positionの計算グラフの情報を保持していると言える
 
 2025-2-4
-    ※2025-1-23のところでも課題として挙げたが、process_new_orderをlongの後にshortを新規注文するように書いてあるがこれではlongの方が買いやすいというバイアスが生まれるのでだめ
+    2025-1-23のところでも課題として挙げたが、process_new_orderをlongの後にshortを新規注文するように書いてあるがこれではlongの方が買いやすいというバイアスが生まれるのでだめ
+    →process_new_orderを買いと売りの同時注文ができるように修正
     updated effective marginのところで、positions.writeとすると例えばpos_id=0であったposがpos_id=1になってpos_id=0のposとして全ての要素が0.0のposが追加されてしまう
     →pos_idをposから消したことでうまくいった。_remove_positionでgatherを使用したことで、pos_idが前倒しにずれることで、posの１つの要素としてpos_idを採用するとその値と、真のpos_idの値が不一致となる。
 
@@ -358,3 +359,12 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     →何もしてないのになぜか解決
     ※log_scale_factorを学習の対象にすることには成功したが、学習の方向性の定義が課題。
     ※2025-2-2にも書いた問題だが、部分決済と完全決済のところで選別基準にsizeと0の大小関係を設定してあるが、fulfilled_size = tf.minimum(close_position, size)という定義でsizeの方が選ばれても、誤差が発生していたとしたら、size -= fulfilled_sizeでsize=0にならない可能性がある。そうすると本来完全決済のはずが、部分決済になってしまい、余計なposがpositionに残る可能性が考えられる。
+    →そうではなく、決済処理の後でポジション更新の処理をしているが、決済処理のところで部分決済だとpositionsにそのposは残り、その際にunrealized_profitを一度減算しているにも関わらず、ポジション更新のところで再度そのposに対してunrealized_profitを減算してしまっている
+
+
+2025-2-11
+    2025-2-6にもあるとおり、需給を考慮して各エージェントの発注が約定するかを決定する関数を実装する必要がある
+    →未決済注文や未決済ポジションの分配方法としては以下の3つがある
+    ・比例分配
+    ・ランダム分配
+    ・均等分配
