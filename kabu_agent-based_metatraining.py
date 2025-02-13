@@ -71,7 +71,7 @@ def update_margin_maintenance_rate(effective_margin, required_margin, margin_cut
 class RLAgent(tf.Module):
     def __init__(self, initial_cash=100000):
         super().__init__()
-        self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True,clear_after_read=False)
+        self.positions = tf.TensorArray(dtype=tf.float32, size=0, name="positions",dynamic_size=True,clear_after_read=False)
         self.closed_positions = []
         self.positions_index = tf.Variable(0, name="positions_index",dtype=tf.float32,trainable=True)
         self.effective_margin = tf.Variable(initial_cash, name="effective_margin",dtype=tf.float32,trainable=True)
@@ -536,7 +536,7 @@ history = {
 }
 
 # トレーニングループ
-generations = 10
+generations = 100
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
 required_margin_rate=tf.Variable(0.04, name="required_margin_rate",dtype=tf.float32,trainable=True)
 gamma = tf.Variable(1,name="gamma",dtype=tf.float32,trainable=True)
@@ -546,10 +546,15 @@ disc_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=Tr
 gen_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
 
 
-
+CHECKPOINT_INTERVAL = 24
 
 with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
     for generation in range(generations):
+        #if generation % (CHECKPOINT_INTERVAL * max(1,generation//24)) == 0:
+        if generation % 10 == 0:
+            gen_tape.reset()
+            disc_tape.reset()
+            print(f"reset calculation graph in generation:{generation}")
         # 市場生成用の入力データ
         input_data = tf.concat([tf.reshape(states, [-1]), [supply_and_demand]], axis=0)
         # 各要素に 1e-6 を加算して対数を取る
@@ -698,7 +703,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         gen_gradients = gen_tape.gradient(gen_loss, [generator.log_scale_factor] + generator.model.trainable_variables)
 
         print(f"gen_gradients:{gen_gradients}")
-        #print(f"gen_loss: {gen_loss}")
+        print(f"gen_loss: {gen_loss}")
         #print(f"generation:{generation}")
         print(f"gen_gradients: {gen_gradients}")
         #exit()
@@ -737,9 +742,10 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         #for agent in agents:
         #    agent.effective_margin = agent.update_effective_margin
 
-        #print(f"trainable_variables:{generator.trainable_variables}")
+        print(f"trainable_variables:{generator.trainable_variables}")
         print(f"generation:{generation}")
         tf.print(f"log_scale_factor:",generator.log_scale_factor)
+        print(f"current_price:{current_price}")
         print(" ")
         print(" ")
         print(" ")
