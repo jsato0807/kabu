@@ -377,3 +377,4 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 2025-2-13
     tf.TensorArrayで管理しているpostionsの各要素posを、pos.readとした後に、何もしないと全てが０のposが自動で実装されてしまう誤作動が起きる
     →positions.stack()やpos.writeとすれば解決
+    ※unfulfilledなpositionsの計算が正しいかを検算する方法を検討せよ
