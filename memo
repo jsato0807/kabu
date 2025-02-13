@@ -358,7 +358,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     2025-2-2のところにも書いたが、全てが0のposがpositionに追加されてしまう現象が発生。
     →何もしてないのになぜか解決
     ※log_scale_factorを学習の対象にすることには成功したが、学習の方向性の定義が課題。
-    ※2025-2-2にも書いた問題だが、部分決済と完全決済のところで選別基準にsizeと0の大小関係を設定してあるが、fulfilled_size = tf.minimum(close_position, size)という定義でsizeの方が選ばれても、誤差が発生していたとしたら、size -= fulfilled_sizeでsize=0にならない可能性がある。そうすると本来完全決済のはずが、部分決済になってしまい、余計なposがpositionに残る可能性が考えられる。
+    2025-2-2にも書いた問題だが、部分決済と完全決済のところで選別基準にsizeと0の大小関係を設定してあるが、fulfilled_size = tf.minimum(close_position, size)という定義でsizeの方が選ばれても、誤差が発生していたとしたら、size -= fulfilled_sizeでsize=0にならない可能性がある。そうすると本来完全決済のはずが、部分決済になってしまい、余計なposがpositionに残る可能性が考えられる。
     →そうではなく、決済処理の後でポジション更新の処理をしているが、決済処理のところで部分決済だとpositionsにそのposは残り、その際にunrealized_profitを一度減算しているにも関わらず、ポジション更新のところで再度そのposに対してunrealized_profitを減算してしまっている
 
 
@@ -366,8 +366,14 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     2025-2-6にもあるとおり、需給を考慮して各エージェントの発注が約定するかを決定する関数を実装する必要がある
     →未決済注文や未決済ポジションの分配方法としては以下の3つがある
     ・比例分配
-    ・ランダム分配
-    ・均等分配
+    ※ランダム分配
+    ※均等分配
     とりあえず比例配分で、match_ordersを実装したが、
     １、今のままでprocess_new_order内でorder_margin < 0となって新規注文が実行されなかった場合にこのままで正常に動作するのか
     ２、process_position_closureにもprocess_new_order内で計算処理しているunfulfilled~orders変数のように、閉じれなかった決済注文をunfulfilledとしておくべきかどうか 
+    →2は解決、１もおそらくreturnとなるだけなので問題ないかと思われる。
+    ※→ランダム分配と均等分配も追々実装せよ
+
+2025-2-13
+    tf.TensorArrayで管理しているpostionsの各要素posを、pos.readとした後に、何もしないと全てが０のposが自動で実装されてしまう誤作動が起きる
+    →positions.stack()やpos.writeとすれば解決
