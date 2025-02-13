@@ -348,7 +348,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     →pos_idをposから消したことでうまくいった。_remove_positionでgatherを使用したことで、pos_idが前倒しにずれることで、posの１つの要素としてpos_idを採用するとその値と、真のpos_idの値が不一致となる。
 
 2025-2-6
-    ※今は需給に関係なく、各エージェントが自分の資産の範囲内で売買したければ自分の意思だけでそれが可能な設定だが、実際には例えば買い注文をしてもそこで誰かが売ってなければ買うことはできない
+    今は需給に関係なく、各エージェントが自分の資産の範囲内で売買したければ自分の意思だけでそれが可能な設定だが、実際には例えば買い注文をしてもそこで誰かが売ってなければ買うことはできない
     order_sizeそのものをlossとして勾配計算したところ、disc_gradientについて、なぜか1th agentだけが非負で、それ以外のagentが0のままだった。
     →order_sizeの更新に、effective_marginの更新にupdate_effective_marginを使用したように、new_order_sizeに一度更新した値を入れてからorder_size=new_order_sizeとする方法と、単純にpython演算子+=を使用する方法を試しましたが、lossをorder_sizeとした場合に依然として1th agentだけがdisc_gradientが非負だった。(seed=42)
     →seed=43に変更すると、1th agentは０となる一方で、2th, 3th agentが非負となった。よって重みの初期値で勾配消失が起きてしまっている。
@@ -366,8 +366,8 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     2025-2-6にもあるとおり、需給を考慮して各エージェントの発注が約定するかを決定する関数を実装する必要がある
     →未決済注文や未決済ポジションの分配方法としては以下の3つがある
     ・比例分配
-    ※ランダム分配
-    ※均等分配
+    ・ランダム分配
+    ・均等分配
     とりあえず比例配分で、match_ordersを実装したが、
     １、今のままでprocess_new_order内でorder_margin < 0となって新規注文が実行されなかった場合にこのままで正常に動作するのか
     ２、process_position_closureにもprocess_new_order内で計算処理しているunfulfilled~orders変数のように、閉じれなかった決済注文をunfulfilledとしておくべきかどうか 
