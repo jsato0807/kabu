@@ -383,3 +383,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     generationの増加に伴い、計算グラフの情報を持つ変数の数が増えることで、勾配計算が膨大になる
     →tape.reset()を定期的に(10ごとに)入れる
     ※loss cutが執行された後の挙動が考えられていないため、資産がマイナスのままシミュレーションが進んでしまう。
+    →依然としてcheck totalと有効証拠金の不一致が起こるのだが、おそらく、unrealized_profitの減算が重複していることに関連すると思われるが、原因が不明
+
+2025-2-14
+    tf.shapeを使用すれば、self.positions_indexは不要
