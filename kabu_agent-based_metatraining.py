@@ -223,18 +223,18 @@ class RLAgent(tf.Module):
                 continue
             size, pos_type, open_price, unrealized_profit, margin, realized_profit = tf.unstack(pos)
 
-            if pos_type.numpy() == 1 and self.unfulfilled_long_close > 0:
+            if pos_type.numpy() == 1.0 and self.unfulfilled_long_close > 0:
                 fulfilled_size = tf.minimum(self.unfulfilled_long_close,size)
                 profit = fulfilled_size * (current_price - open_price)
-            elif pos_type.numpy() == 1 and self.unfulfilled_long_close == 0:
+            elif pos_type.numpy() == 1.0 and self.unfulfilled_long_close == 0:
                 pos = tf.stack([size, pos_type, open_price, unrealized_profit, margin, realized_profit])
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 print("unfulfilled_long_close == 0 so continue")
                 continue
-            elif pos_type.numpy() == -1 and self.unfulfilled_short_close > 0:
+            elif pos_type.numpy() == -1.0 and self.unfulfilled_short_close > 0:
                 fulfilled_size = tf.minimum(self.unfulfilled_short_close,size)
                 profit = fulfilled_size * (open_price - current_price)
-            elif pos_type.numpy() == -1 and self.unfulfilled_short_close == 0:
+            elif pos_type.numpy() == -1.0 and self.unfulfilled_short_close == 0:
                 pos = tf.stack([size, pos_type, open_price, unrealized_profit, margin, realized_profit])
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 print("unfulfilled_short_close == 0 so continue")
@@ -265,7 +265,7 @@ class RLAgent(tf.Module):
             #size = new_size
             if size > 0:  # 部分決済の場合
                 print(f"partial payment was executed")
-                pos = tf.stack([size, pos_type, open_price, 0, margin+add_required_margin, 0])#once substract unrealized_profit from effective_margin, you need not do it agagin in the process of update pos, so you have to set unrealized_profit to 0.
+                pos = tf.stack([size, pos_type, open_price, 0, add_required_margin, 0])#once substract unrealized_profit from effective_margin, you need not do it agagin in the process of update pos, so you have to set unrealized_profit to 0.
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 print(self.positions.stack())
                 pos = [fulfilled_size, pos_type, open_price, 0, 0, profit]
@@ -280,7 +280,7 @@ class RLAgent(tf.Module):
                 self._remove_position(pos_id)
                 print("after removeing position")
                 print(self.positions.stack())
-            print(f"Closed {'Buy' if pos_type.numpy()==1 else ('Sell' if pos_type.numpy() == -1 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
+            print(f"Closed {'Buy' if pos_type.numpy()==1.0 else ('Sell' if pos_type.numpy() == -1.0 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
 
             if self.positions.size() == 0:  #this sentence needs because required_margin must be just 0 when all positions are payed, but actually not be just 0 because of rounding error.
                 self.required_margin = 0
@@ -335,7 +335,7 @@ class RLAgent(tf.Module):
             add_required_margin = -margin + current_price * size * required_margin_rate
             self.required_margin += add_required_margin.numpy()
 
-            pos = tf.stack([size, pos_type, open_price, unrealized_profit,margin+add_required_margin,0])
+            pos = tf.stack([size, pos_type, open_price, unrealized_profit,add_required_margin,0])
             #print(f"pos_id:{type(pos_id)}")
             #print(f"size:{type(size)}")
             #print(f"pos_type:{type(pos_type)}")
@@ -368,7 +368,10 @@ class RLAgent(tf.Module):
                 except:
                     continue
                 size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
-                profit = (current_price - open_price) * size  # 現在の損失計算
+                if pos_type.numpy() == 1.0:
+                    profit = (current_price - open_price) * size  # 現在の損失計算
+                elif pos_type.numpy() == -1.0:
+                    profit = -(current_price - open_price) * size
                 #self.effective_margin.assign(self.effective_margin + profit - before_unrealized_profit) # 損失分を証拠金に反映
                 update_effective_margin = self.effective_margin + profit - before_unrealized_profit
                 self.effective_margin = update_effective_margin
@@ -393,6 +396,7 @@ class RLAgent(tf.Module):
             self.positions_index.assign(0)
 
             self.required_margin = 0
+            _, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin) 
 
         #"""
 
@@ -549,7 +553,7 @@ history = {
 }
 
 # トレーニングループ
-generations = 100
+generations = 22
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
 required_margin_rate=tf.Variable(0.04, name="required_margin_rate",dtype=tf.float32,trainable=True)
 gamma = tf.Variable(1,name="gamma",dtype=tf.float32,trainable=True)
@@ -558,8 +562,6 @@ actions = tf.TensorArray(dtype=tf.float32, size=len(agents),dynamic_size=True)
 disc_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
 gen_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
 
-
-CHECKPOINT_INTERVAL = 24
 
 with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
     for generation in range(generations):
@@ -789,7 +791,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
     i = 0
     for agent in agents:
         position_value = 0
-        if agent.positions:
+        if agent.positions and agent.margin_maintenance_flag==False:
             print("🔍 Before position_value calculation, positions:")
             print(agent.positions.stack())
             # TensorArray を Python の list に変換
