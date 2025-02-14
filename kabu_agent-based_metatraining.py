@@ -106,6 +106,7 @@ class RLAgent(tf.Module):
     
     # `_remove_position()` の修正
     def _remove_position(self, index):
+        print(f"positions_index before removing a position:{self.positions_index}")
         index = tf.cast(index, tf.int32)
         valid_indices = tf.boolean_mask(
             tf.range(self.positions.size(), dtype=tf.int32),
@@ -124,6 +125,9 @@ class RLAgent(tf.Module):
 
         self.positions = new_positions
         self.positions_index.assign(tf.cast(tf.shape(filtered_positions)[0], tf.float32))  # 🔥 float32 に変換
+        print(f"after removing")
+        print(self.positions.stack())
+        print(f"positions_index after removing a position:{self.positions_index}")
 
 
 
@@ -191,7 +195,7 @@ class RLAgent(tf.Module):
                 #self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
 
                 #self.positions_index.assign_add(1)
-                print(self.positions_index)
+                print(f"positions_index in process_new_order:{self.positions_index}")
                 #print(f"Opened position at {current_price}, required margin: {self.required_margin}")
                 print(self.positions.stack())
                 self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
@@ -211,7 +215,8 @@ class RLAgent(tf.Module):
         self.unfulfilled_short_close = new_unfulfilled_short_close
 
         # --- ポジション決済処理 ---
-        pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
+        pos_id_max = int(self.positions_index.numpy() - 1)  # 現在の最大 ID
+        to_be_removed = []
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
             try:
                 pos = self.positions.read(pos_id)
@@ -265,7 +270,7 @@ class RLAgent(tf.Module):
             #size = new_size
             if size > 0:  # 部分決済の場合
                 print(f"partial payment was executed")
-                pos = tf.stack([size, pos_type, open_price, 0, add_required_margin, 0])#once substract unrealized_profit from effective_margin, you need not do it agagin in the process of update pos, so you have to set unrealized_profit to 0.
+                pos = tf.stack([size, pos_type, open_price, 0, add_required_margin, 0])#once substract unrealized_profit from effective_margin, you need not do it again in the process of update pos, so you have to set unrealized_profit to 0.
                 self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos)
                 print(self.positions.stack())
                 pos = [fulfilled_size, pos_type, open_price, 0, 0, profit]
@@ -277,9 +282,7 @@ class RLAgent(tf.Module):
                 #print(f"all payment: margin+add_required_margin:{margin+add_required_margin}")
                 self.closed_positions.append(pos)
 
-                self._remove_position(pos_id)
-                print("after removeing position")
-                print(self.positions.stack())
+                to_be_removed.append(pos_id)
             print(f"Closed {'Buy' if pos_type.numpy()==1.0 else ('Sell' if pos_type.numpy() == -1.0 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
 
             if self.positions.size() == 0:  #this sentence needs because required_margin must be just 0 when all positions are payed, but actually not be just 0 because of rounding error.
@@ -294,7 +297,9 @@ class RLAgent(tf.Module):
             self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
             if self.margin_maintenance_flag:
                 print(f"margin maintenance rate is {self.margin_maintenance_rate},so loss cut is executed in position closure process, effective_margin: {self.effective_margin}")
-                return
+                continue
+        for pos_id in sorted(to_be_removed, reverse=True):  # 降順で削除（pos_id がズレないように）
+            self._remove_position(pos_id)
 
 
     def process_position_update(self, current_price, required_margin_rate):
@@ -306,7 +311,7 @@ class RLAgent(tf.Module):
         資産とポジションの更新を実行
         """
         # --- 含み益の更新 ---
-        pos_id_max = int(self.positions_index)  # 現在の最大 ID
+        pos_id_max = int(self.positions_index.numpy() - 1)  # 現在の最大 ID
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
             try:
                 pos = self.positions.read(pos_id)
@@ -357,7 +362,9 @@ class RLAgent(tf.Module):
         self.margin_maintenance_flag, _ = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
         if self.margin_maintenance_flag:
             print("Forced margin cut triggered.")
-            pos_id_max = int(self.positions_index - 1)  # 現在の最大 ID
+            pos_id_max = int(self.positions_index.numpy() - 1)  # 現在の最大 ID
+            to_be_removed = []
+            print(f"pos_id_max right before forced margin cut triggered: {pos_id_max}")
             for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
                 try:
                     pos = self.positions.read(pos_id)
@@ -368,6 +375,7 @@ class RLAgent(tf.Module):
                 except:
                     continue
                 size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
+                before_unrealized_profit = 0    #if you pass this sentence, it means that you have already passed position closure process and position update process, so you have already minus unrealzed_profit from effective_margin in position update process, so you need not minus it again in ths part. according to this, you have to set before_unrealized_profit to 0.
                 if pos_type.numpy() == 1.0:
                     profit = (current_price - open_price) * size  # 現在の損失計算
                 elif pos_type.numpy() == -1.0:
@@ -382,14 +390,15 @@ class RLAgent(tf.Module):
                 #self.realized_profit += profit
                 self.required_margin -= margin
 
-                self._remove_position(pos_id)
-                print("after removing position")
-                print(self.positions.stack())
+                to_be_removed.append(pos_id)
 
                 pos = [size, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
                 print(f"Forced Closed at currnt_price:{current_price} with open_price:{open_price}, Effective Margin: {self.effective_margin}")
             #self.required_margin = 0.0
+
+            for pos_id in sorted(to_be_removed, reverse=True):  # 降順で削除（pos_id がズレないように）
+                self._remove_position(pos_id)
 
             # 全ポジションをクリア
             self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
