@@ -47,6 +47,38 @@ class MarketGenerator(tf.keras.Model):
         gradients = tape.gradient(loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
     """
+def validate_unfulfilled_orders(agents, final_remaining_long_open, final_remaining_long_close, 
+                                final_remaining_short_open, final_remaining_short_close):
+    """
+    各エージェントの unfulfilled (未約定) の新規注文・決済注文が整合性を持っているかをチェックする関数。
+
+    - `final_remaining_long_open`: 新規ロング注文の未約定部分
+    - `final_remaining_short_open`: 新規ショート注文の未約定部分
+    - `final_remaining_long_close`: ロング決済注文の未約定部分
+    - `final_remaining_short_close`: ショート決済注文の未約定部分
+    """
+
+    # 🔹 1️⃣ 理論上の未約定注文の合計を計算 (相殺後の未決済注文)
+    total_expected_unfulfilled_open = final_remaining_long_open + final_remaining_short_open
+    total_expected_unfulfilled_close = final_remaining_long_close + final_remaining_short_close
+
+    # 🔹 2️⃣ 各エージェントの未約定ポジションの合計を取得
+    total_actual_unfulfilled_open = sum(agent.unfulfilled_long_open + agent.unfulfilled_short_open for agent in agents)
+    total_actual_unfulfilled_close = sum(agent.unfulfilled_long_close + agent.unfulfilled_short_close for agent in agents)
+
+    # 🔹 3️⃣ 整合性チェック
+    print(f"🔍 Unfulfilled Open Orders: Expected: {total_expected_unfulfilled_open:.6f}, Actual: {total_actual_unfulfilled_open:.6f}")
+    print(f"🔍 Unfulfilled Close Orders: Expected: {total_expected_unfulfilled_close:.6f}, Actual: {total_actual_unfulfilled_close:.6f}")
+
+    assert abs(total_expected_unfulfilled_open - total_actual_unfulfilled_open) < 1e-6, \
+        f"❌ Mismatch in unfulfilled open orders! Expected: {total_expected_unfulfilled_open:.6f}, Got: {total_actual_unfulfilled_open:.6f}"
+
+    assert abs(total_expected_unfulfilled_close - total_actual_unfulfilled_close) < 1e-6, \
+        f"❌ Mismatch in unfulfilled close orders! Expected: {total_expected_unfulfilled_close:.6f}, Got: {total_actual_unfulfilled_close:.6f}"
+
+    print("✅ Unfulfilled order validation passed successfully!")
+
+
 
 
 def check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min):
@@ -540,7 +572,10 @@ def match_orders(agents, actions, current_price, required_margin_rate):
             new_unfulfilled_short_close = agent.unfulfilled_short_close + final_remaining_short_close * short_close_ratio
             agent.unfulfilled_short_close = new_unfulfilled_short_close
 
-
+    print(f"executed_open_volume:{executed_open_volume}")
+    print(f"executed_close_volume:{executed_close_volume}")
+    validate_unfulfilled_orders(agents, final_remaining_long_open, final_remaining_long_close, 
+                                final_remaining_short_open, final_remaining_short_close)
 
 # トレーニングループ
 num_agents = 5
@@ -562,7 +597,7 @@ history = {
 }
 
 # トレーニングループ
-generations = 22
+generations = 20
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
 required_margin_rate=tf.Variable(0.04, name="required_margin_rate",dtype=tf.float32,trainable=True)
 gamma = tf.Variable(1,name="gamma",dtype=tf.float32,trainable=True)
@@ -824,6 +859,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         print(f"確定利益:{agent.realized_profit.numpy()}")
         print(f"証拠金維持率:{agent.margin_maintenance_rate}")
         print(f"check total:{agent.margin_deposit+position_value}")
+        print(f"ロスカットしたか:{agent.margin_maintenance_flag}")
         print("\n")
         i += 1
 
