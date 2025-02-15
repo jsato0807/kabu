@@ -283,10 +283,12 @@ class RLAgent(tf.Module):
                 self.closed_positions.append(pos)
 
                 to_be_removed.append(pos_id)
+                if self.positions.size().numpy() == len(to_be_removed):  #this sentence needs because required_margin must be just 0 when all positions are payed, but actually not be just 0 because of rounding error.
+                    self.required_margin = 0
+                self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos) #once rewrite the pos which you should remove because you have to write or stack the pos which once you read
+
             print(f"Closed {'Buy' if pos_type.numpy()==1.0 else ('Sell' if pos_type.numpy() == -1.0 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
 
-            if self.positions.size() == 0:  #this sentence needs because required_margin must be just 0 when all positions are payed, but actually not be just 0 because of rounding error.
-                self.required_margin = 0
             #if pos_type.numpy() == 1.0:
             #    #self.unfulfilled_long_open.assign(long_close_position - fulfilled_size)
             #    self.unfulfilled_long_open = long_close_position - fulfilled_size
@@ -375,7 +377,7 @@ class RLAgent(tf.Module):
                 except:
                     continue
                 size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
-                before_unrealized_profit = 0    #if you pass this sentence, it means that you have already passed position closure process and position update process, so you have already minus unrealzed_profit from effective_margin in position update process, so you need not minus it again in ths part. according to this, you have to set before_unrealized_profit to 0.
+
                 if pos_type.numpy() == 1.0:
                     profit = (current_price - open_price) * size  # 現在の損失計算
                 elif pos_type.numpy() == -1.0:
@@ -391,6 +393,9 @@ class RLAgent(tf.Module):
                 self.required_margin -= margin
 
                 to_be_removed.append(pos_id)
+                if self.positions.size().numpy() == len(to_be_removed):  #this sentence needs because required_margin must be just 0 when all positions are payed, but actually not be just 0 because of rounding error.
+                    self.required_margin = 0
+                self.positions = self.positions.write(tf.cast(pos_id, tf.int32), pos) #once rewrite the pos which you should remove because you have to write or stack the pos which once you read
 
                 pos = [size, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
