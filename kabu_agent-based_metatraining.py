@@ -73,7 +73,6 @@ class RLAgent(tf.Module):
         super().__init__()
         self.positions = tf.TensorArray(dtype=tf.float32, size=0, name="positions",dynamic_size=True,clear_after_read=False)
         self.closed_positions = []
-        self.positions_index = tf.Variable(0, name="positions_index",dtype=tf.float32,trainable=True)
         self.effective_margin = tf.Variable(initial_cash, name="effective_margin",dtype=tf.float32,trainable=True)
         self.required_margin = 0
         self.margin_deposit = tf.Variable(initial_cash, name="margin_deposit",dtype=tf.float32,trainable=True)
@@ -106,7 +105,7 @@ class RLAgent(tf.Module):
     
     # `_remove_position()` の修正
     def _remove_position(self, index):
-        print(f"positions_index before removing a position:{self.positions_index}")
+        print(f"positions_index before removing a position:{tf.shape(self.positions.stack())[0]}")
         index = tf.cast(index, tf.int32)
         valid_indices = tf.boolean_mask(
             tf.range(self.positions.size(), dtype=tf.int32),
@@ -124,10 +123,9 @@ class RLAgent(tf.Module):
             new_positions = new_positions.write(i, filtered_positions[i])
 
         self.positions = new_positions
-        self.positions_index.assign(tf.cast(tf.shape(filtered_positions)[0], tf.float32))  # 🔥 float32 に変換
         print(f"after removing")
         print(self.positions.stack())
-        print(f"positions_index after removing a position:{self.positions_index}")
+        print(f"positions_index after removing a position:{tf.shape(self.positions.stack())[0]}")
 
 
 
@@ -176,8 +174,7 @@ class RLAgent(tf.Module):
                     self.unfulfilled_long_open = new_unfulfilled_long_open
                     pos = tf.stack([long_order_size, tf.Variable(1, name="trade_type",dtype=tf.float32,trainable=True), current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), long_add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
                     print(f"Opened Buy position at {current_price}, required_margin:{self.required_margin}")
-                    self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
-                    self.positions_index.assign_add(1)
+                    self.positions = self.positions.write(tf.shape(self.positions.stack())[0], pos)
                     #new_order_size = order_size + self.unfulfilled_long_open
                     #order_size = new_order_size
                 if short_order_size > 0:
@@ -186,8 +183,7 @@ class RLAgent(tf.Module):
                     self.unfulfilled_short_open = new_unfulfilled_short_open
                     pos = tf.stack([short_order_size, tf.Variable(-1, name="trade_type",dtype=tf.float32,trainable=True), current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), short_add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
                     print(f"Opened Sell position at {current_price}, required_margin:{self.required_margin}")
-                    self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
-                    self.positions_index.assign_add(1)
+                    self.positions = self.positions.write(tf.shape(self.positions.stack())[0], pos)
                     #new_order_size = order_size + self.unfulfilled_short_open
                     #order_size = new_order_size
                 #pos = tf.stack([order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
@@ -195,7 +191,7 @@ class RLAgent(tf.Module):
                 #self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
 
                 #self.positions_index.assign_add(1)
-                print(f"positions_index in process_new_order:{self.positions_index}")
+                print(f"positions_index in process_new_order:{tf.shape(self.positions.stack())[0]}")
                 #print(f"Opened position at {current_price}, required margin: {self.required_margin}")
                 print(self.positions.stack())
                 self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
@@ -215,7 +211,7 @@ class RLAgent(tf.Module):
         self.unfulfilled_short_close = new_unfulfilled_short_close
 
         # --- ポジション決済処理 ---
-        pos_id_max = int(self.positions_index.numpy() - 1)  # 現在の最大 ID
+        pos_id_max = int(tf.shape(self.positions.stack())[0] - 1)  # 現在の最大 ID
         to_be_removed = []
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
             try:
@@ -313,7 +309,7 @@ class RLAgent(tf.Module):
         資産とポジションの更新を実行
         """
         # --- 含み益の更新 ---
-        pos_id_max = int(self.positions_index.numpy() - 1)  # 現在の最大 ID
+        pos_id_max = int(tf.shape(self.positions.stack())[0] - 1)  # 現在の最大 ID
         for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
             try:
                 pos = self.positions.read(pos_id)
@@ -364,7 +360,7 @@ class RLAgent(tf.Module):
         self.margin_maintenance_flag, _ = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
         if self.margin_maintenance_flag:
             print("Forced margin cut triggered.")
-            pos_id_max = int(self.positions_index.numpy() - 1)  # 現在の最大 ID
+            pos_id_max = int(tf.shape(self.positions.stack())[0] - 1)  # 現在の最大 ID
             to_be_removed = []
             print(f"pos_id_max right before forced margin cut triggered: {pos_id_max}")
             for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
@@ -407,7 +403,6 @@ class RLAgent(tf.Module):
 
             # 全ポジションをクリア
             self.positions = tf.TensorArray(dtype=tf.float32, size=0, dynamic_size=True)
-            self.positions_index.assign(0)
 
             self.required_margin = 0
             _, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin) 
