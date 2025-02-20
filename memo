@@ -417,6 +417,14 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     リスクリターンのトレードオフ（高リスク資産の期待リターンは、低リスク資産の期待リターンを上回るべき）
     クラスタリング手法（K-means, DBSCAN）を使い、生成データが適切に多様な市場パターンを持つかを確認。
     GAN市場でオプション価格を計算し、ボラティリティ・スマイルを確認することで、GAN市場のリアリティを評価できる
+    フィッシャー情報行列で、学習したモデルの汎化性能を評価できるかも
+        (
+    Catastrophic Fisher Explosion: Early Phase Fisher Matrix Impacts Generalization
+    Universal Statistics of Fisher Information in Deep Neural Networks: Mean Field Approach
+    Pathological Spectra of the Fisher Information Metric and Its Variants in Deep Neural Networks
+    Training Algorithm Matters for the Performance of Neural Network Potential: A Case Study of Adam and the Kalman Filter Optimizers
+    Inverse-Reference Priors for Fisher Regularization of Bayesian Neural Networks
+    )
 
     (市場の効率性と情報消化プロセス.pdf)
     MA-ARCHモデル
@@ -427,3 +435,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 2025-2-20
     ニューラルネットワークの学習の進捗を損失関数以外で評価する方法
     勾配のノルム
+
+    GANのモード崩壊に関する論文を調べよ
+
+    オプションと先物の違いを理解せよ（https://chatgpt.com/share/67b6c5d8-8e00-800e-b780-38a6d4cacd97）
