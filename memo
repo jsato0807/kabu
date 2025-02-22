@@ -401,7 +401,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     シャノンエントロピー
     リターンの自己相関
     各エージェントの累積損益をヒストグラム化し、パレート分布をフィッティング
-    Hurst指数
+    Hurst指数、ボックスカウント、Detrended Fluctiation Analisys(DFA)　などを使用して市場のフラクタル構造を出力せよ
     単位根検定による非定常性のテスト
     Bai-Perronによる構造変化の検出
     Garchモデルによるボラティリティ変化の評価
@@ -417,14 +417,6 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     リスクリターンのトレードオフ（高リスク資産の期待リターンは、低リスク資産の期待リターンを上回るべき）
     クラスタリング手法（K-means, DBSCAN）を使い、生成データが適切に多様な市場パターンを持つかを確認。
     GAN市場でオプション価格を計算し、ボラティリティ・スマイルを確認することで、GAN市場のリアリティを評価できる
-    フィッシャー情報行列で、学習したモデルの汎化性能を評価できるかも
-        (
-    Catastrophic Fisher Explosion: Early Phase Fisher Matrix Impacts Generalization
-    Universal Statistics of Fisher Information in Deep Neural Networks: Mean Field Approach
-    Pathological Spectra of the Fisher Information Metric and Its Variants in Deep Neural Networks
-    Training Algorithm Matters for the Performance of Neural Network Potential: A Case Study of Adam and the Kalman Filter Optimizers
-    Inverse-Reference Priors for Fisher Regularization of Bayesian Neural Networks
-    )
 
     (市場の効率性と情報消化プロセス.pdf)
     MA-ARCHモデル
@@ -433,9 +425,55 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     ジャンプ後のポラティリティ持続性
 
 2025-2-20
-    ニューラルネットワークの学習の進捗を損失関数以外で評価する方法
+    ・ニューラルネットワークの学習の進捗を損失関数以外で評価する方法
     勾配のノルム
+    フィッシャー情報行列で、学習したモデルの汎化性能を評価できるかも
+    フィッシャー情報行列の固有値分布を用いることで、保有している情報の豊富さがわかる（https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/67b6b5fe-312c-800e-9331-ba4beee7ab9d）
+        (
+    Catastrophic Fisher Explosion: Early Phase Fisher Matrix Impacts Generalization
+    Universal Statistics of Fisher Information in Deep Neural Networks: Mean Field Approach
+    Pathological Spectra of the Fisher Information Metric and Its Variants in Deep Neural Networks
+    Training Algorithm Matters for the Performance of Neural Network Potential: A Case Study of Adam and the Kalman Filter Optimizers
+    Inverse-Reference Priors for Fisher Regularization of Bayesian Neural Networks
+    )
 
     GANのモード崩壊に関する論文を調べよ
 
     オプションと先物の違いを理解せよ（https://chatgpt.com/share/67b6c5d8-8e00-800e-b780-38a6d4cacd97）
+
+2025-2-22
+    市場の非定常性の評価指標
+    (GPTの案: https://chatgpt.com/g/g-bo0FiWLY7-consensus/c/67b6b353-6698-800e-8896-d8bf0fbb7ce3)
+        ・効率性の評価指標
+        分散比（VR）（「長期的な価格変動の分散」と「短期的な価格変動の分散」）→市場が効率的であるほど、分散比は１に近づく
+        スペクトル密度解析（PSD）
+        適応的市場仮説（AMH）の評価
+
+        ・市場の非効率性を測る指標
+        Hurst指数
+        自己相関関数（ACF）
+        フラクタル次元
+        
+        ・市場の効率性と非効率性のバランスを測る
+
+        B = (E_model/E_market)/(I_model/I_market)
+        上記で挙げた指標を使って実際の市場の場合と、学習モデルの場合でBを計算することで、効率性と非効率性のバランスを評価
+        (Eは効率性の指標で、Iは非効率性の指標)
+
+        GANの判別器のエントロピー（H_D）の変動幅(エントロピーボラティリティ)
+        σ = √(1/T Σ (H - H_average)**2)
+         （エントロピー・ボラティリティ）が高い
+        → Discriminator が市場の変化に適応し、柔軟に戦略を変えている（市場の非定常性を学習できている可能性が高い）
+         （エントロピー・ボラティリティ）が低い
+        → Discriminator の戦略が固定化されており、市場の変化に対応できていない（非効率な市場を過剰に学習した可能性）
+        
+        市場の効率性とエントロピーの相関
+        分散比（VR)、hurst指数とdiscriminatorのエントロピーHの相関
+        ρ(H,VR), ρ(H,Hurst)
+        相関が強い場合
+        市場の効率性が高いときにエントロピーが高くなるなら、Discriminator は効率市場に対して適応できている 可能性が高い。
+        相関が弱い場合
+        Discriminator が市場の状態を適切に捉えられていない可能性がある。
+
+        短期エントロピーvs長期エントロピー
+        
