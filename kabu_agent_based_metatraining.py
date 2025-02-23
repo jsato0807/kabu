@@ -4,16 +4,19 @@ from tensorflow.keras import layers
 import os
 import random
 
-def set_seed(seed=43):
+seed = 43
+log_scale_factor = np.log(np.exp(1))
+
+def set_seed(seed):
     os.environ['PYTHONHASHSEED'] = str(seed)
     random.seed(seed)  # Python の乱数シード
     np.random.seed(seed)  # NumPy の乱数シード
     tf.random.set_seed(seed)  # TensorFlow の乱数シード
 
-set_seed()
+set_seed(seed)
 
 class MarketGenerator(tf.keras.Model):
-    def __init__(self, input_dim=4, output_dim=3):
+    def __init__(self,log_scale_factor=log_scale_factor ,input_dim=4, output_dim=3):
         super().__init__()
         self.model = tf.keras.Sequential([
             layers.Input(shape=(input_dim,)),
@@ -27,7 +30,7 @@ class MarketGenerator(tf.keras.Model):
         self.log_scale_factor = self.add_weight(
                 name="log_scale_factor",
                 shape=(),
-                initializer=tf.keras.initializers.Constant(np.log(np.exp(1))),
+                initializer=tf.keras.initializers.Constant(log_scale_factor),
                 trainable=True
             )
 
@@ -608,6 +611,7 @@ history = {
     "disc_gradients": [],
     "gen_loss": [],
     "disc_losses": [],
+    "log_scale_factor": [],
 }
 
 # トレーニングループ
@@ -835,6 +839,7 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         history["slippage"].append(current_slippage.numpy())
         history["gen_gradients"].append(gen_gradients)
         history["gen_loss"].append(gen_loss)
+        history["log_scale_factor"].append(generator.log_scale_factor.numpy())
 
     #print(f"Generation {generation}, Best Agent Assets: {max(float(agent.effective_margin.numpy()) for agent in agents):.2f}")
     #print(f"gen_gradients:{gen_gradients}")
@@ -880,5 +885,5 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         i += 1
 
 # ファイルへの記録
-with open("./txt_dir/kabu_agent_based_metatraining.txt", "w") as f:
+with open(f"./txt_dir/kabu_agent_based_metatraining_seed-{seed}_lsf-{log_scale_factor}_generations-{generations}.txt", "w") as f:
     f.write(str(history))
