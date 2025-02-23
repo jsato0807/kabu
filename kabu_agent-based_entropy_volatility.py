@@ -1,61 +1,48 @@
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
+from scipy.stats import entropy
 
-# --- 1. エントロピーの計算 ---
-def compute_entropy(probabilities):
-    """
-    各時点での出力確率からエントロピーを計算する関数
-    probabilities: numpy array of shape (T, num_classes)
-    """
-    eps = 1e-12  # 数値計算上のゼロ除算を避けるための小さな値
-    # エントロピー H = -sum(p_i * log(p_i))
-    entropies = -np.sum(probabilities * np.log(probabilities + eps), axis=1)
-    return entropies
+# ----- サンプルデータ（実データに置き換える） -----
+np.random.seed(42)
+T = 1000  # 期間
+discriminator_outputs = np.random.dirichlet(alpha=[1,1,1,1], size=T)  # Discriminator の出力確率
 
-# 例として、1000時点の4クラス確率データ（Discriminator の出力）を生成
-T = 1000
-# ここでは、Dirichlet 分布から乱数で生成（実際は学習中の出力確率を利用）
-#alpha = np.array([1, 1, 1, 1])
-#probabilities = np.random.dirichlet(alpha, size=T)
+# ----- 1. Discriminator のエントロピー H_D を計算 -----
+H_D_series = np.array([entropy(discriminator_outputs[t]) for t in range(T)])  # 各時点のエントロピー
 
-# 各時点のエントロピーを計算
-entropies = compute_entropy(probabilities)
+# ----- 2. エントロピーの移動分散（エントロピーボラティリティ）を計算 -----
+W = 20  # ウィンドウサイズ
+H_D_volatility = np.array([np.var(H_D_series[max(0, t-W):t+1]) for t in range(T)])  # 移動分散
 
-# エントロピーの分散を計算
-entropy_variance = np.var(entropies)
-print("Entropy Variance: ", entropy_variance)
+# ----- 3. データフレーム化 -----
+df = pd.DataFrame({
+    "Time": np.arange(T),
+    "Entropy": H_D_series,
+    "Entropy Volatility": H_D_volatility
+})
 
-# エントロピーの推移をプロットして確認
-plt.figure(figsize=(10, 4))
-plt.plot(entropies, label="Entropy")
-plt.xlabel("Time Step")
+import ace_tools as tools
+tools.display_dataframe_to_user(name="Entropy & Volatility", dataframe=df)
+
+# ----- 4. エントロピーのプロット -----
+plt.figure(figsize=(12, 6))
+
+# 1. エントロピーの時系列プロット
+plt.subplot(2, 1, 1)
+plt.plot(df["Time"], df["Entropy"], label="Entropy", color='b')
+plt.xlabel("Time")
 plt.ylabel("Entropy")
-plt.title("Time Series of Discriminator Entropy")
+plt.title("Discriminator Entropy Over Time")
 plt.legend()
-plt.show()
 
-# --- 2. ROI の計算 ---
-def compute_roi(total_assets):
-    """
-    総資産の時系列データから ROI を計算する関数
-    total_assets: numpy array of shape (T,)
-    ROI = (最終資産 - 初期資産) / 初期資産
-    """
-    roi = (total_assets[-1] - total_assets[0]) / total_assets[0]
-    return roi
-
-# 例として、1000時点の総資産データを生成
-# 初期資産を1000、最終資産を1500程度にノイズを加えながら線形に増加する例
-#total_assets = np.linspace(1000, 1500, T) + np.random.normal(0, 10, T)
-
-roi = compute_roi(total_assets)
-print("ROI: ", roi)
-
-# 総資産の推移をプロットして確認
-plt.figure(figsize=(10, 4))
-plt.plot(total_assets, label="Total Assets", color="green")
-plt.xlabel("Time Step")
-plt.ylabel("Total Assets")
-plt.title("Time Series of Discriminator's Total Assets")
+# 2. エントロピーボラティリティ（移動分散）のプロット
+plt.subplot(2, 1, 2)
+plt.plot(df["Time"], df["Entropy Volatility"], label="Entropy Volatility", color='r')
+plt.xlabel("Time")
+plt.ylabel("Entropy Volatility")
+plt.title("Entropy Volatility Over Time")
 plt.legend()
+
+plt.tight_layout()
 plt.show()
