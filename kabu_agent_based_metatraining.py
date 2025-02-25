@@ -619,9 +619,9 @@ use_rule_based = True  # 初期段階ではルールベースで流動性・ス�
 required_margin_rate=tf.Variable(0.04, name="required_margin_rate",dtype=tf.float32,trainable=True)
 gamma = tf.Variable(1,name="gamma",dtype=tf.float32,trainable=True)
 volume = tf.Variable(0,name="volume",dtype=tf.float32,trainable=True)
-actions = tf.TensorArray(dtype=tf.float32, size=len(agents),dynamic_size=True)
-disc_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
-gen_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True)
+actions = tf.TensorArray(dtype=tf.float32, size=len(agents),dynamic_size=True,clear_after_read=False)
+disc_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True,clear_after_read=False)
+gen_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=True,clear_after_read=False)
 
 
 with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
