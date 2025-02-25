@@ -4,7 +4,7 @@ from tensorflow.keras import layers
 import os
 import random
 
-seed = 43
+seed = 0
 log_scale_factor = np.log(np.exp(1))
 
 def set_seed(seed):
@@ -12,8 +12,6 @@ def set_seed(seed):
     random.seed(seed)  # Python の乱数シード
     np.random.seed(seed)  # NumPy の乱数シード
     tf.random.set_seed(seed)  # TensorFlow の乱数シード
-
-set_seed(seed)
 
 class MarketGenerator(tf.keras.Model):
     def __init__(self,log_scale_factor=log_scale_factor ,input_dim=4, output_dim=3):
@@ -477,7 +475,7 @@ def match_orders(agents, actions, current_price, required_margin_rate):
     long_close_orders = []  # ロング決済注文
     short_close_orders = []  # ショート決済注文
 
-    for agent, action in zip(agents, actions.stack()):
+    for agent, action in zip(agents, actions):
         action_flat = tf.reshape(action, [-1])  # 形状 (4,) に変換
         long_open_position, short_open_position, long_close_position, short_close_position = tf.unstack(action_flat)
 
@@ -594,6 +592,7 @@ def match_orders(agents, actions, current_price, required_margin_rate):
 
 # トレーニングループ
 num_agents = 5
+set_seed(seed)
 agents = [RLAgent() for _ in range(num_agents)]
 generator = MarketGenerator()
 
@@ -615,7 +614,7 @@ history = {
 }
 
 # トレーニングループ
-generations = 1000
+generations = 165
 use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
 required_margin_rate=tf.Variable(0.04, name="required_margin_rate",dtype=tf.float32,trainable=True)
 gamma = tf.Variable(1,name="gamma",dtype=tf.float32,trainable=True)
@@ -627,6 +626,7 @@ gen_losses = tf.TensorArray(dtype=tf.float32, size=len(agents), dynamic_size=Tru
 
 with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=True) as disc_tape:
     for generation in range(generations):
+        set_seed(generation)
         if max(1,generation) % 10 == 0:
             gen_tape.reset()
             disc_tape.reset()
@@ -674,15 +674,17 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
             i += 1
         #print(f"actions:{actions.stack()}")
 
-        supply_and_demand = tf.reduce_sum(actions.stack())
+        stacked_actions = actions.stack()
 
-        volume = tf.reduce_sum([tf.abs(actions.stack())])
+        supply_and_demand = tf.reduce_sum(stacked_actions)
+
+        volume = tf.reduce_sum([tf.abs(stacked_actions)])
 
         # 資産更新
         #print(actions.stack().shape)
         i = 0
-        match_orders(agents, actions, current_price, required_margin_rate)
-        for agent, action in zip(agents, actions.stack()):
+        match_orders(agents, stacked_actions, current_price, required_margin_rate)
+        for agent, action in zip(agents, stacked_actions):
             # アクションの形状 (1, 4) を (4,) に変換
             action_flat = tf.reshape(action, [-1])  # 形状 (4,)
             # 各項目を変数に分解
@@ -701,12 +703,12 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
             #agent.process_new_order(long_order_size,short_order_size,current_price,required_margin_rate)
             #agent.process_position_closure(long_close_position,short_close_position,current_price)
             agent.process_position_update(current_price,required_margin_rate)
-            i += 1
             #agent.update_effective_margin = current_price * (long_order_size + short_order_size + long_close_position + short_close_position)
-            #print(f"long_order_size:{long_order_size}")
-            #print(f"short_order_size:{short_order_size}")
-            #print(f"long_close_position:{long_close_position}")
-            #print(f"short_close_position:{short_close_position}")
+            print(f"{i}th long_order_size:{long_order_size}")
+            print(f"{i}th short_order_size:{short_order_size}")
+            print(f"{i}th long_close_position:{long_close_position}")
+            print(f"{i}th short_close_position:{short_close_position}")
+            i += 1
             #print(f"current_price:{current_price}")
             #print(f"update_effective_margin:{agent.update_effective_margin}")
 
@@ -740,13 +742,21 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         #elif generation >= generations // 2:
         if generation >= 0:
             #gen_loss = tf.reduce_mean(discriminator_performance)
-            gen_loss = tf.reduce_mean(tf.stack([agent.effective_margin for agent in agents]))
+            # エージェントの effective_margin を TensorFlow のテンソルとして格納
+            effective_margins = tf.stack([agent.effective_margin for agent in agents])
+            # ランダムなインデックスを取得
+            random_index = random.randint(0, len(agents) - 1)
+            # ランダムに選択した effective_margin を取得
+            selected_margin = effective_margins[random_index]
+            print(f"selected agent is {random_index}th agent")
+            #gen_loss = tf.reduce_mean(tf.stack([agent.effective_margin for agent in agents]))
+            gen_loss = selected_margin
             #print(f"gen_loss:{gen_loss}")
             i = 0
             for agent in agents:
                 disc_losses = disc_losses.write(i,-agent.effective_margin)
                 i += 1
-            stacked_disc_losses = disc_losses.stack()
+            #stacked_disc_losses = disc_losses.stack()
 
 
             """
@@ -793,8 +803,10 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         disc_gradients = []
         i = 0
         #for agent, disc_loss in zip(agents, stacked_disc_losses):
+        disc_losses_list = []
         for agent in agents:
             disc_loss = disc_losses.read(i)
+            disc_losses_list.append(disc_loss)
             #print(f"disc_loss:{disc_loss}")
             #exit()
             #print(i)
@@ -831,9 +843,9 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
 
         # 記録用の辞書に状態を追加
         history["disc_gradients"].append(disc_gradients)
-        history["disc_losses"].append(stacked_disc_losses)
+        history["disc_losses"].append(disc_losses_list)
         history["generated_states"].append(generated_states.numpy())
-        history["actions"].append(actions.stack())
+        history["actions"].append(stacked_actions)
         history["agent_assets"].append([agent.effective_margin.numpy() for agent in agents])
         history["liquidity"].append(current_liquidity.numpy())
         history["slippage"].append(current_slippage.numpy())
