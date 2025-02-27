@@ -634,10 +634,16 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
         else:
             reset_flag = False
 
-        # 市場生成用の入力データ
-        input_data = tf.concat([tf.reshape(states, [-1]), [supply_and_demand]], axis=0)
-        # 各要素に 1e-6 を加算して対数を取る
-        log_inputs = tf.math.log(input_data + 1e-6)
+        ## 各要素に 1e-6 を加算して対数を取る
+        # 供給需要の符号付き log 変換
+        log_supply_and_demand = tf.sign(supply_and_demand) * tf.math.log(tf.abs(supply_and_demand) + 1e-6)
+
+        # generator の入力データ
+        log_inputs = tf.concat([
+            tf.math.log(tf.reshape(states,[-1]) + 1e-6),
+            [log_supply_and_demand]
+        ], axis=0)
+
         generated_states = generator.generate(log_inputs)[0]
         unlog_generated_states = tf.math.exp(generated_states) - tf.constant(1e-6, dtype=tf.float32)
         current_price, current_liquidity, current_slippage = tf.split(unlog_generated_states, num_or_size_splits=3)
@@ -676,14 +682,22 @@ with tf.GradientTape(persistent=True) as gen_tape, tf.GradientTape(persistent=Tr
 
         stacked_actions = actions.stack()
 
-        supply_and_demand = tf.reduce_sum(stacked_actions)
-
         volume = tf.reduce_sum([tf.abs(stacked_actions)])
 
         # 資産更新
         #print(actions.stack().shape)
         i = 0
         match_orders(agents, stacked_actions, current_price, required_margin_rate)
+
+        supply_and_demand = tf.reduce_sum([
+            agent.unfulfilled_long_open
+            - agent.unfulfilled_short_open
+            - agent.unfulfilled_long_close
+            + agent.unfulfilled_short_close
+            for agent in agents
+        ])
+        print(f"supply_and_demand:{supply_and_demand}")
+
         for agent, action in zip(agents, stacked_actions):
             # アクションの形状 (1, 4) を (4,) に変換
             action_flat = tf.reshape(action, [-1])  # 形状 (4,)
