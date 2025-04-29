@@ -564,3 +564,8 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 2025-4-22
     以下のようにpytorchを使用すれば重みに依存した出力値が次のステップの入力値になるようなオンライン学習がこのmacでもできるかも
     https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/680740cd-85b0-800e-80e5-60254704ddbd
+
+2025-4-29
+    まずは入力データとなる値（需給やcurrent_price)などをPCAなどの時限削減によって重みに対する依存度を減らすべし
+    current_priceなどモデルの重みに依存しているパラメータの勾配ベクトルに対してPCAなどを実行、その上で値そのものは変わらないように以下のようにする(https://chatgpt.com/c/681093d1-f654-800e-b268-35aeda3cdfe8)
+    current_price_fixed = tf.stop_gradient(current_price) + 0.0 * tf.reduce_sum(compressed_dep)
