@@ -10,7 +10,7 @@ from common.functions import *
     
 
 seed = 0
-log_scale_factor = np.log(np.exp(1))
+initial_log_scale_factor = np.log(np.exp(1))
 
 def set_seed(seed):
     os.environ['PYTHONHASHSEED'] = str(seed)
@@ -29,6 +29,8 @@ class MarketGenerator:
         self.params['W3'] = weight_init_std * np.random.randn(hidden_size, output_size)
         self.params['b3'] = np.zeros(output_size)
 
+        self.params['log_scale_factor'] = initial_log_scale_factor  # 初期値は float 型
+
         # レイヤの生成
         self.layers = OrderedDict()
         self.layers['Affine1'] = Affine(self.params['W1'], self.params['b1'])
@@ -37,12 +39,14 @@ class MarketGenerator:
         self.layers['Sigmoid2'] = Sigmoid()
         self.layers['Affine3'] = Affine(self.params['W3'], self.params['b3'])
 
+        self.layers['LogScale'] = LogScale(self.params['log_scale_factor'])
+
         self.lastLayer = SoftplusWithLoss()
 
     def predict(self, x):
         for layer in self.layers.values():
             x = layer.forward(x)
-        return x
+        return x * self.log_scale_factor
 
     def loss(self, x, t):
         y = self.predict(x)
@@ -65,6 +69,14 @@ class MarketGenerator:
         grads['b1'] = numerical_gradient(loss_W, self.params['b1'])
         grads['W2'] = numerical_gradient(loss_W, self.params['W2'])
         grads['b2'] = numerical_gradient(loss_W, self.params['b2'])
+        grads['W3'] = numerical_gradient(loss_W, self.params['W3'])
+        grads['b3'] = numerical_gradient(loss_W, self.params['b3'])
+
+        grads['log_scale_factor'] = numerical_gradient(
+                lambda lsf: self.loss(x, t),
+                self.params['log_scale_factor']
+            )
+
         
         return grads
 
@@ -86,10 +98,9 @@ class MarketGenerator:
         grads['W3'] = self.layers['Affine3'].dW
         grads['b3'] = self.layers['Affine3'].db
 
-        return grads
+        grads['log_scale_factor'] = self.layers['LogScale'].dscale
 
-    def generate(self, inputs):
-        return self.model(tf.expand_dims(inputs, axis=0)) * self.log_scale_factor
+        return grads
 
     """
     def train(self, tape, discriminator_performance,generation,actions):
@@ -239,15 +250,6 @@ class RLAgent():
         grads['b3'] = self.layers['Affine3'].db
 
         return grads
-
-
-    def act(self, state):
-        # state の形状を統一して結合
-        state = [tf.reshape(tf.Variable(s,dtype=tf.float32,trainable=True), [1]) for s in state]
-        state = tf.concat(state, axis=0)
-        state = tf.reshape(state, [1, -1])  # 形状を統一
-        action = self.model(state)
-        return action
     
     # `_remove_position()` の修正
     def _remove_position(self, index):

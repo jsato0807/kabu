@@ -79,6 +79,23 @@ class Affine:
         dx = dx.reshape(*self.original_x_shape)  # 入力データの形状に戻す（テンソル対応）
         return dx
 
+class LogScale:
+    def __init__(self, scale):
+        self.scale = scale  # float or np.array(1.0)
+        self.x = None
+        self.dscale = 0  # 勾配保持用
+
+    def forward(self, x):
+        self.x = x
+        return x * self.scale
+
+    def backward(self, dout):
+        # スケールに関する勾配（スカラー）
+        self.dscale = np.sum(self.x * dout)
+        # 入力に戻す伝播
+        dx = dout * self.scale
+        return dx
+
 
 class SoftmaxWithLoss:
     def __init__(self):
