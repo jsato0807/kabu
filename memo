@@ -569,3 +569,48 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     まずは入力データとなる値（需給やcurrent_price)などをPCAなどの時限削減によって重みに対する依存度を減らすべし
     current_priceなどモデルの重みに依存しているパラメータの勾配ベクトルに対してPCAなどを実行、その上で値そのものは変わらないように以下のようにする(https://chatgpt.com/c/681093d1-f654-800e-b268-35aeda3cdfe8)
     current_price_fixed = tf.stop_gradient(current_price) + 0.0 * tf.reduce_sum(compressed_dep)
+
+2025-5-9
+    以下の論文では非定常的なデータをクラスタリングによって暗黙的にラベル付けしてVAEによる潜在変数zを獲得関数に使用する手法。
+    Context-Based Meta-Reinforcement Learning with Bayesian Nonparametric Models(https://chatgpt.com/c/681c4101-ce20-800e-85f3-6eecea033e55)
+
+    以下の論文で過去の勾配を確率的にサンプリングしておいて、現在の勾配との内積を取ることで過去の情報を考慮しつつ学習を進めることのできるメタオプティマイザの提案
+    https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c3b6f-8524-800e-9a9c-d5d172cf4a16
+
+    以下の論文で、ドメインシフトを伴う不均衡なタスク系列においてメタ学習を行う新たな手法を提案
+    Meta Learning on a Sequence of Imbalanced Domains with Difficulty Awareness(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c3a35-2bcc-800e-9f1c-648343120ade)
+
+    Dynamic Sparse Training（DST）(https://chatgpt.com/g/g-bo0FiWLY7-consensus/c/681c3791-4eb8-800e-a299-b08492425ce1)
+    以下の論文ではBiDSTを提案し、重みと共にマスクをも学習
+    Advancing Dynamic Sparse Training by Exploring Optimization Opportunities(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c383c-5704-800e-9684-0568bafeb862)
+
+    以下の論文ではrPropを採用し、勾配の大きさではなく符号のみで学習を進める
+    Analysis Resilient Algorithm on Artificial Neural Network Backpropagation(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c345c-dfb0-800e-aec9-8aaf621e2146)
+
+    以下の論文ではmePropを採用し、出力ベクトルの勾配の上位k個の要素のみを残し、それ以外を0にすることで、勾配計算をスパース化
+    meProp: Sparsified Back Propagation for Accelerated Deep Learning with Reduced Overfitting(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c352c-d394-800e-862e-89f38147ef19)
+
+    以下の論文では「ディザード・バックプロップ（dithered backprop）」という方法を提案。これは、非減算型ディザ（NSD）による確率的量子化を中間勾配に適用することでスパース性と低精度の非ゼロ値を同時に導入し、計算効率を向上させる
+    DITHERED BACKPROP: A SPARSE AND QUANTIZED BACKPROPAGATION ALGORITHM FOR MORE EFFICIENT DEEP NEURAL NETWORK TRAINING(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c319c-1fb4-800e-95f0-b7031efeaa24)
+
+    そもそも誤差逆伝播以外の方法で最適化をかけることも有効
+    1,ブロック座標降下（BCD）法 A Proximal Block Coordinate Descent Algorithm for Deep Neural Network Training(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c2d8e-1504-800e-8cd7-7b637d0671cf)
+
+    2,ADMM (交互方向乗数法)
+
+    3,進化的アルゴリズム
+
+    4, 勾配推定に基づくメソッド
+        勾配をアンサンブル平均によって近似的に計算。これにより微分不可能であってもブラックボックスであっても学習可能
+
+    5, Hebbian学習
+        教師なし学習の一種。入力と出力の共起・相関を検出してネットワーク構造を変化させる
+
+    以下の論文ではSparse propを提案し、非構造的スパース性でも高精度で学習可能
+    SparseProp: Efficient Sparse Backpropagation for Faster Training of Neural Networks(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c2548-a580-800e-9524-5cae8328c9a7)
+
+    以下の論文ではDecorrelated Backpropagation (DBP) を提案し、入力データを相関が最小になるような基底に変換
+    Efficient Deep Learning with Decorrelated Backpropagation(https://chatgpt.com/c/681c2977-4db0-800e-a306-436b12773ce9)
+
+    以下の論文でネスト化ワッサースタイン距離を提案し、それを獲得関数とする強化学習によって高報酬の過去データを再利用しつつ、意味的な分布一致を達成する
+    Nested-Wasserstein Self-Imitation Learning for Sequence Generation(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c3c63-e444-800e-a6e1-ec5cd9aee6e4)
