@@ -581,8 +581,8 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     Meta Learning on a Sequence of Imbalanced Domains with Difficulty Awareness(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c3a35-2bcc-800e-9f1c-648343120ade)
 
     Dynamic Sparse Training（DST）(https://chatgpt.com/g/g-bo0FiWLY7-consensus/c/681c3791-4eb8-800e-a299-b08492425ce1)
-    以下の論文ではBiDSTを提案し、重みと共にマスクをも学習
-    Advancing Dynamic Sparse Training by Exploring Optimization Opportunities(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c383c-5704-800e-9684-0568bafeb862)
+        以下の論文ではBiDSTを提案し、重みと共にマスクをも学習
+        Advancing Dynamic Sparse Training by Exploring Optimization Opportunities(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c383c-5704-800e-9684-0568bafeb862)
 
     以下の論文ではrPropを採用し、勾配の大きさではなく符号のみで学習を進める
     Analysis Resilient Algorithm on Artificial Neural Network Backpropagation(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c345c-dfb0-800e-aec9-8aaf621e2146)
@@ -614,3 +614,12 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
 
     以下の論文でネスト化ワッサースタイン距離を提案し、それを獲得関数とする強化学習によって高報酬の過去データを再利用しつつ、意味的な分布一致を達成する
     Nested-Wasserstein Self-Imitation Learning for Sequence Generation(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681c3c63-e444-800e-a6e1-ec5cd9aee6e4)
+
+    以下の論文は重みの情報をメモリに保存しないで、逆伝播の際に再計算することで、メモリ爆発を回避する手法。順伝播と逆伝播の間には重みの更新があるため、逆伝播の際に再計算をするだけでは値がずれてしまうので、将来の重みに近い値を予測することでズレを解消
+    Decoupled neural network training with re-computation and weight prediction(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681d4e69-746c-800e-b815-fcfd6cb27d08)
+
+    以下の論文は複数DNNを重要な重みを共有することで、効率よく学習させる手法を提案。重みの重要度はfisher情報で評価
+    Fast and Scalable In-memory Deep Multitask Learning via Neural Weight Virtualization(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681d50a5-b970-800e-b2ae-bdcb4eac2255)
+    Weight Separation for Memory-Efficient and Accurate Deep Multitask Learning(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681d5793-3cc4-800e-8d43-28ec7b5fa585)
+        →hessianは2回微分のためO(n^2)だが、正則条件下では一回微分の二乗平均(=fisher情報)と等しいので、正則条件が満たされると仮定して近似的に計算を軽くできる
+        cf) EWC（Elastic Weight Consolidation） 「重要な重みを保護しつつ、新しいタスクの学習を許容する」ことで、「破滅的忘却（Catastrophic Forgetting）」を防ぐ方法。
