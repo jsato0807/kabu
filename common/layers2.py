@@ -1,4 +1,6 @@
 import math
+from functools import reduce
+
 class Variable:
     def __init__(self, value, requires_grad=True):
         self.value = value
@@ -35,6 +37,9 @@ def add(a, b):
             b.gradients[wrt := b] = b.grad(wrt) + out.grad(out)
     out._backward = _backward
     return out
+
+def sum_variables(vars):
+    return reduce(add, vars)
 
 def mul(a, b):
     out = Variable(a.value * b.value)
