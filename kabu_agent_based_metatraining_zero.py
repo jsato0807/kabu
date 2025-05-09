@@ -4,8 +4,7 @@ import sign
 import os
 import random
 from collections import OrderedDict
-from common.layers import *
-from common.functions import *
+from common.layers2 import *
 
 
     
@@ -19,75 +18,62 @@ def set_seed(seed):
     np.random.seed(seed)  # NumPy の乱数シード
 
 class MarketGenerator:
-    def __init__(self, input_size, hidden_size, output_size, weight_init_std=0.01):
-        # パラメータの初期化
-        self.params = {}
-        self.params['W1'] = weight_init_std * np.random.randn(input_size, hidden_size)
-        self.params['b1'] = np.zeros(hidden_size)
-        self.params['W2'] = weight_init_std * np.random.randn(hidden_size, hidden_size)
-        self.params['b2'] = np.zeros(hidden_size)
-        self.params['W3'] = weight_init_std * np.random.randn(hidden_size, output_size)
-        self.params['b3'] = np.zeros(output_size)
+    def __init__(self, input_size, hidden_size, output_size):
+        # ランダム初期化（正規分布）
+        self.params = OrderedDict()
+        self.params['W1'] = Variable(random.gauss(0, 0.01 * math.sqrt(1/input_size)))
+        self.params['b1'] = Variable(0.0)
+        self.params['W2'] = Variable(random.gauss(0, 0.01 * math.sqrt(1/hidden_size)))
+        self.params['b2'] = Variable(0.0)
+        self.params['W3'] = Variable(random.gauss(0, 0.01 * math.sqrt(1/hidden_size)))
+        self.params['b3'] = Variable(0.0)
+        self.params['log_scale_factor'] = Variable(math.log(math.exp(1)))
 
-        self.params['log_scale_factor'] = initial_log_scale_factor  # 初期値は float 型
-
-        # レイヤの生成
         self.layers = OrderedDict()
-        self.layers['Affine1'] = Affine(self.params['W1'], self.params['b1'])
-        self.layers['Sigmoid1'] = Sigmoid()
-        self.layers['Affine2'] = Affine(self.params['W2'], self.params['b2'])
-        self.layers['Sigmoid2'] = Sigmoid()
-        self.layers['Affine3'] = Affine(self.params['W3'], self.params['b3'])
-
-        self.layers['LogScale'] = LogScale(self.params['log_scale_factor'])
-
-        self.lastLayer = SoftplusWithLoss()
+        self.layers['Affine1'] = lambda x: affine(x, self.params['W1'], self.params['b1'])
+        self.layers['Sigmoid1'] = sigmoid
+        self.layers['Affine2'] = lambda x: affine(x, self.params['W2'], self.params['b2'])
+        self.layers['Sigmoid2'] = sigmoid
+        self.layers['Affine3'] = lambda x: affine(x, self.params['W3'], self.params['b3'])
+        self.layers['Softplus'] = softplus
+        self.layers['LogScale'] = lambda x: logscale(x, self.params['log_scale_factor'].value)
 
     def predict(self, x):
-        for layer in self.layers.values():
-            x = layer.forward(x)
+        for name, layer in self.layers.items():
+            x = layer(x)
         return x
 
-        
-    # x:入力データ, t:教師データ
-    def numerical_gradient(self, x, reward_func):
-        def loss_fn():
-            y = self.predict(x)
-            return reward_func(y)
-        
+    def gradient(self, loss):
+        loss.backward()
+        grads = {
+            name: loss.grad(param)
+            for name, param in self.params.items()
+        }
+        return grads
+    
+    def numerical_gradient(self, x, loss_func, h=1e-4):
         grads = {}
-        grads['W1'] = numerical_gradient(loss_fn, self.params['W1'])
-        grads['b1'] = numerical_gradient(loss_fn, self.params['b1'])
-        grads['W2'] = numerical_gradient(loss_fn, self.params['W2'])
-        grads['b2'] = numerical_gradient(loss_fn, self.params['b2'])
-        grads['W3'] = numerical_gradient(loss_fn, self.params['W3'])
-        grads['b3'] = numerical_gradient(loss_fn, self.params['b3'])
+        for name, param in self.params.items():
+            original_value = param.value
 
-        grads['log_scale_factor'] = numerical_gradient(
-                lambda lsf: loss_fn,
-                self.params['log_scale_factor']
-            )
+            # f(x + h)
+            param.value = original_value + h
+            fxh1 = loss_func(self.predict(x)).value
 
-        
+            # f(x - h)
+            param.value = original_value - h
+            fxh2 = loss_func(self.predict(x)).value
+
+            # numerical gradient
+            grad = (fxh1 - fxh2) / (2 * h)
+            grads[name] = grad
+
+            # reset param
+            param.value = original_value
+
         return grads
 
-    def gradient(self, selected_margin):
-        dout = 1
-        for layer in reversed(self.layers.values()):
-            dout = layer.backward(dout)
 
-        # 勾配を格納
-        grads = {}
-        grads['W1'] = self.layers['Affine1'].dW
-        grads['b1'] = self.layers['Affine1'].db
-        grads['W2'] = self.layers['Affine2'].dW
-        grads['b2'] = self.layers['Affine2'].db
-        grads['W3'] = self.layers['Affine3'].dW
-        grads['b3'] = self.layers['Affine3'].db
-
-        grads['log_scale_factor'] = self.layers['LogScale'].dscale
-
-        return grads
 
     """
     def train(self, tape, discriminator_performance,generation,actions):
@@ -163,75 +149,74 @@ class RLAgent():
     def __init__(self, input_size, hidden_size, output_size, weight_init_std=0.01, initial_cash=100000):
         self.positions = []
         self.closed_positions = []
-        self.effective_margin = initial_cash
+        self.effective_margin = Variable(initial_cash)
         self.required_margin = 0
-        self.margin_deposit = initial_cash
-        self.realized_profit = 0.0
-        self.long_position = 0.0
-        self.short_position = 0.0
-        self.unfulfilled_long_open = 0.0
-        self.unfulfilled_short_open = 0.0
-        self.unfulfilled_long_close = 0.0
-        self.unfulfilled_short_close = 0.0
+        self.margin_deposit = Variable(initial_cash)
+        self.realized_profit = Variable(0.0)
+        self.long_position = Variable(0.0)
+        self.short_position = Variable(0.0)
+        self.unfulfilled_long_open = Variable(0.0)
+        self.unfulfilled_short_open = Variable(0.0)
+        self.unfulfilled_long_close = Variable(0.0)
+        self.unfulfilled_short_close = Variable(0.0)
         self.margin_maintenance_rate = np.inf
         self.margin_maintenance_flag = False
         self.effective_margin_max = -np.inf
         self.effective_margin_min = np.inf
 
-        self.params = {}
-        self.params['W1'] = weight_init_std * np.random.randn(input_size, hidden_size)
-        self.params['b1'] = np.zeros(hidden_size)
-        self.params['W2'] = weight_init_std * np.random.randn(hidden_size, output_size)
-        self.params['b2'] = np.zeros(output_size)
+        self.params = OrderedDict()
+        self.params['W1'] = Variable(random.gauss(0, math.sqrt(1 / input_size)))
+        self.params['b1'] = Variable(0.0)
+        self.params['W2'] = Variable(random.gauss(0, math.sqrt(1 / hidden_size)))
+        self.params['b2'] = Variable(0.0)
+        self.params['W3'] = Variable(random.gauss(0, math.sqrt(1 / hidden_size)))
+        self.params['b3'] = Variable(0.0)
 
         self.layers = OrderedDict()
-        self.layers['Affine1'] = Affine(self.params['W1'], self.params['b1'])
-        self.layers['Sigmoid1'] = Sigmoid()
-        self.layers['Affine2'] = Affine(self.params['W2'], self.params['b2'])
-        self.layers['Sigmoid2'] = Sigmoid()
-        self.layers['Affine3'] = Affine(self.params['W3'], self.params['b3'])
-
-
-        self.lastLayer = ReluWithLoss()
+        self.layers['Affine1'] = lambda x: affine(x, self.params['W1'], self.params['b1'])
+        self.layers['Sigmoid1'] = sigmoid
+        self.layers['Affine2'] = lambda x: affine(x, self.params['W2'], self.params['b2'])
+        self.layers['Sigmoid2'] = sigmoid
+        self.layers['Affine3'] = lambda x: affine(x, self.params['W2'], self.params['b2'])
+        self.layers['ReLU3'] = relu
 
     def predict(self, x):
         for layer in self.layers.values():
-            x = layer.forward(x)
+            x = layer(x)
         return x
+
+    def gradient(self, loss):
+        loss.backward()
+        grads = {
+            name: param.grad(param)
+            for name, param in self.params.items()
+        }
+        return grads
 
     def numerical_gradient(self, x, reward_func):
         def loss_fn():
             y = self.predict(x)
             return reward_func(y)
-        
+
+        h = 1e-4
         grads = {}
-        grads['W1'] = numerical_gradient(loss_fn, self.params['W1'])
-        grads['b1'] = numerical_gradient(loss_fn, self.params['b1'])
-        grads['W2'] = numerical_gradient(loss_fn, self.params['W2'])
-        grads['b2'] = numerical_gradient(loss_fn, self.params['b2'])
-        grads['W3'] = numerical_gradient(loss_fn, self.params['W3'])
-        grads['b3'] = numerical_gradient(loss_fn, self.params['b3'])
-        
-        return grads
+        for name, param in self.params.items():
+            orig = param.value
 
-    def gradient(self, x, reward_func):
-        # forward
-        y = self.predict(x)
-        loss = -reward_func(y)
+            # f(x + h)
+            param.value = orig + h
+            loss_plus = loss_fn().value
 
-        # backward
-        dout = 1
-        for layer in reversed(self.layers.values()):
-            dout = layer.backward(dout)
+            # f(x - h)
+            param.value = orig - h
+            loss_minus = loss_fn().value
 
-        # 勾配を格納
-        grads = {}
-        grads['W1'] = self.layers['Affine1'].dW
-        grads['b1'] = self.layers['Affine1'].db
-        grads['W2'] = self.layers['Affine2'].dW
-        grads['b2'] = self.layers['Affine2'].db
-        grads['W3'] = self.layers['Affine3'].dW
-        grads['b3'] = self.layers['Affine3'].db
+            # numerical gradient
+            grad = (loss_plus - loss_minus) / (2 * h)
+            grads[name] = grad
+
+            # restore original value
+            param.value = orig
 
         return grads
     
@@ -261,279 +246,175 @@ class RLAgent():
 
 
     def process_new_order(self, long_order_size, short_order_size, current_price, margin_rate):
-        #trade_type = tf.Variable(trade_type, name="trade_type",dtype=tf.float32,trainable=True)
-        if long_order_size > 0 and short_order_size > 0:
-            order_margin = ((long_order_size + short_order_size + self.unfulfilled_short_open + self.unfulfilled_long_open) * current_price * margin_rate)
-            #self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
+        if long_order_size.value > 0 and short_order_size.value > 0:
+            order_volume = add(long_order_size, short_order_size)
+            total_open = add(order_volume, add(self.unfulfilled_short_open, self.unfulfilled_long_open))
+            order_margin = mul(mul(total_open, current_price), margin_rate)
+
             if self.margin_maintenance_flag:
-                #print(f"Margin cut triggered during {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order processing.")
                 print(f"Margin cut triggered during order processing.")
                 return
-            order_capacity = (self.effective_margin - (self.required_margin+ order_margin)).numpy()
-            if order_capacity < 0:
-                #print(f"Cannot process {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order due to insufficient order capacity.")
-                print(f"Cannot process order due to insufficient order capacity.")
-                #if trade_type == 1:
-                #self.unfulfilled_long_open += order_size
-                new_unfulfilled_buy_orders = self.unfulfilled_long_open + long_order_size
-                self.unfulfilled_long_open = new_unfulfilled_buy_orders
-                #elif trade_type == -1:
-                #self.unfulfilled_short_open += order_size
-                new_unfulfilled_sell_orders = self.unfulfilled_short_open + short_order_size
-                self.unfulfilled_short_open = new_unfulfilled_sell_orders
-                # when cannot buy or sell, you need effective_margin which itself is unchanging and depends on the output of generator and discriminators
-                update_effective_margin = self.effective_margin + current_price * (long_order_size+short_order_size) * 0
-                self.effective_margin = update_effective_margin
+
+            margin_total = add(self.required_margin, order_margin)
+            order_capacity = sub(self.effective_margin, margin_total)
+
+            if order_capacity.value < 0:
+                self.unfulfilled_long_open = add(self.unfulfilled_long_open, long_order_size)
+                self.unfulfilled_short_open = add(self.unfulfilled_short_open, short_order_size)
                 return
-            if self.margin_maintenance_rate > 100 and order_capacity > 0:
-                #if trade_type == 1:
-                #order_margin -= (order_size + self.unfulfilled_long_open) * current_price * margin_rate
-                #self.unfulfilled_long_open.assign(0.0)
-                #add_required_margin = (order_size + self.unfulfilled_long_open) * current_price * margin_rate
-                #elif trade_type == -1:
-                #order_margin -= (order_size + self.unfulfilled_short_open) * current_price * margin_rate
-                #self.unfulfilled_short_open.assign(0.0)
-                long_add_required_margin = (long_order_size + self.unfulfilled_long_open) * current_price * margin_rate
-                short_add_required_margin = (short_order_size + self.unfulfilled_short_open) * current_price * margin_rate
-                self.required_margin += long_add_required_margin + short_add_required_margin
-                #order_size = tf.add(order_size, self.unfulfilled_long_open if trade_type == 1 else self.unfulfilled_short_open)
-                if long_order_size > 0:
-                    long_order_size += self.unfulfilled_long_open
-                    new_unfulfilled_long_open = self.unfulfilled_long_open - self.unfulfilled_long_open
-                    self.unfulfilled_long_open = new_unfulfilled_long_open
-                    pos = [long_order_size, 1, current_price, 0.0, long_add_required_margin, 0.0]
-                    print(f"Opened Buy position at {current_price}, required_margin:{self.required_margin}")
-                    self.positions.append(pos)
-                    #new_order_size = order_size + self.unfulfilled_long_open
-                    #order_size = new_order_size
-                if short_order_size > 0:
-                    short_order_size += self.unfulfilled_short_open
-                    new_unfulfilled_short_open = self.unfulfilled_short_open - self.unfulfilled_short_open
-                    self.unfulfilled_short_open = new_unfulfilled_short_open
-                    pos = [short_order_size,-1, current_price, 0.0, short_add_required_margin, 0.0]
-                    print(f"Opened Sell position at {current_price}, required_margin:{self.required_margin}")
-                    self.positions.append(pos)
-                    #new_order_size = order_size + self.unfulfilled_short_open
-                    #order_size = new_order_size
-                #pos = tf.stack([order_size, trade_type, current_price, tf.Variable(0.0,name="unrealized_profit",dtype=tf.float32,trainable=True), add_required_margin, tf.Variable(0.0,name="profit",dtype=tf.float32,trainable=True)])
 
-                #self.positions = self.positions.write(tf.cast(self.positions_index, tf.int32), pos)
+            if self.margin_maintenance_rate > 100 and order_capacity.value > 0:
+                long_add_required_margin = mul(mul(add(long_order_size, self.unfulfilled_long_open), current_price), margin_rate)
+                short_add_required_margin = mul(mul(add(short_order_size, self.unfulfilled_short_open), current_price), margin_rate)
+                self.required_margin = add(self.required_margin, add(long_add_required_margin, short_add_required_margin))
 
-                #self.positions_index.assign_add(1)
-                print(f"positions_index in process_new_order:{np.shape(self.positions)[0]}")
-                #print(f"Opened position at {current_price}, required margin: {self.required_margin}")
-                self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
+                if long_order_size.value > 0:
+                    long_order_size = add(long_order_size, self.unfulfilled_long_open)
+                    self.unfulfilled_long_open = Variable(0.0)
+                    pos = [long_order_size, Variable(1.0), current_price, Variable(0.0), long_add_required_margin, Variable(0.0)]
+                    print(f"Opened Buy position at {current_price.value}, required_margin:{self.required_margin.value}")
+                    self.positions.append(pos)
+
+                if short_order_size.value > 0:
+                    short_order_size = add(short_order_size, self.unfulfilled_short_open)
+                    self.unfulfilled_short_open = Variable(0.0)
+                    pos = [short_order_size, Variable(-1.0), current_price, Variable(0.0), short_add_required_margin, Variable(0.0)]
+                    print(f"Opened Sell position at {current_price.value}, required_margin:{self.required_margin.value}")
+                    self.positions.append(pos)
+
+                print(f"positions in process_new_order: {len(self.positions)}")
+                self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
                 if self.margin_maintenance_flag:
-                    print(f"margin maintenance rate is {self.margin_maintenance_rate},so loss cut is executed in process_new_order, effective_margin: {self.effective_margin}")
+                    print(f"margin maintenance rate is {self.margin_maintenance_rate}, so loss cut is executed in process_new_order, effective_margin: {self.effective_margin.value}")
                     return
 
 
-    def process_position_closure(self,long_close_position,short_close_position,current_price):
-        if self.margin_maintenance_flag:
-            #print(f"Margin cut triggered during {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order processing.")
-            print(f"Margin cut triggered during position closure.")
-            return
-        new_unfulfilled_long_close = self.unfulfilled_long_close + long_close_position
-        self.unfulfilled_long_close = new_unfulfilled_long_close
-        new_unfulfilled_short_close = self.unfulfilled_short_close + short_close_position
-        self.unfulfilled_short_close = new_unfulfilled_short_close
 
-        # --- ポジション決済処理 ---
-        pos_id_max = int(np.shape(self.positions)[0] - 1)  # 現在の最大 ID
-        to_be_removed = []
-        for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
-            try:
-                pos = self.positions[pos_id]
-                print(f"In the position closure process, pos_id in update of position value{pos_id}: {pos.numpy()}")
-                if tf.reduce_all(pos == 0.0):
-                    print(f"this pos_id is all 0.0 so skipped")
-                    continue
-            except:
-                continue
+    def process_position_closure(self, long_close_position, short_close_position, current_price):
+        if self.margin_maintenance_flag:
+            print("Margin cut triggered during position closure.")
+            return
+
+        self.unfulfilled_long_close = add(self.unfulfilled_long_close, long_close_position)
+        self.unfulfilled_short_close = add(self.unfulfilled_short_close, short_close_position)
+
+        for pos_id in range(len(self.positions)):
+            pos = self.positions[pos_id]
             size, pos_type, open_price, unrealized_profit, margin, realized_profit = pos
 
-            if pos_type.numpy() == 1.0 and self.unfulfilled_long_close > 0:
-                fulfilled_size = tf.minimum(self.unfulfilled_long_close,size)
-                profit = fulfilled_size * (current_price - open_price)
-            elif pos_type.numpy() == 1.0 and self.unfulfilled_long_close == 0:
-                pos = [size, pos_type, open_price, unrealized_profit, margin, realized_profit]
-                self.positions.append(pos)
-                print("unfulfilled_long_close == 0 so continue")
+            if pos_type.value == 1.0 and self.unfulfilled_long_close.value > 0:
+                fulfilled_size = min(self.unfulfilled_long_close.value, size)
+                profit = mul(fulfilled_size, sub(current_price, open_price))
+            elif pos_type.value == -1.0 and self.unfulfilled_short_close.value > 0:
+                fulfilled_size = min(self.unfulfilled_short_close.value, size)
+                profit = mul(fulfilled_size, sub(open_price, current_price))
+            else:
                 continue
-            elif pos_type.numpy() == -1.0 and self.unfulfilled_short_close > 0:
-                fulfilled_size = tf.minimum(self.unfulfilled_short_close,size)
-                profit = fulfilled_size * (open_price - current_price)
-            elif pos_type.numpy() == -1.0 and self.unfulfilled_short_close == 0:
-                pos = [size, pos_type, open_price, unrealized_profit, margin, realized_profit]
-                self.positions.append(pos)
-                print("unfulfilled_short_close == 0 so continue")
-                continue
-            
 
-            # 決済ロジック
-            #self.effective_margin.assign_add(profit - unrealized_profit)
-            update_effective_margin = self.effective_margin + profit - unrealized_profit
-            self.effective_margin = update_effective_margin
+            self.effective_margin = add(self.effective_margin, sub(profit, unrealized_profit))
             self.effective_margin_max, self.effective_margin_min = check_min_max_effective_margin(self.effective_margin, self.effective_margin_max, self.effective_margin_min)
-            print(f"profit:{profit}")
-            print(f"unrealized_profit:{unrealized_profit}")
-            #exit()
-            self.margin_deposit.assign_add(profit)
-            self.realized_profit.assign_add(profit)
-            add_required_margin = - margin * (fulfilled_size/size)
-            self.required_margin += add_required_margin.numpy()
-            print(f"fulfill_size:{fulfilled_size}, current_price:{current_price},open_price:{open_price}, effective_margin:{self.effective_margin}, required_margin:{self.required_margin}")
+            
+            self.margin_deposit = add(self.margin_deposit, profit)
+            self.realized_profit = add(self.realized_profit, profit)
 
-            # 部分決済または完全決済の処理
+            ratio = div(fulfilled_size, size)
+            add_required_margin = mul(margin, sub(Variable(0.0), ratio))
+            self.required_margin += add_required_margin.value
+
             size -= fulfilled_size
-            if pos_type.numpy() == 1.0:
-                self.unfulfilled_long_close -= fulfilled_size
-            if pos_type.numpy() == -1.0:
-                self.unfulfilled_short_close -= fulfilled_size
-            #new_size = size - fulfilled_size
-            #size = new_size
-            if size > 0:  # 部分決済の場合
-                print(f"partial payment was executed")
-                pos = [size, pos_type, open_price, 0, add_required_margin, 0]#once substract unrealized_profit from effective_margin, you need not do it again in the process of update pos, so you have to set unrealized_profit to 0.
-                self.positions.append(pos)
-                print(self.positions)
-                pos = [fulfilled_size, pos_type, open_price, 0, 0, profit]
-                self.closed_positions.append(pos)
+            if pos_type.value == 1.0:
+                self.unfulfilled_long_close = sub(self.unfulfilled_long_close, fulfilled_size)
+            if pos_type.value == -1.0:
+                self.unfulfilled_short_close = sub(self.unfulfilled_short_close, fulfilled_size)
 
-            else:  # 完全決済の場合
-                print(f"all payment was executed")
-                pos = [fulfilled_size, pos_type, open_price, 0, 0, profit] #we hope margin+add_required_margin==0
-                #print(f"all payment: margin+add_required_margin:{margin+add_required_margin}")
-                self.closed_positions.append(pos)
+            if size > 0:
+                updated_margin = mul(margin, div(size, size + fulfilled_size))
+                self.positions[pos_id] = [size, pos_type, open_price, Variable(0.0), updated_margin, Variable(0.0)]
+                self.closed_positions.append([fulfilled_size, pos_type, open_price, Variable(0.0), Variable(0.0), profit])
+            else:
+                self.closed_positions.append([fulfilled_size, pos_type, open_price, Variable(0.0), Variable(0.0), profit])
+                self.positions.remove(pos)
 
-                to_be_removed.append(pos_id)
-                if self.positions.size().numpy() == len(to_be_removed):  #this sentence needs because required_margin must be just 0 when all positions are payed, but actually not be just 0 because of rounding error.
-                    self.required_margin = 0
-                self.positions.append(pos) #once rewrite the pos which you should remove because you have to write or stack the pos which once you read
-
-            print(f"Closed {'Buy' if pos_type.numpy()==1.0 else ('Sell' if pos_type.numpy() == -1.0 else 'Unknown')} position at {current_price} with profit {profit} ,grid {open_price}, Effective Margin: {self.effective_margin}, Required Margin: {self.required_margin}")
-
-            #if pos_type.numpy() == 1.0:
-            #    #self.unfulfilled_long_open.assign(long_close_position - fulfilled_size)
-            #    self.unfulfilled_long_open = long_close_position - fulfilled_size
-            #elif pos_type.numpy() == -1.0:
-            #    #self.unfulfilled_short_open.assign(short_close_position - fulfilled_size)
             #    self.unfulfilled_short_open = short_close_position - fulfilled_size
 
             self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
             if self.margin_maintenance_flag:
                 print(f"margin maintenance rate is {self.margin_maintenance_rate},so loss cut is executed in position closure process, effective_margin: {self.effective_margin}")
                 continue
-        for pos_id in sorted(to_be_removed, reverse=True):  # 降順で削除（pos_id がズレないように）
-            self._remove_position(pos_id)
+        #for pos_id in sorted(to_be_removed, reverse=True):  # 降順で削除（pos_id がズレないように）
+        #    self._remove_position(pos_id)
 
 
     def process_position_update(self, current_price, required_margin_rate):
         if self.margin_maintenance_flag:
-            #print(f"Margin cut triggered during {'Buy' if trade_type.numpy() == 1.0 else 'Sell'} order processing.")
             print(f"Margin cut triggered during position update.")
             return
-        """
-        資産とポジションの更新を実行
-        """
-        # --- 含み益の更新 ---
-        pos_id_max = int(np.shape(self.positions)[0] - 1)  # 現在の最大 ID
-        for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
+
+        pos_id_max = len(self.positions) - 1
+        for pos_id in range(pos_id_max + 1):
             try:
                 pos = self.positions[pos_id]
-                print(f"In the update position value, pos_id in update of position value{pos_id}: {pos.numpy()}")
-                if np.all(pos == 0.0):
-                    print(f"this pos_id is all 0.0 so skipped")
-                    continue
+                size, pos_type, open_price, before_unrealized_profit, margin, _ = pos
             except:
                 continue
-            size, pos_type, open_price, before_unrealized_profit, margin, _ = pos
-            print(f"unstacked pos_id:{pos_id}")
 
-            #print(f"# update of position values")
-            #print(f"current_price:{current_price}")
-            #print(f"open_price:{open_price}")
-            #print(f"size:{size}")
-            unrealized_profit = size * (current_price - open_price) if pos_type.numpy() == 1.0 else size * (open_price - current_price)
-            print(f"unrealized_profit in update of unrealized profit: {unrealized_profit}, pos_type:{pos_type}")
-            #self.effective_margin.assign(self.effective_margin + unrealized_profit - before_unrealized_profit)
-            print(f"right before updating effective_margin:{self.effective_margin}")
-            update_effective_margin = self.effective_margin + unrealized_profit - before_unrealized_profit
-            self.effective_margin = update_effective_margin
-            self.effective_margin_max, self.effective_margin_min = check_min_max_effective_margin(self.effective_margin, self.effective_margin_max, self.effective_margin_min)
-            print(f"right after updating effective_margin:{self.effective_margin}")
-            #exit()
-            add_required_margin = -margin + current_price * size * required_margin_rate
-            self.required_margin += add_required_margin.numpy()
+            if pos_type == 1:
+                unrealized_profit = mul(size, sub(current_price, open_price))
+            else:
+                unrealized_profit = mul(size, sub(open_price, current_price))
 
-            pos = [size, pos_type, open_price, unrealized_profit,add_required_margin,0]
-            #print(f"pos_id:{type(pos_id)}")
-            #print(f"size:{type(size)}")
-            #print(f"pos_type:{type(pos_type)}")
-            #print(f"open_price:{type(open_price)}")
-            #print(f"unrealized_profit:{type(unrealized_profit)}")
-            #print(f"margin:{type(margin)}")
-            #print(f"add_required_margin:{type(add_required_margin)}")
-            #exit()
-            self.positions.append(pos)
-            print(f"unrealized_profit:{unrealized_profit}, before_unrealized_profit:{before_unrealized_profit}")
-            print(f"updated effective margin against price {current_price} , effective Margin: {self.effective_margin}, required_margin:{self.required_margin}, pos_id:{pos_id}")
-            print(self.positions)
+            self.effective_margin = add(self.effective_margin, sub(unrealized_profit, before_unrealized_profit))
+            self.effective_margin_max, self.effective_margin_min = check_min_max_effective_margin(
+                self.effective_margin, self.effective_margin_max, self.effective_margin_min
+            )
 
-            self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
+            new_required_margin = sub(mul(size, mul(current_price, required_margin_rate)), margin)
+            self.required_margin += new_required_margin
+
+            pos = [size, pos_type, open_price, unrealized_profit, new_required_margin, 0]
+            self.positions[pos_id] = pos
+
+            self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(
+                self.effective_margin, self.required_margin
+            )
             if self.margin_maintenance_flag:
-                print(f"margin maintenance rate is {self.margin_maintenance_rate},so loss cut is executed in position update process, effective_margin: {self.effective_margin}")
+                print(f"margin maintenance rate is {self.margin_maintenance_rate}, so loss cut is executed.")
 
-        # --- 強制ロスカットのチェック ---
-        self.margin_maintenance_flag, _ = update_margin_maintenance_rate(self.effective_margin, self.required_margin)
+        self.margin_maintenance_flag, _ = update_margin_maintenance_rate(
+            self.effective_margin, self.required_margin
+        )
         if self.margin_maintenance_flag:
             print("Forced margin cut triggered.")
-            pos_id_max = int(np.shape(self.positions)[0] - 1)  # 現在の最大 ID
-            to_be_removed = []
-            print(f"pos_id_max right before forced margin cut triggered: {pos_id_max}")
-            for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
+            for pos_id in range(len(self.positions)):
                 try:
-                    pos = self.positions.read(pos_id)
-                    print(f"In the loss cut, pos_id in update of position value{pos_id}: {pos.numpy()}")
-                    if np.all(pos == 0.0):
-                        print(f"this pos_id is all 0.0 so skipped")
-                        continue
+                    pos = self.positions[pos_id]
+                    size, pos_type, open_price, before_unrealized_profit, margin, _ = pos
                 except:
                     continue
-                size, pos_type, open_price, before_unrealized_profit, margin, _ = pos
 
-                if pos_type.numpy() == 1.0:
-                    profit = (current_price - open_price) * size  # 現在の損失計算
-                elif pos_type.numpy() == -1.0:
-                    profit = -(current_price - open_price) * size
-                #self.effective_margin.assign(self.effective_margin + profit - before_unrealized_profit) # 損失分を証拠金に反映
-                update_effective_margin = self.effective_margin + profit - before_unrealized_profit
-                self.effective_margin = update_effective_margin
-                self.effective_margin_max, self.effective_margin_min = check_min_max_effective_margin(self.effective_margin, self.effective_margin_max, self.effective_margin_min)
-                self.margin_deposit.assign(self.margin_deposit + profit)
-                #self.margin_deposit += profit
-                self.realized_profit.assign(self.realized_profit + profit)
-                #self.realized_profit += profit
+                if pos_type == 1:
+                    profit = mul(size, sub(current_price, open_price))
+                else:
+                    profit = mul(size, sub(open_price, current_price))
+
+                self.effective_margin = add(self.effective_margin, sub(profit, before_unrealized_profit))
+                self.effective_margin_max, self.effective_margin_min = check_min_max_effective_margin(
+                    self.effective_margin, self.effective_margin_max, self.effective_margin_min
+                )
+                self.margin_deposit = add(self.margin_deposit, profit)
+                self.realized_profit = add(self.realized_profit, profit)
                 self.required_margin -= margin
-
-                to_be_removed.append(pos_id)
-                if self.positions.size().numpy() == len(to_be_removed):  #this sentence needs because required_margin must be just 0 when all positions are payed, but actually not be just 0 because of rounding error.
-                    self.required_margin = 0
-                self.positions.append(pos) #once rewrite the pos which you should remove because you have to write or stack the pos which once you read
 
                 pos = [size, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
-                print(f"Forced Closed at currnt_price:{current_price} with open_price:{open_price}, Effective Margin: {self.effective_margin}")
-            #self.required_margin = 0.0
+                self.positions.remove(pos)
 
-            for pos_id in sorted(to_be_removed, reverse=True):  # 降順で削除（pos_id がズレないように）
-                self._remove_position(pos_id)
-
-            # 全ポジションをクリア
-            self.positions = []
 
             self.required_margin = 0
-            _, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin) 
+            _, self.margin_maintenance_rate = update_margin_maintenance_rate(
+                self.effective_margin, self.required_margin
+            )
+
 
         #"""
 
