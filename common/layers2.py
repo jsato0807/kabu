@@ -1,11 +1,11 @@
-import math
+import numpy as np
 from functools import reduce
 
 class Variable:
     def __init__(self, value, requires_grad=True):
         self.value = value
         self.requires_grad = requires_grad
-        self.gradients = {}  # 任意の変数に関する微分 ∂self/∂wrt を保持
+        self.gradients = {}  # 任意の目的関数Lに対する ∂L/∂self を格納
         self._backward = lambda: None
         self._prev = set()
 
@@ -27,110 +27,240 @@ class Variable:
         return self.gradients.get(wrt, 0.0)
 
 
-def add(a, b):
-    out = Variable(a.value + b.value)
-    out._prev = {a, b}
+def add(x, y):
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+    if not isinstance(y, Variable):
+        y = Variable(y, requires_grad=False)
+
+    out = Variable(x.value + y.value)
+
     def _backward():
-        if a.requires_grad:
-            a.gradients[wrt := a] = a.grad(wrt) + out.grad(out)
-        if b.requires_grad:
-            b.gradients[wrt := b] = b.grad(wrt) + out.grad(out)
+        for L, dL_dout in out.gradients.items():  # L は目的関数、dL_dout = ∂L/∂out
+            if x.requires_grad:
+                dL_dx = 1.0 * dL_dout  # ∂out/∂x = 1
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+            if y.requires_grad:
+                dL_dy = 1.0 * dL_dout  # ∂out/∂y = 1
+                y.gradients[L] = y.gradients.get(L, 0.0) + dL_dy
+
+    out._prev = {x, y}
     out._backward = _backward
     return out
+
 
 def sum_variables(vars):
     return reduce(add, vars)
 
-def mul(a, b):
-    out = Variable(a.value * b.value)
-    out._prev = {a, b}
-    def _backward():
-        if a.requires_grad:
-            a.gradients[wrt := a] = a.grad(wrt) + b.value * out.grad(out)
-        if b.requires_grad:
-            b.gradients[wrt := b] = b.grad(wrt) + a.value * out.grad(out)
-    out._backward = _backward
-    return out
 
-def sub(a, b):
-    out = Variable(a.value - b.value)
-    out._prev = {a, b}
-    def _backward():
-        if a.requires_grad:
-            a.gradients[a] = a.grad(a) + 1.0 * out.grad(out)
-        if b.requires_grad:
-            b.gradients[b] = b.grad(b) - 1.0 * out.grad(out)
-    out._backward = _backward
-    return out
+def mul(x, y):
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+    if not isinstance(y, Variable):
+        y = Variable(y, requires_grad=False)
 
-def div(a, b):
-    out = Variable(a.value / b.value)
-    out._prev = {a, b}
+    out = Variable(x.value * y.value)
+
     def _backward():
-        if a.requires_grad:
-            a.gradients[a] = a.grad(a) + (1.0 / b.value) * out.grad(out)
-        if b.requires_grad:
-            b.gradients[b] = b.grad(b) - (a.value / (b.value ** 2)) * out.grad(out)
+        for L, dL_dout in out.gradients.items():
+            if x.requires_grad:
+                dL_dx = y.value * dL_dout
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+            if y.requires_grad:
+                dL_dy = x.value * dL_dout
+                y.gradients[L] = y.gradients.get(L, 0.0) + dL_dy
+
+    out._prev = {x, y}
     out._backward = _backward
     return out
 
 
+def sub(x, y):
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+    if not isinstance(y, Variable):
+        y = Variable(y, requires_grad=False)
 
+    out = Variable(x.value - y.value)
+
+    def _backward():
+        for L, dL_dout in out.gradients.items():
+            if x.requires_grad:
+                dL_dx = 1.0 * dL_dout
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+            if y.requires_grad:
+                dL_dy = -1.0 * dL_dout
+                y.gradients[L] = y.gradients.get(L, 0.0) + dL_dy
+
+    out._prev = {x, y}
+    out._backward = _backward
+    return out
+
+
+def exp(x):
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+
+    out = Variable(np.exp(x.value))
+
+    def _backward():
+        for L, dL_dout in out.gradients.items():
+            if x.requires_grad:
+                dL_dx = np.exp(x.value) * dL_dout
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+
+    out._prev = {x}
+    out._backward = _backward
+    return out
+
+
+def div(x, y):
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+    if not isinstance(y, Variable):
+        y = Variable(y, requires_grad=False)
+
+    out = Variable(x.value / y.value)
+
+    def _backward():
+        for L, dL_dout in out.gradients.items():
+            if x.requires_grad:
+                dL_dx = (1.0 / y.value) * dL_dout
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+            if y.requires_grad:
+                dL_dy = (-x.value / (y.value ** 2)) * dL_dout
+                y.gradients[L] = y.gradients.get(L, 0.0) + dL_dy
+
+    out._prev = {x, y}
+    out._backward = _backward
+    return out
+
+
+def log(x):
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+
+    out = Variable(np.log(x.value))
+
+    def _backward():
+        for L, dL_dout in out.gradients.items():
+            if x.requires_grad:
+                dL_dx = (1.0 / x.value) * dL_dout
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+
+    out._prev = {x}
+    out._backward = _backward
+    return out
+
+
+def minimum(a, b):
+    out = a if a.value < b.value else b
+
+    def _backward():
+        if out is a:
+            out.gradients[a] *= out.grad(a)
+        else:
+            out.gradients[b] *= out.grad(b)
+
+    out._backward = _backward
+    out._prev = {a, b}
+    return out
 
 
 def relu(x):
-    out = Variable(max(0, x.value))
-    out._prev = {x}
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+
+    out = Variable(x.value if x.value > 0 else 0.0)
+
     def _backward():
-        dx = 1.0 if x.value > 0 else 0.0
-        x.gradients[x] = x.grad(x) + dx * out.grad(out)
+        for L, dL_dout in out.gradients.items():
+            if x.requires_grad:
+                dL_dx = (1.0 if x.value > 0 else 0.0) * dL_dout
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+
+    out._prev = {x}
     out._backward = _backward
     return out
 
 def tanh(x):
-    t = math.tanh(x.value)
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+
+    t = np.tanh(x.value)
     out = Variable(t)
-    out._prev = {x}
+
     def _backward():
-        dx = 1 - t ** 2
-        x.gradients[x] = x.grad(x) + dx * out.grad(out)
+        for L, dL_dout in out.gradients.items():
+            if x.requires_grad:
+                dL_dx = (1 - t ** 2) * dL_dout
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+
+    out._prev = {x}
     out._backward = _backward
     return out
+
 
 def sigmoid(x):
-    s = 1 / (1 + math.exp(-x.value))
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+
+    s = 1 / (1 + np.exp(-x.value))
     out = Variable(s)
-    out._prev = {x}
+
     def _backward():
-        dx = s * (1 - s)
-        x.gradients[x] = x.grad(x) + dx * out.grad(out)
+        for L, dL_dout in out.gradients.items():
+            if x.requires_grad:
+                dL_dx = s * (1 - s) * dL_dout
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+
+    out._prev = {x}
     out._backward = _backward
     return out
+
 
 def softplus(x):
-    out = Variable(math.log(1 + math.exp(x.value)))
-    out._prev = {x}
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+
+    out_val = np.log(1 + np.exp(x.value))
+    out = Variable(out_val)
+
     def _backward():
-        dx = 1 / (1 + math.exp(-x.value))
-        x.gradients[x] = x.grad(x) + dx * out.grad(out)
+        s = 1 / (1 + np.exp(-x.value))  # sigmoid(x)
+        for L, dL_dout in out.gradients.items():
+            if x.requires_grad:
+                dL_dx = s * dL_dout
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+
+    out._prev = {x}
     out._backward = _backward
     return out
 
-def logscale(x, scale):
-    out = Variable(x.value * scale)
-    out._prev = {x}
-    def _backward():
-        dx = scale
-        x.gradients[x] = x.grad(x) + dx * out.grad(out)
-    out._backward = _backward
-    return out
 
 def affine(x, w, b):
+    if not isinstance(x, Variable):
+        x = Variable(x, requires_grad=False)
+    if not isinstance(w, Variable):
+        w = Variable(w, requires_grad=False)
+    if not isinstance(b, Variable):
+        b = Variable(b, requires_grad=False)
+
     out = Variable(x.value * w.value + b.value)
-    out._prev = {x, w, b}
+
     def _backward():
-        x.gradients[x] = x.grad(x) + w.value * out.grad(out)
-        w.gradients[w] = w.grad(w) + x.value * out.grad(out)
-        b.gradients[b] = b.grad(b) + 1.0 * out.grad(out)
+        for L, dL_dout in out.gradients.items():
+            if x.requires_grad:
+                dL_dx = w.value * dL_dout
+                x.gradients[L] = x.gradients.get(L, 0.0) + dL_dx
+            if w.requires_grad:
+                dL_dw = x.value * dL_dout
+                w.gradients[L] = w.gradients.get(L, 0.0) + dL_dw
+            if b.requires_grad:
+                dL_db = 1.0 * dL_dout
+                b.gradients[L] = b.gradients.get(L, 0.0) + dL_db
+
+    out._prev = {x, w, b}
     out._backward = _backward
     return out
+
