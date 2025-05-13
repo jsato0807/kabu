@@ -6,8 +6,7 @@ class Variable:
         self.value = value
         self.requires_grad = requires_grad
         self.parents = parents or []  # list of (parent_var, local_grad_fn)
-        self.grads = {}               # {wrt_variable: ∂wrt/∂self}
-        self._backward_called = set()
+        self.grads = {}               # grads[wrt] = dL/dself
 
     def backward(self, wrt=None, upstream_grad=1.0):
         if not self.requires_grad:
@@ -16,17 +15,32 @@ class Variable:
         if wrt is None:
             wrt = self
 
+        # Step 1: トポロジカルソート
+        topo_order = []
+        visited = set()
+
+        def build_topo(v):
+            if v not in visited:
+                visited.add(v)
+                for parent, _ in v.parents:
+                    build_topo(parent)
+                topo_order.append(v)
+
+        build_topo(self)
+
+        # Step 2: 勾配初期化（∂L/∂L = 1.0）
         self.grads[wrt] = self.grads.get(wrt, 0.0) + upstream_grad
 
-        if wrt in self._backward_called:
-            return
-        self._backward_called.add(wrt)
-
-        for parent, local_grad_fn in self.parents:
-            parent.backward(wrt=wrt, upstream_grad=local_grad_fn(upstream_grad))
+        # Step 3: 逆順で伝播
+        for node in reversed(topo_order):
+            grad = node.grads.get(wrt, 0.0)
+            for parent, local_grad_fn in node.parents:
+                if parent.requires_grad:
+                    parent.grads[wrt] = parent.grads.get(wrt, 0.0) + local_grad_fn(grad)
 
     def grad(self, wrt):
         return self.grads.get(wrt, 0.0)
+
 
 
 
