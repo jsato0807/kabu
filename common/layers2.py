@@ -110,6 +110,14 @@ def min_var(x, y):
             (x, lambda g: 0.0),
             (y, lambda g: g)
         ])
+  
+    
+def abs_var(x):
+    if x.value >= 0:
+        return Variable(x.value, parents=[(x, lambda g: g)])
+    else:
+        return Variable(-x.value, parents=[(x, lambda g: -g)])
+
 
 
 def affine(x, w, b):
