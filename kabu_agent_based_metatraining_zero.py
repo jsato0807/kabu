@@ -10,7 +10,7 @@ from common.layers2 import *
     
 
 seed = 0
-initial_log_scale_factor = np.log(np.exp(1))
+initial_log_scale_factor = Variable(log(exp(1)))
 
 def set_seed(seed):
     os.environ['PYTHONHASHSEED'] = str(seed)
@@ -18,16 +18,16 @@ def set_seed(seed):
     np.random.seed(seed)  # NumPy の乱数シード
 
 class MarketGenerator:
-    def __init__(self, input_size, hidden_size, output_size):
+    def __init__(self, input_size, hidden_size, output_size, log_scale_factor=initial_log_scale_factor):
         # ランダム初期化（正規分布）
         self.params = OrderedDict()
         self.params['W1'] = Variable(random.gauss(0, 0.01 * math.sqrt(1/input_size)))
         self.params['b1'] = Variable(0.0)
         self.params['W2'] = Variable(random.gauss(0, 0.01 * math.sqrt(1/hidden_size)))
         self.params['b2'] = Variable(0.0)
-        self.params['W3'] = Variable(random.gauss(0, 0.01 * math.sqrt(1/hidden_size)))
+        self.params['W3'] = Variable(random.gauss(0, 0.01 * math.sqrt(1/output_size)))
         self.params['b3'] = Variable(0.0)
-        self.params['log_scale_factor'] = Variable(log(exp(1)))
+        self.params['log_scale_factor'] = log_scale_factor
 
         self.layers = OrderedDict()
         self.layers['Affine1'] = lambda x: affine(x, self.params['W1'], self.params['b1'])
@@ -169,7 +169,7 @@ class RLAgent():
         self.params['b1'] = Variable(0.0)
         self.params['W2'] = Variable(random.gauss(0, math.sqrt(1 / hidden_size)))
         self.params['b2'] = Variable(0.0)
-        self.params['W3'] = Variable(random.gauss(0, math.sqrt(1 / hidden_size)))
+        self.params['W3'] = Variable(random.gauss(0, math.sqrt(1 / output_size)))
         self.params['b3'] = Variable(0.0)
 
         self.layers = OrderedDict()
@@ -177,7 +177,7 @@ class RLAgent():
         self.layers['Sigmoid1'] = sigmoid
         self.layers['Affine2'] = lambda x: affine(x, self.params['W2'], self.params['b2'])
         self.layers['Sigmoid2'] = sigmoid
-        self.layers['Affine3'] = lambda x: affine(x, self.params['W2'], self.params['b2'])
+        self.layers['Affine3'] = lambda x: affine(x, self.params['W3'], self.params['b3'])
         self.layers['ReLU3'] = relu
 
     def predict(self, x):
@@ -506,22 +506,24 @@ def match_orders(agents, actions, current_price, required_margin_rate):
 
 
 if __name__ == "__main__":
-    # トレーニングループ
     num_agents = 5
-    set_seed(seed)
+    generations = 165
+    required_margin_rate = 0.04
+    gamma = 1.0
+
+    set_seed(0)
     agents = [RLAgent() for _ in range(num_agents)]
     generator = MarketGenerator()
 
-    states = [100.0, 1.0, 0.01]
-    supply_and_demand = 0.0
+    states = [Variable(100.0), Variable(1.0), Variable(0.01)]
+    supply_and_demand = Variable(0.0)
 
-    # 記録用の辞書
     history = {
-        "generated_states": [],  # 生成者の出力: [価格, 流動性, スリッページ]
-        "actions": [],     # 各エージェントの行動
-        "agent_assets": [],       # 各エージェントの総資産
+        "generated_states": [],
+        "actions": [],
+        "agent_assets": [],
         "liquidity": [],
-        "slippage" : [],
+        "slippage": [],
         "gen_gradients": [],
         "disc_gradients": [],
         "gen_loss": [],
@@ -529,254 +531,73 @@ if __name__ == "__main__":
         "log_scale_factor": [],
     }
 
-    # トレーニングループ
-    generations = 165
-    use_rule_based = True  # 初期段階ではルールベースで流動性・スリッページを計算
-    required_margin_rate=0.04
-    gamma = 1
-    volume = 0
-    actions = []
-    disc_losses = []
-    gen_losses = []
-
-
     for generation in range(generations):
         set_seed(generation)
 
-        ## 各要素に 1e-6 を加算して対数を取る
-        # 供給需要の符号付き log 変換
-        log_supply_and_demand = sign(supply_and_demand) * math.log(abs(supply_and_demand) + 1e-6)
+        log_inputs = [
+            log(add(s, Variable(1e-6))) for s in states
+        ]
+        log_supply = log(add(abs_var(supply_and_demand), Variable(1e-6)))
+        signed_log_supply = mul(Variable(sign(supply_and_demand.value)), log_supply)
+        log_inputs.append(signed_log_supply)
 
-        # generator の入力データ
-        log_inputs = np.concat([
-            math.log(np.reshape(states,[-1]) + 1e-6),
-            [log_supply_and_demand]
-        ], axis=0)
+        generated_states = generator.predict(log_inputs)
 
-        generated_states = generator.generate(log_inputs)[0]
-        unlog_generated_states = math.exp(generated_states) - 1e-6
-        current_price, current_liquidity, current_slippage = np.split(unlog_generated_states, num_or_size_splits=3)
+        current_price = sub(exp(generated_states),Variable(1e-6))
+        current_liquidity = div(Variable(1.0), add(Variable(1.0), mul(Variable(gamma), abs_var(supply_and_demand))))
+        current_slippage = div(abs_var(supply_and_demand), add(current_liquidity, Variable(1e-6)))
 
+        states = [current_price, current_liquidity, current_slippage]
 
-        # ルールベースでの調整
-        if use_rule_based:
-            # k を 計算
-            k = 1/(1+gamma*volume)
-
-            # current_liquidity を 計算
-            current_liquidity = 1/(1+k*abs(supply_and_demand))
-
-            # current_slippage を 計算
-            current_slippage = abs(supply_and_demand)/(current_liquidity + 1e-6)
-
-
-        # states の更新
-        states = current_price, current_liquidity, current_slippage]
-
-        # 各エージェントの行動
-        #actions = [agent.act([agent.effective_margin, current_price]) for agent in agents]
-        i = 0
+        actions = []
         for agent in agents:
-            # 各要素に 1e-6 を加算して対数を取る
-            log_inputs = math.log([agent.effective_margin + 1e-6, current_price + 1e-6])
-            # ネットワークの出力を処理し、1e-6 を減算
-            unlog_action = math.exp(agent.predict(log_inputs)) - 1e-6
-            actions.append(unlog_action)
-            i += 1
-        #print(f"actions:{actions.stack()}")
+            log_inputs = [
+                log(add(agent.effective_margin, Variable(1e-6))),
+                log(add(current_price, Variable(1e-6)))
+            ]
+            log_action = exp(agent.predict(log_inputs))
+            action = sub(exp(log_action),Variable(1e-6))
+            actions.append(action)
 
-        volume = sum_variables(abs(a) for a in actions)
+        volume = sum_variables([abs_var(a) for a in actions])
 
-        # 資産更新
-        #print(actions.stack().shape)
-        i = 0
-        match_orders(agents, actions, current_price, required_margin_rate)
+        match_orders(agents, actions, current_price, Variable(required_margin_rate))
 
         supply_and_demand = sum_variables([
-            agent.unfulfilled_long_open
-            - agent.unfulfilled_short_open
-            - agent.unfulfilled_long_close
-            + agent.unfulfilled_short_close
+            sub(add(agent.unfulfilled_long_open, agent.unfulfilled_short_close),
+                add(agent.unfulfilled_short_open, agent.unfulfilled_long_close))
             for agent in agents
         ])
-        print(f"supply_and_demand:{supply_and_demand}")
 
-        for agent, action in zip(agents, actions):
-            # アクションの形状 (1, 4) を (4,) に変換
-            action_flat = np.reshape(action, [-1])  # 形状 (4,)
-            # 各項目を変数に分解
-            long_order_size, short_order_size, long_close_position, short_close_position = action_flat
-
-            #reset calculation graph and update effective_margin by using outputs of models with multiplying 0 in order not to change the value of effective_margin itself. 
-
-            print("\n")
-            print(f"update positions of {i}th agent")
-            print(f"long_order_size:{long_order_size}, short_order_size:{short_order_size}")
-            #agent.update_assets(long_order_size, short_order_size, long_close_position, short_close_position, current_price)
-            #agent.process_new_order(long_order_size,short_order_size,current_price,required_margin_rate)
-            #agent.process_position_closure(long_close_position,short_close_position,current_price)
-            agent.process_position_update(current_price,required_margin_rate)
-            #agent.update_effective_margin = current_price * (long_order_size + short_order_size + long_close_position + short_close_position)
-            print(f"{i}th long_order_size:{long_order_size}")
-            print(f"{i}th short_order_size:{short_order_size}")
-            print(f"{i}th long_close_position:{long_close_position}")
-            print(f"{i}th short_close_position:{short_close_position}")
-            i += 1
-            #print(f"current_price:{current_price}")
-            #print(f"update_effective_margin:{agent.update_effective_margin}")
-
-        # 識別者の評価（discriminator_performance）
-        #disc_tape.watch([agent.effective_margin for agent in agents])  # 必要に応じて追跡
-        #discriminator_performance = tf.stack([agent.effective_margin for agent in agents])
-
-        # 生成者の損失計算
-        #if generation < generations//2:
-        #    i = 0
-        #    for action in (actions.stack()):
-        #        action_flat = tf.reshape(action,[-1])
-        #        long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(action_flat)
-    #
-        #        initial_loss = (tf.math.log(current_price + 1e-6) \
-        #                    + tf.math.log(long_order_size + 1e-6) \
-        #                    + tf.math.log(short_order_size + 1e-6) \
-        #                    + tf.math.log(long_close_position + 1e-6) \
-        #                    + tf.math.log(short_close_position + 1e-6))
-        #        initial_losses = initial_losses.write(i,initial_loss)
-        #        disc_losses = disc_losses.write(i,-initial_loss)
-        #        i += 1
-    #
-    #            
-    #
-    #         gen_loss = tf.reduce_mean(initial_losses.stack())
-    #         print(disc_losses.stack().shape)
-    #         #exit()
-    #         stacked_disc_losses = disc_losses.stack()
-
-        #elif generation >= generations // 2:
-        if generation >= 0:
-            #gen_loss = tf.reduce_mean(discriminator_performance)
-            # エージェントの effective_margin を TensorFlow のテンソルとして格納
-            effective_margins = [agent.effective_margin for agent in agents]
-            # ランダムなインデックスを取得
-            random_index = random.randint(0, len(agents) - 1)
-            # ランダムに選択した effective_margin を取得
-            selected_margin = effective_margins[random_index]
-            print(f"selected agent is {random_index}th agent")
-            #gen_loss = tf.reduce_mean(tf.stack([agent.effective_margin for agent in agents]))
-            gen_loss = selected_margin
-            #print(f"gen_loss:{gen_loss}")
-            i = 0
-            for agent in agents:
-                disc_losses.append(-agent.effective_margin)
-                i += 1
-            #stacked_disc_losses = disc_losses.stack()
-
-
-            """
-            #this code is useful for check whether a variable holds the information of calculation graph
-            i = 0
-            for agent in agents:
-                pos_id_max = int(agent.positions_index - 1)  # 現在の最大 ID
-                for pos_id in range(pos_id_max + 1):  # 最大 ID までの範囲を網羅
-                    try:
-                        pos = agent.positions.read(pos_id)
-                        if tf.reduce_all(pos==0.0):
-                            continue
-                    except:
-                        continue
-                    size, pos_type, open_price, before_unrealized_profit, margin, _ = tf.unstack(pos)
-                    print(f"margin:{margin}")
-                    if pos_id >= 1:
-                        break
-
-                #disc_losses = disc_losses.write(i,size)
-                gen_losses = gen_losses.write(i,generator.log_scale_factor)
-            i += 1
-
-        print(f"disc_losses:{disc_losses.stack().numpy()}")
-        print(f"gen_losses:{gen_losses.stack().numpy()}")
-
-        gen_loss = tf.reduce_mean(gen_losses.stack())
-        """
-
-        # 勾配の計算
-        # 生成者の勾配
-        gen_gradients = gen_tape.gradient(gen_loss, [generator.log_scale_factor] + generator.model.trainable_variables)
-
-        gen_gradients = generator.gradient()
-
-        print(f"gen_gradients:{gen_gradients}")
-        print(f"gen_loss: {gen_loss}")
-        #print(f"generation:{generation}")
-        #print(f"gen_gradients: {gen_gradients}")
-        #exit()
-
-        generator.optimizer.apply_gradients(zip(gen_gradients, [generator.log_scale_factor] + generator.model.trainable_variables))
-
-        # 識別者の勾配
-        #print(f"disc_losses: {stacked_disc_losses}, type: {type(disc_losses)}") 
-        disc_gradients = []
-        i = 0
-        #for agent, disc_loss in zip(agents, stacked_disc_losses):
-        disc_losses_list = []
         for agent in agents:
-            disc_loss = disc_losses.read(i)
-            disc_losses_list.append(disc_loss)
-            #print(f"disc_loss:{disc_loss}")
-            #exit()
-            #print(i)
-            #print(f"disc_loss: {disc_loss}, type: {type(disc_loss)}") 
-            #print(f"disc_losses: {stacked_disc_losses}, type: {type(stacked_disc_losses)}")  
-            #print(type(disc_loss))
-            disc_gradient = disc_tape.gradient(disc_loss, agent.model.trainable_variables)
-            print(f"{i}th agents' disc_gradient:{disc_gradient}")
+            agent.process_position_update(current_price, Variable(required_margin_rate))
 
-            #print(type(disc_gradient))
-            disc_gradients.append(disc_gradient)
-            #print(f"disc_gradient:{disc_gradient}")
-            #exit()
-            agent.optimizer.apply_gradients(zip(disc_gradient, agent.model.trainable_variables))
-            i += 1
+        random_index = random.randint(0, len(agents) - 1)
+        gen_loss = agents[random_index].effective_margin
+        gen_gradients = generator.gradient(gen_loss)
 
-        #print(f"gen_gradients: {gen_gradients}")
+        disc_losses = []
+        disc_gradients = []
+        for agent in agents:
+            # ここで明示的にVariableを使った損失構築（これにより.backward()で連鎖的に勾配計算可能に）
+            disc_loss = mul(Variable(-1.0), agent.effective_margin)
+            disc_losses.append(disc_loss)
+            disc_gradients.append(agent.gradient(disc_loss))
 
-        #print("gen_tape variables:", gen_tape.watched_variables())
-        #print("disc_tape variables:", disc_tape.watched_variables())
-        #exit()
 
-        #for agent in agents:
-        #    agent.effective_margin = agent.update_effective_margin
 
-        print(f"trainable_variables:{generator.trainable_variables}")
-        print(f"generation:{generation}")
-        print(f"log_scale_factor:{generator.log_scale_factor.numpy()}")
-        print(f"current_price:{current_price}")
-        print(" ")
-        print(" ")
-        print(" ")
-        print(" ")
+        print(f"Generation {generation}, Gen Loss: {gen_loss.value}, Gradients: {gen_gradients}")
 
-        # 記録用の辞書に状態を追加
         history["disc_gradients"].append(disc_gradients)
-        history["disc_losses"].append(disc_losses_list)
+        history["disc_losses"].append(disc_losses)
         history["generated_states"].append(generated_states.numpy())
-        history["actions"].append(stacked_actions)
+        history["actions"].append(actions)
         history["agent_assets"].append([agent.effective_margin.numpy() for agent in agents])
         history["liquidity"].append(current_liquidity.numpy())
         history["slippage"].append(current_slippage.numpy())
         history["gen_gradients"].append(gen_gradients)
         history["gen_loss"].append(gen_loss)
         history["log_scale_factor"].append(generator.log_scale_factor.numpy())
-
-    #print(f"Generation {generation}, Best Agent Assets: {max(float(agent.effective_margin.numpy()) for agent in agents):.2f}")
-    #print(f"gen_gradients:{gen_gradients}")
-    #exit()
-
-    #exit()
-
-    ## 進化段階でルールベースを切り替え
-    #if generation == generations // 2:
-    #    use_rule_based = False
 
 
     # Calculate position value
@@ -790,7 +611,7 @@ if __name__ == "__main__":
             #positions_tensor = agent.positions.stack()
             positions_list = agent.positions.stack().numpy().tolist()
 
-            position_value += sum_variables(size * (current_price - open_price) if status==1 else
+            position_value += sum(size * (current_price - open_price) if status==1 else
                          -size * (current_price - open_price) if status==-1 else
                          0 for size, status, open_price, _, _, _ in positions_list)
             #position_value = tf.reduce_sum(
@@ -812,5 +633,5 @@ if __name__ == "__main__":
         i += 1
 
     # ファイルへの記録
-    with open(f"./txt_dir/kabu_agent_based_metatraining_seed-{seed}_lsf-{log_scale_factor}_generations-{generations}.txt", "w") as f:
+    with open(f"./txt_dir/kabu_agent_based_metatraining_seed-{seed}_lsf-{initial_log_scale_factor}_generations-{generations}.txt", "w") as f:
         f.write(str(history))
