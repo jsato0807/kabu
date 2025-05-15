@@ -128,15 +128,9 @@ def abs_var(x):
 
 
 def affine(x, w, b):
-    """
-    out = w * x + b
-    ∂out/∂x = w
-    ∂out/∂w = x
-    ∂out/∂b = 1
-    """
-    return Variable(w.value * x.value + b.value, parents=[
-        (x, lambda g: g * w.value),
-        (w, lambda g: g * x.value),
+    return Variable(np.dot(x.value, w.value) + b.value, parents=[
+        (x, lambda g: np.dot(g, w.value.T)),
+        (w, lambda g: np.outer(x.value, g)),
         (b, lambda g: g)
     ])
 
