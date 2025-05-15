@@ -171,6 +171,10 @@ def abs_var(x):
         return Variable(-x.value, parents=[(x, lambda g: -g)])
 
 
+def sign(x):
+    s = np.sign(x.value)
+    return Variable(s, parents=[(x, lambda g: np.zeros_like(g))])
+
 
 def affine(x, w, b):
     return Variable(np.dot(x.value, w.value) + b.value, parents=[
