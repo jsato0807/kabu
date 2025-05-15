@@ -165,10 +165,13 @@ def min_var(x, y):
   
     
 def abs_var(x):
-    if x.value >= 0:
-        return Variable(x.value, parents=[(x, lambda g: g)])
-    else:
-        return Variable(-x.value, parents=[(x, lambda g: -g)])
+    val = np.abs(x.value)
+
+    def local_grad_fn(g):
+        return g * np.sign(x.value)
+
+    return Variable(val, parents=[(x, local_grad_fn)])
+
 
 
 def sign(x):
