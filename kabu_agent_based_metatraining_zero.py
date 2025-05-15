@@ -28,6 +28,10 @@ def combine_variables(vars):
     parents = [(v, make_local_grad_fn(i)) for i, v in enumerate(vars)]
     return Variable(values, parents=parents)
 
+
+def split_vector(x):
+    return [Variable(x.value[i], parents=[(x, lambda g, i=i: g[i])]) for i in range(len(x.value))]
+
 class MarketGenerator:
     def __init__(self, input_size, hidden_size, output_size, scale_factor=initial_scale_factor):
         # ランダム初期化（正規分布）
@@ -406,8 +410,7 @@ def match_orders(agents, actions, current_price, required_margin_rate):
     short_close_orders = []
 
     for agent, action in zip(agents, actions):
-        action_flat = np.reshape(action, [-1])
-        long_open, short_open, long_close, short_close = action_flat
+        long_open, short_open, long_close, short_close = split_vector(action)
         long_open_orders.append(long_open)
         short_open_orders.append(short_open)
         long_close_orders.append(long_close)
@@ -545,16 +548,18 @@ if __name__ == "__main__":
             log(add(s, Variable(1e-6))) for s in states
         ]
         log_supply = log(add(abs_var(supply_and_demand), Variable(1e-6)))
-        signed_log_supply = mul(Variable(sign(supply_and_demand.value)), log_supply)
+        signed_log_supply = mul(sign(supply_and_demand), log_supply)
         log_inputs.append(signed_log_supply)
 
         log_inputs_vec = combine_variables(log_inputs)
 
         generated_states = generator.predict(log_inputs_vec)
 
-        current_price, current_liquidity, current_slippage = [
-            sub(exp(v), Variable(1e-6)) for v in generated_states
-            ]
+        price_var, liquidity_var, slippage_var = split_vector(generated_states)
+        current_price = sub(exp(price_var), Variable(1e-6))
+        current_liquidity = sub(exp(liquidity_var), Variable(1e-6))
+        current_slippage = sub(exp(slippage_var), Variable(1e-6))
+
         if use_rule_based:
             k = div(Variable(1.0),add(Variable(1.0),mul(gamma,volume)))
             current_liquidity = div(Variable(1.0), add(Variable(1.0), mul(k, abs_var(supply_and_demand))))
