@@ -3,17 +3,20 @@ from functools import reduce
 
 class Variable:
     def __init__(self, value, requires_grad=True, parents=None):
-        self.value = value
+        self.value = np.array(value) if not isinstance(value, np.ndarray) else value
         self.requires_grad = requires_grad
         self.parents = parents or []  # list of (parent_var, local_grad_fn)
         self.grads = {}               # grads[wrt] = dL/dself
 
-    def backward(self, wrt=None, upstream_grad=1.0):
+    def backward(self, wrt=None, upstream_grad=None):
         if not self.requires_grad:
             return
 
         if wrt is None:
             wrt = self
+
+        if upstream_grad is None:
+            upstream_grad = np.ones_like(self.value)
 
         # Step 1: トポロジカルソート
         topo_order = []
@@ -29,7 +32,8 @@ class Variable:
         build_topo(self)
 
         # Step 2: 勾配初期化（∂L/∂L = 1.0）
-        self.grads[wrt] = self.grads.get(wrt, 0.0) + upstream_grad
+        self.grads[wrt] = self.grads.get(wrt, np.zeros_like(self.value)) + upstream_grad
+
 
         # Step 3: 逆順で伝播
         for node in reversed(topo_order):
@@ -90,8 +94,11 @@ def tanh(x):
     return Variable(t, parents=[(x, lambda g: g * (1 - t ** 2))])
 
 def relu(x):
-    return Variable(x.value if x.value > 0 else 0.0,
-                    parents=[(x, lambda g: g if x.value > 0 else 0.0)])
+    relu_val = np.maximum(0, x.value)
+    def local_grad_fn(grad):
+        return grad * (x.value > 0).astype(float)  # 要素ごとに勾配を 0 or 1 に
+
+    return Variable(relu_val, parents=[(x, local_grad_fn)])
 
 def softplus(x):
     sig = 1 / (1 + np.exp(-x.value))
@@ -134,7 +141,7 @@ def affine(x, w, b):
     ])
 
 if __name__  == "__main__":
-    x = Variable(1.0)
+    x = Variable([1.0,1.0])
     w = Variable(2.0)
     b = Variable(0.5)
 
