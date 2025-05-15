@@ -621,6 +621,8 @@ if __name__ == "__main__":
         history["gen_loss"].append(gen_loss)
         history["scale_factor"].append(generator.scale_factor)
 
+        if generation == generations // 2:
+            use_rule_based = False
 
     # Calculate position value
     i = 0
