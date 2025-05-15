@@ -1,42 +1,51 @@
 import numpy as np
 import math
-import sign
 import os
 import random
 from collections import OrderedDict
 from common.layers2 import *
+import json
 
 
     
 
 seed = 0
-initial_log_scale_factor = Variable(log(exp(1)))
+initial_scale_factor = Variable(1.0)
 
 def set_seed(seed):
     os.environ['PYTHONHASHSEED'] = str(seed)
     random.seed(seed)  # Python の乱数シード
     np.random.seed(seed)  # NumPy の乱数シード
 
+def combine_variables(vars):
+    values = np.array([v.value for v in vars])
+
+    def make_local_grad_fn(i):
+        def local_grad_fn(grad):
+            return grad[i]  # grad is vector, return scalar component
+        return local_grad_fn
+
+    parents = [(v, make_local_grad_fn(i)) for i, v in enumerate(vars)]
+    return Variable(values, parents=parents)
+
 class MarketGenerator:
-    def __init__(self, input_size, hidden_size, output_size, log_scale_factor=initial_log_scale_factor):
+    def __init__(self, input_size, hidden_size, output_size, scale_factor=initial_scale_factor):
         # ランダム初期化（正規分布）
         self.params = OrderedDict()
-        self.params['W1'] = Variable(random.gauss(0, 0.01 * math.sqrt(1/input_size)))
+        self.params['W1'] = Variable(np.random.randn(input_size, hidden_size) * 0.01)
         self.params['b1'] = Variable(0.0)
-        self.params['W2'] = Variable(random.gauss(0, 0.01 * math.sqrt(1/hidden_size)))
+        self.params['W2'] = Variable(np.random.randn(hidden_size, output_size) * 0.01)
         self.params['b2'] = Variable(0.0)
-        self.params['W3'] = Variable(random.gauss(0, 0.01 * math.sqrt(1/output_size)))
-        self.params['b3'] = Variable(0.0)
-        self.params['log_scale_factor'] = log_scale_factor
+        self.params['scale_factor'] = scale_factor
 
         self.layers = OrderedDict()
         self.layers['Affine1'] = lambda x: affine(x, self.params['W1'], self.params['b1'])
         self.layers['Sigmoid1'] = sigmoid
         self.layers['Affine2'] = lambda x: affine(x, self.params['W2'], self.params['b2'])
-        self.layers['Sigmoid2'] = sigmoid
-        self.layers['Affine3'] = lambda x: affine(x, self.params['W3'], self.params['b3'])
-        self.layers['Softplus'] = softplus
-        self.layers['LogScale'] = lambda x: mul(x, self.params['log_scale_factor'].value)
+        self.layers['Sigmoid2'] = softplus
+        self.layers['LogScale'] = lambda x: mul(x, self.params['scale_factor'])
+
+        self.optimizer = Adam()
 
     def predict(self, x):
         for name, layer in self.layers.items():
@@ -54,40 +63,31 @@ class MarketGenerator:
     def numerical_gradient(self, x, loss_func, h=1e-4):
         grads = {}
         for name, param in self.params.items():
-            original_value = param.value
+            grad = np.zeros_like(param.value)
+            original_value = param.value.copy()
 
-            # f(x + h)
-            param.value = original_value + h
-            fxh1 = loss_func(self.predict(x)).value
+            # 多次元対応：各要素にhを加減して数値微分
+            it = np.nditer(param.value, flags=['multi_index'], op_flags=['readwrite'])
+            while not it.finished:
+                idx = it.multi_index
+                tmp = param.value[idx]
 
-            # f(x - h)
-            param.value = original_value - h
-            fxh2 = loss_func(self.predict(x)).value
+                param.value[idx] = tmp + h
+                fxh1 = loss_func(self.predict(x)).value
 
-            # numerical gradient
-            grad = (fxh1 - fxh2) / (2 * h)
+                param.value[idx] = tmp - h
+                fxh2 = loss_func(self.predict(x)).value
+
+                grad[idx] = (fxh1 - fxh2) / (2 * h)
+                param.value[idx] = tmp
+                it.iternext()
+
             grads[name] = grad
-
-            # reset param
             param.value = original_value
-
         return grads
 
 
 
-    """
-    def train(self, tape, discriminator_performance,generation,actions):
-        long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(actions)
-        loss = tf.math.log(current_price + 1e-6) \
-     + tf.math.log(long_order_size + 1e-6) \
-     + tf.math.log(short_order_size + 1e-6) \
-     + tf.math.log(long_close_position + 1e-6) \
-     + tf.math.log(short_close_position + 1e-6)
-        if generation == generations // 2:
-            loss = tf.reduce_mean(discriminator_performance)
-        gradients = tape.gradient(loss, self.model.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
-    """
 """
 def validate_unfulfilled_orders(agents, previous_unfulfilled_long_open, previous_unfulfilled_short_open, 
                             previous_unfulfilled_long_close, previous_unfulfilled_short_close,
@@ -165,20 +165,18 @@ class RLAgent():
         self.effective_margin_min = np.inf
 
         self.params = OrderedDict()
-        self.params['W1'] = Variable(random.gauss(0, math.sqrt(1 / input_size)))
+        self.params['W1'] = Variable(np.random.randn(input_size, hidden_size) * 0.01)
         self.params['b1'] = Variable(0.0)
-        self.params['W2'] = Variable(random.gauss(0, math.sqrt(1 / hidden_size)))
+        self.params['W2'] = Variable(np.random.randn(hidden_size, output_size) * 0.01)
         self.params['b2'] = Variable(0.0)
-        self.params['W3'] = Variable(random.gauss(0, math.sqrt(1 / output_size)))
-        self.params['b3'] = Variable(0.0)
 
         self.layers = OrderedDict()
         self.layers['Affine1'] = lambda x: affine(x, self.params['W1'], self.params['b1'])
         self.layers['Sigmoid1'] = sigmoid
         self.layers['Affine2'] = lambda x: affine(x, self.params['W2'], self.params['b2'])
-        self.layers['Sigmoid2'] = sigmoid
-        self.layers['Affine3'] = lambda x: affine(x, self.params['W3'], self.params['b3'])
-        self.layers['ReLU3'] = relu
+        self.layers['Sigmoid2'] = relu
+
+        self.optimizer = Adam()
 
     def predict(self, x):
         for layer in self.layers.values():
@@ -188,37 +186,37 @@ class RLAgent():
     def gradient(self, loss):
         loss.backward()
         grads = {
-            name: param.grad(param)
+            name: loss.grad(param)
             for name, param in self.params.items()
         }
         return grads
 
-    def numerical_gradient(self, x, reward_func):
-        def loss_fn():
-            y = self.predict(x)
-            return reward_func(y)
-
-        h = 1e-4
+    def numerical_gradient(self, x, loss_func, h=1e-4):
         grads = {}
         for name, param in self.params.items():
-            orig = param.value
+            grad = np.zeros_like(param.value)
+            original_value = param.value.copy()
 
-            # f(x + h)
-            param.value = orig + h
-            loss_plus = loss_fn().value
+            # 多次元対応：各要素にhを加減して数値微分
+            it = np.nditer(param.value, flags=['multi_index'], op_flags=['readwrite'])
+            while not it.finished:
+                idx = it.multi_index
+                tmp = param.value[idx]
 
-            # f(x - h)
-            param.value = orig - h
-            loss_minus = loss_fn().value
+                param.value[idx] = tmp + h
+                fxh1 = loss_func(self.predict(x)).value
 
-            # numerical gradient
-            grad = (loss_plus - loss_minus) / (2 * h)
+                param.value[idx] = tmp - h
+                fxh2 = loss_func(self.predict(x)).value
+
+                grad[idx] = (fxh1 - fxh2) / (2 * h)
+                param.value[idx] = tmp
+                it.iternext()
+
             grads[name] = grad
-
-            # restore original value
-            param.value = orig
-
+            param.value = original_value
         return grads
+
     
 
     def process_new_order(self, long_order_size, short_order_size, current_price, margin_rate):
@@ -274,6 +272,7 @@ class RLAgent():
         self.unfulfilled_long_close = add(self.unfulfilled_long_close, long_close_position)
         self.unfulfilled_short_close = add(self.unfulfilled_short_close, short_close_position)
 
+        to_be_removed = []
         for pos_id in range(len(self.positions)):
             pos = self.positions[pos_id]
             size, pos_type, open_price, unrealized_profit, margin, realized_profit = pos
@@ -309,7 +308,7 @@ class RLAgent():
                 self.closed_positions.append([fulfilled_size, pos_type, open_price, Variable(0.0), Variable(0.0), profit])
             else:
                 self.closed_positions.append([fulfilled_size, pos_type, open_price, Variable(0.0), Variable(0.0), profit])
-                self.positions.remove(pos)
+                to_be_removed.append(pos_id)
 
             #    self.unfulfilled_short_open = short_close_position - fulfilled_size
 
@@ -317,8 +316,8 @@ class RLAgent():
             if self.margin_maintenance_flag:
                 print(f"margin maintenance rate is {self.margin_maintenance_rate},so loss cut is executed in position closure process, effective_margin: {self.effective_margin}")
                 continue
-        #for pos_id in sorted(to_be_removed, reverse=True):  # 降順で削除（pos_id がズレないように）
-        #    self._remove_position(pos_id)
+        for pos_id in sorted(to_be_removed, reverse=True):  # 降順で削除（pos_id がズレないように）
+            del self.positions[pos_id]
 
 
     def process_position_update(self, current_price, required_margin_rate):
@@ -334,7 +333,7 @@ class RLAgent():
             except:
                 continue
 
-            if pos_type == 1:
+            if pos_type.value == 1:
                 unrealized_profit = mul(size, sub(current_price, open_price))
             else:
                 unrealized_profit = mul(size, sub(open_price, current_price))
@@ -361,6 +360,7 @@ class RLAgent():
         )
         if self.margin_maintenance_flag:
             print("Forced margin cut triggered.")
+            to_be_removed = []
             for pos_id in range(len(self.positions)):
                 try:
                     pos = self.positions[pos_id]
@@ -368,7 +368,7 @@ class RLAgent():
                 except:
                     continue
 
-                if pos_type == 1:
+                if pos_type.value == 1:
                     profit = mul(size, sub(current_price, open_price))
                 else:
                     profit = mul(size, sub(open_price, current_price))
@@ -383,7 +383,10 @@ class RLAgent():
 
                 pos = [size, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
-                self.positions.remove(pos)
+                to_be_removed.append(pos_id)
+
+            for pos_id in sorted(to_be_removed, reverse=True):
+                del self.positions[pos_id]
 
 
             self.required_margin = 0
@@ -393,22 +396,6 @@ class RLAgent():
 
 
         #"""
-
-
-    """
-    def train(self, tape,generation,actions):
-        long_order_size, short_order_size, long_close_position, short_close_position = tf.unstack(actions)
-        loss = -(tf.math.log(current_price + 1e-6) \
-     + tf.math.log(long_order_size + 1e-6) \
-     + tf.math.log(short_order_size + 1e-6) \
-     + tf.math.log(long_close_position + 1e-6) \
-     + tf.math.log(short_close_position + 1e-6))
-        if generation == generations // 2:
-            loss = -self.effective_margin  # 総資産の最大化
-        gradients = tape.gradient(loss, self.model.trainable_variables)
-        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
-    """
-
 
 
 def match_orders(agents, actions, current_price, required_margin_rate):
@@ -505,15 +492,35 @@ def match_orders(agents, actions, current_price, required_margin_rate):
     print(f"executed_close_volume: {executed_close_volume.value}")
 
 
+def serialize(obj):
+    if isinstance(obj, Variable):
+        val = obj.value
+        return val.tolist() if isinstance(val, np.ndarray) else val
+
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+
+    elif isinstance(obj, list):
+        return [serialize(v) for v in obj]
+
+    elif isinstance(obj, dict):
+        return {k: serialize(v) for k, v in obj.items()}
+
+    else:
+        return obj
+
+
 if __name__ == "__main__":
     num_agents = 5
+    use_rule_based = True
     generations = 165
     required_margin_rate = 0.04
-    gamma = 1.0
+    gamma = Variable(1.0)
+    volume = Variable(0)
 
     set_seed(0)
-    agents = [RLAgent() for _ in range(num_agents)]
-    generator = MarketGenerator()
+    agents = [RLAgent(input_size=2,hidden_size=128,output_size=4) for _ in range(num_agents)]
+    generator = MarketGenerator(input_size=4,hidden_size=128,output_size=3)
 
     states = [Variable(100.0), Variable(1.0), Variable(0.01)]
     supply_and_demand = Variable(0.0)
@@ -528,7 +535,7 @@ if __name__ == "__main__":
         "disc_gradients": [],
         "gen_loss": [],
         "disc_losses": [],
-        "log_scale_factor": [],
+        "scale_factor": [],
     }
 
     for generation in range(generations):
@@ -541,11 +548,17 @@ if __name__ == "__main__":
         signed_log_supply = mul(Variable(sign(supply_and_demand.value)), log_supply)
         log_inputs.append(signed_log_supply)
 
-        generated_states = generator.predict(log_inputs)
+        log_inputs_vec = combine_variables(log_inputs)
 
-        current_price = sub(exp(generated_states),Variable(1e-6))
-        current_liquidity = div(Variable(1.0), add(Variable(1.0), mul(Variable(gamma), abs_var(supply_and_demand))))
-        current_slippage = div(abs_var(supply_and_demand), add(current_liquidity, Variable(1e-6)))
+        generated_states = generator.predict(log_inputs_vec)
+
+        current_price, current_liquidity, current_slippage = [
+            sub(exp(v), Variable(1e-6)) for v in generated_states
+            ]
+        if use_rule_based:
+            k = div(Variable(1.0),add(Variable(1.0),mul(gamma,volume)))
+            current_liquidity = div(Variable(1.0), add(Variable(1.0), mul(k, abs_var(supply_and_demand))))
+            current_slippage = div(abs_var(supply_and_demand), add(current_liquidity, Variable(1e-6)))
 
         states = [current_price, current_liquidity, current_slippage]
 
@@ -555,7 +568,10 @@ if __name__ == "__main__":
                 log(add(agent.effective_margin, Variable(1e-6))),
                 log(add(current_price, Variable(1e-6)))
             ]
-            log_action = exp(agent.predict(log_inputs))
+
+            log_inputs_vec = combine_variables(log_inputs)
+
+            log_action = agent.predict(log_inputs_vec)
             action = sub(exp(log_action),Variable(1e-6))
             actions.append(action)
 
@@ -574,7 +590,10 @@ if __name__ == "__main__":
 
         random_index = random.randint(0, len(agents) - 1)
         gen_loss = agents[random_index].effective_margin
-        gen_gradients = generator.gradient(gen_loss)
+        gen_gradient = generator.gradient(gen_loss)
+        gen_gradients = gen_gradient
+
+        generator.optimizer.update(generator.params, gen_gradients)
 
         disc_losses = []
         disc_gradients = []
@@ -582,7 +601,10 @@ if __name__ == "__main__":
             # ここで明示的にVariableを使った損失構築（これにより.backward()で連鎖的に勾配計算可能に）
             disc_loss = mul(Variable(-1.0), agent.effective_margin)
             disc_losses.append(disc_loss)
-            disc_gradients.append(agent.gradient(disc_loss))
+            disc_gradient = agent.gradient(disc_loss)
+            disc_gradients.append(disc_gradient)
+
+            agent.optimizer.update(agent.params, disc_gradient)
 
 
 
@@ -590,14 +612,14 @@ if __name__ == "__main__":
 
         history["disc_gradients"].append(disc_gradients)
         history["disc_losses"].append(disc_losses)
-        history["generated_states"].append(generated_states.numpy())
+        history["generated_states"].append(generated_states)
         history["actions"].append(actions)
-        history["agent_assets"].append([agent.effective_margin.numpy() for agent in agents])
-        history["liquidity"].append(current_liquidity.numpy())
-        history["slippage"].append(current_slippage.numpy())
+        history["agent_assets"].append([agent.effective_margin for agent in agents])
+        history["liquidity"].append(current_liquidity)
+        history["slippage"].append(current_slippage)
         history["gen_gradients"].append(gen_gradients)
         history["gen_loss"].append(gen_loss)
-        history["log_scale_factor"].append(generator.log_scale_factor.numpy())
+        history["scale_factor"].append(generator.scale_factor)
 
 
     # Calculate position value
@@ -606,14 +628,13 @@ if __name__ == "__main__":
         position_value = 0
         if agent.positions and agent.margin_maintenance_flag==False:
             print("🔍 Before position_value calculation, positions:")
-            print(agent.positions.stack())
+            print(agent.positions)
             # TensorArray を Python の list に変換
             #positions_tensor = agent.positions.stack()
-            positions_list = agent.positions.stack().numpy().tolist()
 
-            position_value += sum(size * (current_price - open_price) if status==1 else
-                         -size * (current_price - open_price) if status==-1 else
-                         0 for size, status, open_price, _, _, _ in positions_list)
+            position_value += sum(size.value * (current_price.value - open_price.value) if status.value==1 else
+                         -size.value * (current_price.value - open_price.value) if status.value==-1 else
+                         0 for size, status, open_price, _, _, _ in agent.positions)
             #position_value = tf.reduce_sum(
             #    positions_tensor[:, 0] * tf.math.sign(positions_tensor[:, 1]) * (current_price - positions_tensor[:, 2])
             #    )
@@ -622,16 +643,16 @@ if __name__ == "__main__":
             position_value = 0
 
         print(f"{i}th agent")
-        print(f"預託証拠金:{agent.margin_deposit.numpy()}")
-        print(f"有効証拠金:{agent.effective_margin}")
+        print(f"預託証拠金:{agent.margin_deposit.value}")
+        print(f"有効証拠金:{agent.effective_margin.value}")
         print(f"ポジション損益:{position_value}")
-        print(f"確定利益:{agent.realized_profit.numpy()}")
+        print(f"確定利益:{agent.realized_profit.value}")
         print(f"証拠金維持率:{agent.margin_maintenance_rate}")
-        print(f"check total:{agent.margin_deposit+position_value}")
+        print(f"check total:{agent.margin_deposit.value+position_value}")
         print(f"ロスカットしたか:{agent.margin_maintenance_flag}")
         print("\n")
         i += 1
 
     # ファイルへの記録
-    with open(f"./txt_dir/kabu_agent_based_metatraining_seed-{seed}_lsf-{initial_log_scale_factor}_generations-{generations}.txt", "w") as f:
-        f.write(str(history))
+    with open(f"./txt_dir/kabu_agent_based_metatraining_seed-{seed}_lsf-{initial_scale_factor.value}_generations-{generations}.json", "w") as f:
+        json.dump(serialize(history), f, indent=2)
