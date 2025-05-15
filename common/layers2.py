@@ -45,6 +45,51 @@ class Variable:
     def grad(self, wrt):
         return self.grads.get(wrt, 0.0)
 
+class SGD:
+    def __init__(self, lr=0.01):
+        self.lr = lr
+
+    def update(self, params, grads):
+        for name in params:
+            params[name].value -= self.lr * grads[name]
+
+class RMSprop:
+    def __init__(self, lr=0.001, beta=0.9, epsilon=1e-8):
+        self.lr = lr
+        self.beta = beta
+        self.epsilon = epsilon
+        self.v = {}
+
+    def update(self, params, grads):
+        for name in params:
+            if name not in self.v:
+                self.v[name] = np.zeros_like(grads[name])
+            self.v[name] = self.beta * self.v[name] + (1 - self.beta) * (grads[name] ** 2)
+            params[name].value -= self.lr * grads[name] / (np.sqrt(self.v[name]) + self.epsilon)
+
+class Adam:
+    def __init__(self, lr=0.001, beta1=0.9, beta2=0.999, epsilon=1e-8):
+        self.lr = lr
+        self.beta1 = beta1
+        self.beta2 = beta2
+        self.epsilon = epsilon
+        self.m = {}
+        self.v = {}
+        self.t = 0
+
+    def update(self, params, grads):
+        self.t += 1
+        for name in params:
+            if name not in self.m:
+                self.m[name] = np.zeros_like(grads[name])
+                self.v[name] = np.zeros_like(grads[name])
+            self.m[name] = self.beta1 * self.m[name] + (1 - self.beta1) * grads[name]
+            self.v[name] = self.beta2 * self.v[name] + (1 - self.beta2) * (grads[name] ** 2)
+
+            m_hat = self.m[name] / (1 - self.beta1 ** self.t)
+            v_hat = self.v[name] / (1 - self.beta2 ** self.t)
+
+            params[name].value -= self.lr * m_hat / (np.sqrt(v_hat) + self.epsilon)
 
 
 
