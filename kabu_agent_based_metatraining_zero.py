@@ -283,14 +283,14 @@ class RLAgent():
                 if long_order_size.value > 0:
                     long_order_size = add(long_order_size, self.unfulfilled_long_open)
                     self.unfulfilled_long_open = Variable(0.0)
-                    pos = [long_order_size, Variable(1.0), current_price, Variable(0.0), long_add_required_margin, Variable(0.0)]
+                    pos = [long_order_size, generation, Variable(1.0), current_price, Variable(0.0), long_add_required_margin, Variable(0.0)]
                     print(f"Opened Buy position at {current_price.value}, required_margin:{self.required_margin}")
                     self.positions.append(pos)
 
                 if short_order_size.value > 0:
                     short_order_size = add(short_order_size, self.unfulfilled_short_open)
                     self.unfulfilled_short_open = Variable(0.0)
-                    pos = [short_order_size, Variable(-1.0), current_price, Variable(0.0), short_add_required_margin, Variable(0.0)]
+                    pos = [short_order_size, generation, Variable(-1.0), current_price, Variable(0.0), short_add_required_margin, Variable(0.0)]
                     print(f"Opened Sell position at {current_price.value}, required_margin:{self.required_margin}")
                     self.positions.append(pos)
 
@@ -302,7 +302,7 @@ class RLAgent():
 
 
 
-    def process_position_closure(self, long_close_position, short_close_position, current_price):
+    def process_position_closure(self, long_close_position, short_close_position, current_price, generation):
         print("process_position_closure is executed ...")
         if self.margin_maintenance_flag:
             print("Margin cut triggered during position closure.")
@@ -314,7 +314,11 @@ class RLAgent():
         to_be_removed = []
         for pos_id in range(len(self.positions)):
             pos = self.positions[pos_id]
-            size, pos_type, open_price, unrealized_profit, margin, realized_profit = pos
+            size, open_index, pos_type, open_price, unrealized_profit, margin, realized_profit = pos
+
+            if open_index == generation:
+                print("skipped closure because this pos opened just now!!")
+                continue
 
             if pos_type.value == 1.0 and self.unfulfilled_long_close.value > 0:
                 fulfilled_size = min_var(self.unfulfilled_long_close, size)
@@ -341,10 +345,10 @@ class RLAgent():
                 self.unfulfilled_short_close = sub(self.unfulfilled_short_close, fulfilled_size)
 
             if size.value > 0:
-                self.positions[pos_id] = [size, pos_type, open_price, Variable(0.0), add_required_margin, Variable(0.0)]
-                self.closed_positions.append([fulfilled_size, pos_type, open_price, Variable(0.0), 0.0, profit])
+                self.positions[pos_id] = [size, generation, pos_type, open_price, Variable(0.0), add_required_margin, Variable(0.0)]
+                self.closed_positions.append([fulfilled_size, generation, pos_type, open_price, Variable(0.0), 0.0, profit])
             else:
-                self.closed_positions.append([fulfilled_size, pos_type, open_price, Variable(0.0), 0.0, profit])
+                self.closed_positions.append([fulfilled_size, generation, pos_type, open_price, Variable(0.0), 0.0, profit])
                 to_be_removed.append(pos_id)
 
             #    self.unfulfilled_short_open = short_close_position - fulfilled_size
@@ -369,7 +373,7 @@ class RLAgent():
         for pos_id in range(pos_id_max + 1):
             try:
                 pos = self.positions[pos_id]
-                size, pos_type, open_price, before_unrealized_profit, margin, _ = pos
+                size, _, pos_type, open_price, before_unrealized_profit, margin, _ = pos
             except:
                 continue
 
@@ -386,10 +390,10 @@ class RLAgent():
             new_required_margin = size.value * current_price.value * required_margin_rate - margin
             self.required_margin += new_required_margin
 
-            pos = [size, pos_type, open_price, unrealized_profit, new_required_margin, 0]
+            pos = [size, generation, pos_type, open_price, unrealized_profit, new_required_margin, 0]
             self.positions[pos_id] = pos
 
-            print(f"updated effective margin against price {current_price} , effective Margin: {self.effective_margin}, required_margin:{self.required_margin}, pos_id:{pos_id}")
+            print(f"updated effective margin against price {current_price.value} , effective Margin: {self.effective_margin.value}, required_margin:{self.required_margin}, pos_id:{pos_id}")
 
             self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(
                 self.effective_margin, self.required_margin
@@ -406,7 +410,7 @@ class RLAgent():
             for pos_id in range(len(self.positions)):
                 try:
                     pos = self.positions[pos_id]
-                    size, pos_type, open_price, before_unrealized_profit, margin, _ = pos
+                    size, _, pos_type, open_price, before_unrealized_profit, margin, _ = pos
                 except:
                     continue
 
@@ -423,7 +427,7 @@ class RLAgent():
                 self.realized_profit = add(self.realized_profit, profit)
                 self.required_margin -= margin
 
-                pos = [size, pos_type, open_price, 0, 0, profit]
+                pos = [size, generation, pos_type, open_price, 0, 0, profit]
                 self.closed_positions.append(pos)
                 to_be_removed.append(pos_id)
 
@@ -440,7 +444,7 @@ class RLAgent():
         #"""
 
 
-def match_orders(agents, actions, current_price, required_margin_rate):
+def match_orders(agents, actions, current_price, required_margin_rate, generation):
     # 1️⃣ 各エージェントの注文を取得
     long_open_orders = []
     short_open_orders = []
@@ -481,7 +485,7 @@ def match_orders(agents, actions, current_price, required_margin_rate):
         print(f"\nprocess_new_order of {i}th agent by ordering new positions")
         agent.process_new_order(executed_long_open, executed_short_open, current_price, required_margin_rate)
         print(f"\nprocess_position_closure of {i}th agent by closing positions")
-        agent.process_position_closure(executed_long_close, executed_short_close, current_price)
+        agent.process_position_closure(executed_long_close, executed_short_close, current_price,generation)
 
     # 4️⃣ 残り注文の相殺
     remaining_long_open = sub(total_long_open, executed_open_volume)
@@ -521,7 +525,7 @@ def match_orders(agents, actions, current_price, required_margin_rate):
             print(f"\nprocess_new_order of {i}th agent by offsetting remaining orders")
             agent.process_new_order(executed_long_open, executed_short_open, current_price, required_margin_rate)
             print(f"\nprocess_position_closure of {i}th agent by offsetting remaining orders")
-            agent.process_position_closure(executed_long_close, executed_short_close, current_price)
+            agent.process_position_closure(executed_long_close, executed_short_close, current_price,generation)
 
             # 未約定の更新（Variableに加算）
             agent.unfulfilled_long_open = add(agent.unfulfilled_long_open, mul(final_remaining_long_open, long_open_ratio))
@@ -622,7 +626,7 @@ if __name__ == "__main__":
             abs_var(scalar) for a in actions for scalar in split_vector(a)
         )
 
-        match_orders(agents, actions, current_price, required_margin_rate)
+        match_orders(agents, actions, current_price, required_margin_rate, generation)
 
         supply_and_demand = sum_variables([
             sub(add(agent.unfulfilled_long_open, agent.unfulfilled_short_close),
