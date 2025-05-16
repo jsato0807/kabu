@@ -594,7 +594,9 @@ if __name__ == "__main__":
             action = sub(exp(log_action),Variable(1e-6))
             actions.append(action)
 
-        volume = sum_variables([abs_var(a) for a in actions])
+        volume = sum_variables(
+            abs_var(scalar) for a in actions for scalar in split_vector(a)
+        )
 
         match_orders(agents, actions, current_price, required_margin_rate)
 
