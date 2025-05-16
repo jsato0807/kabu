@@ -18,7 +18,7 @@ class Variable:
         if upstream_grad is None:
             upstream_grad = np.ones_like(self.value)
 
-        # Step 1: トポロジカルソート
+        # === Step 1: トポロジカルソート ===
         topo_order = []
         visited = set()
 
@@ -31,19 +31,35 @@ class Variable:
 
         build_topo(self)
 
-        # Step 2: 勾配初期化（∂L/∂L = 1.0）
-        self.grads[wrt] = self.grads.get(wrt, np.zeros_like(self.value)) + upstream_grad
+        # === Step 2: 出発点に勾配を与える（∂L/∂L = 1）===
+        init = self.grads.get(wrt, np.zeros_like(self.value))
+        if np.isscalar(init):
+            init = np.ones_like(self.value) * init
+        self.grads[wrt] = init + upstream_grad
 
-
-        # Step 3: 逆順で伝播
+        # === Step 3: 逆順で逆伝播 ===
         for node in reversed(topo_order):
-            grad = node.grads.get(wrt, 0.0)
+            grad = node.grads.get(wrt, np.zeros_like(node.value))
+            if np.isscalar(grad):
+                grad = np.ones_like(node.value) * grad
+
             for parent, local_grad_fn in node.parents:
                 if parent.requires_grad:
-                    parent.grads[wrt] = parent.grads.get(wrt, 0.0) + local_grad_fn(grad)
+                    local_grad = local_grad_fn(grad)
+                    if np.isscalar(local_grad):
+                        local_grad = np.ones_like(parent.value) * local_grad
+
+                    prev = parent.grads.get(wrt, np.zeros_like(parent.value))
+                    if np.isscalar(prev):
+                        prev = np.ones_like(parent.value) * prev
+
+                    parent.grads[wrt] = prev + local_grad
 
     def grad(self, wrt):
-        return self.grads.get(wrt, 0.0)
+        g = self.grads.get(wrt, np.zeros_like(self.value))
+        if np.isscalar(g):
+            g = np.ones_like(self.value) * g
+        return g
 
 class SGD:
     def __init__(self, lr=0.01):
