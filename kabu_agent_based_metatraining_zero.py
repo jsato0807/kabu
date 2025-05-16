@@ -49,6 +49,20 @@ def split_vector(x):
         for i in range(len(val))
     ]
 
+def print_topo(v, level=0, seen=None):
+    if seen is None:
+        seen = set()
+    if v in seen:
+        return
+    seen.add(v)
+
+    indent = "  " * level
+    print(f"{indent}{repr(v)} | value={v.value}, requires_grad={v.requires_grad}")
+
+    for parent, grad_fn in v.parents:
+        print(f"{indent}  ↳ parent: {repr(parent)}")
+        print_topo(parent, level + 1, seen)
+
 
 
 class MarketGenerator:
@@ -243,6 +257,7 @@ class RLAgent():
     
 
     def process_new_order(self, long_order_size, short_order_size, current_price, margin_rate):
+        print("process_new_order is executed ...")
         if long_order_size.value > 0 and short_order_size.value > 0:
             order_margin = ((long_order_size.value + short_order_size.value + self.unfulfilled_short_open.value + self.unfulfilled_long_open.value) * current_price.value * margin_rate)
 
@@ -253,8 +268,11 @@ class RLAgent():
             order_capacity = self.effective_margin.value - (self.required_margin + order_margin)
 
             if order_capacity < 0:
+                print(f"Cannot process order due to insufficient order capacity.")
                 self.unfulfilled_long_open = add(self.unfulfilled_long_open, long_order_size)
                 self.unfulfilled_short_open = add(self.unfulfilled_short_open, short_order_size)
+
+                self.effective_margin = add(self.effective_margin,mul(mul(current_price,add(long_order_size,short_order_size)),0))
                 return
 
             if self.margin_maintenance_rate > 100 and order_capacity > 0:
@@ -285,6 +303,7 @@ class RLAgent():
 
 
     def process_position_closure(self, long_close_position, short_close_position, current_price):
+        print("process_position_closure is executed ...")
         if self.margin_maintenance_flag:
             print("Margin cut triggered during position closure.")
             return
@@ -330,6 +349,8 @@ class RLAgent():
 
             #    self.unfulfilled_short_open = short_close_position - fulfilled_size
 
+            print(f"Closed {'Buy' if pos_type.value==1.0 else ('Sell' if pos_type.value == -1.0 else 'Unknown')} position at {current_price.value} with profit {profit.value} ,grid {open_price.value}, Effective Margin: {self.effective_margin.value}, Required Margin: {self.required_margin}")
+
             self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(self.effective_margin,self.required_margin)
             if self.margin_maintenance_flag:
                 print(f"margin maintenance rate is {self.margin_maintenance_rate},so loss cut is executed in position closure process, effective_margin: {self.effective_margin}")
@@ -339,6 +360,7 @@ class RLAgent():
 
 
     def process_position_update(self, current_price, required_margin_rate):
+        print("process_position_update is executed ...")
         if self.margin_maintenance_flag:
             print(f"Margin cut triggered during position update.")
             return
@@ -366,6 +388,8 @@ class RLAgent():
 
             pos = [size, pos_type, open_price, unrealized_profit, new_required_margin, 0]
             self.positions[pos_id] = pos
+
+            print(f"updated effective margin against price {current_price} , effective Margin: {self.effective_margin}, required_margin:{self.required_margin}, pos_id:{pos_id}")
 
             self.margin_maintenance_flag, self.margin_maintenance_rate = update_margin_maintenance_rate(
                 self.effective_margin, self.required_margin
@@ -611,6 +635,9 @@ if __name__ == "__main__":
 
         random_index = random.randint(0, len(agents) - 1)
         gen_loss = agents[random_index].effective_margin
+
+        #print_topo(gen_loss)  # ← あなたの損失変数
+
         gen_gradient = generator.gradient(gen_loss)
         gen_gradients = gen_gradient
 
