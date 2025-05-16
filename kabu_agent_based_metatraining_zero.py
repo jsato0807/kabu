@@ -30,7 +30,26 @@ def combine_variables(vars):
 
 
 def split_vector(x):
-    return [Variable(x.value[i], parents=[(x, lambda g, i=i: g[i])]) for i in range(len(x.value))]
+    val = x.value
+
+    # スカラーならそのまま（g[i] 使えない）
+    if isinstance(val, (int, float)) or (isinstance(val, np.ndarray) and val.ndim == 0):
+        return [x]
+
+    def make_grad_fn(i):
+        def grad_fn(g):
+            if np.isscalar(g):
+                # 安全処理：全体 shape を仮定して再ベクトル化
+                g = np.ones_like(x.value) * g
+            return g[i]
+        return grad_fn
+
+    return [
+        Variable(val[i], parents=[(x, make_grad_fn(i))])
+        for i in range(len(val))
+    ]
+
+
 
 class MarketGenerator:
     def __init__(self, input_size, hidden_size, output_size, scale_factor=initial_scale_factor):
@@ -131,16 +150,16 @@ def validate_unfulfilled_orders(agents, previous_unfulfilled_long_open, previous
 
 
 def check_min_max_effective_margin(effective_margin, effective_margin_max, effective_margin_min):
-    if effective_margin_max < effective_margin:
-        effective_margin_max = effective_margin
-    if effective_margin_min > effective_margin:
-        effective_margin_min = effective_margin
+    if effective_margin_max < effective_margin.value:
+        effective_margin_max = effective_margin.value
+    if effective_margin_min > effective_margin.value:
+        effective_margin_min = effective_margin.value
     return effective_margin_max, effective_margin_min
 
 
 def update_margin_maintenance_rate(effective_margin, required_margin, margin_cut_threshold=100.0):
     if required_margin != 0:  
-        margin_maintenance_rate = (effective_margin / required_margin) * 100
+        margin_maintenance_rate = (effective_margin.value / required_margin) * 100
     else:
         margin_maintenance_rate = np.inf
 
@@ -225,39 +244,36 @@ class RLAgent():
 
     def process_new_order(self, long_order_size, short_order_size, current_price, margin_rate):
         if long_order_size.value > 0 and short_order_size.value > 0:
-            order_volume = add(long_order_size, short_order_size)
-            total_open = add(order_volume, add(self.unfulfilled_short_open, self.unfulfilled_long_open))
-            order_margin = mul(mul(total_open, current_price), margin_rate)
+            order_margin = ((long_order_size.value + short_order_size.value + self.unfulfilled_short_open.value + self.unfulfilled_long_open.value) * current_price.value * margin_rate)
 
             if self.margin_maintenance_flag:
                 print(f"Margin cut triggered during order processing.")
                 return
 
-            margin_total = add(self.required_margin, order_margin)
-            order_capacity = sub(self.effective_margin, margin_total)
+            order_capacity = self.effective_margin.value - (self.required_margin + order_margin)
 
-            if order_capacity.value < 0:
+            if order_capacity < 0:
                 self.unfulfilled_long_open = add(self.unfulfilled_long_open, long_order_size)
                 self.unfulfilled_short_open = add(self.unfulfilled_short_open, short_order_size)
                 return
 
-            if self.margin_maintenance_rate > 100 and order_capacity.value > 0:
-                long_add_required_margin = mul(mul(add(long_order_size, self.unfulfilled_long_open), current_price), margin_rate)
-                short_add_required_margin = mul(mul(add(short_order_size, self.unfulfilled_short_open), current_price), margin_rate)
-                self.required_margin = add(self.required_margin, add(long_add_required_margin, short_add_required_margin))
+            if self.margin_maintenance_rate > 100 and order_capacity > 0:
+                long_add_required_margin = (long_order_size.value + self.unfulfilled_long_open.value) * current_price.value * margin_rate
+                short_add_required_margin = (short_order_size.value + self.unfulfilled_short_open.value) * current_price.value * margin_rate
+                self.required_margin += long_add_required_margin + short_add_required_margin
 
                 if long_order_size.value > 0:
                     long_order_size = add(long_order_size, self.unfulfilled_long_open)
                     self.unfulfilled_long_open = Variable(0.0)
                     pos = [long_order_size, Variable(1.0), current_price, Variable(0.0), long_add_required_margin, Variable(0.0)]
-                    print(f"Opened Buy position at {current_price.value}, required_margin:{self.required_margin.value}")
+                    print(f"Opened Buy position at {current_price.value}, required_margin:{self.required_margin}")
                     self.positions.append(pos)
 
                 if short_order_size.value > 0:
                     short_order_size = add(short_order_size, self.unfulfilled_short_open)
                     self.unfulfilled_short_open = Variable(0.0)
                     pos = [short_order_size, Variable(-1.0), current_price, Variable(0.0), short_add_required_margin, Variable(0.0)]
-                    print(f"Opened Sell position at {current_price.value}, required_margin:{self.required_margin.value}")
+                    print(f"Opened Sell position at {current_price.value}, required_margin:{self.required_margin}")
                     self.positions.append(pos)
 
                 print(f"positions in process_new_order: {len(self.positions)}")
@@ -282,10 +298,10 @@ class RLAgent():
             size, pos_type, open_price, unrealized_profit, margin, realized_profit = pos
 
             if pos_type.value == 1.0 and self.unfulfilled_long_close.value > 0:
-                fulfilled_size = min_var(self.unfulfilled_long_close.value, size)
+                fulfilled_size = min_var(self.unfulfilled_long_close, size)
                 profit = mul(fulfilled_size, sub(current_price, open_price))
             elif pos_type.value == -1.0 and self.unfulfilled_short_close.value > 0:
-                fulfilled_size = min_var(self.unfulfilled_short_close.value, size)
+                fulfilled_size = min_var(self.unfulfilled_short_close, size)
                 profit = mul(fulfilled_size, sub(open_price, current_price))
             else:
                 continue
@@ -296,22 +312,20 @@ class RLAgent():
             self.margin_deposit = add(self.margin_deposit, profit)
             self.realized_profit = add(self.realized_profit, profit)
 
-            ratio = div(fulfilled_size, size)
-            add_required_margin = mul(margin, sub(Variable(0.0), ratio))
-            self.required_margin += add_required_margin.value
+            add_required_margin = -margin * fulfilled_size.value/size.value
+            self.required_margin += add_required_margin
 
-            size -= fulfilled_size
+            size = sub(size, fulfilled_size)
             if pos_type.value == 1.0:
                 self.unfulfilled_long_close = sub(self.unfulfilled_long_close, fulfilled_size)
             if pos_type.value == -1.0:
                 self.unfulfilled_short_close = sub(self.unfulfilled_short_close, fulfilled_size)
 
-            if size > 0:
-                updated_margin = mul(margin, div(size, size + fulfilled_size))
-                self.positions[pos_id] = [size, pos_type, open_price, Variable(0.0), updated_margin, Variable(0.0)]
-                self.closed_positions.append([fulfilled_size, pos_type, open_price, Variable(0.0), Variable(0.0), profit])
+            if size.value > 0:
+                self.positions[pos_id] = [size, pos_type, open_price, Variable(0.0), add_required_margin, Variable(0.0)]
+                self.closed_positions.append([fulfilled_size, pos_type, open_price, Variable(0.0), 0.0, profit])
             else:
-                self.closed_positions.append([fulfilled_size, pos_type, open_price, Variable(0.0), Variable(0.0), profit])
+                self.closed_positions.append([fulfilled_size, pos_type, open_price, Variable(0.0), 0.0, profit])
                 to_be_removed.append(pos_id)
 
             #    self.unfulfilled_short_open = short_close_position - fulfilled_size
@@ -347,7 +361,7 @@ class RLAgent():
                 self.effective_margin, self.effective_margin_max, self.effective_margin_min
             )
 
-            new_required_margin = sub(mul(size, mul(current_price, required_margin_rate)), margin)
+            new_required_margin = size.value * current_price.value * required_margin_rate - margin
             self.required_margin += new_required_margin
 
             pos = [size, pos_type, open_price, unrealized_profit, new_required_margin, 0]
@@ -582,7 +596,7 @@ if __name__ == "__main__":
 
         volume = sum_variables([abs_var(a) for a in actions])
 
-        match_orders(agents, actions, current_price, Variable(required_margin_rate))
+        match_orders(agents, actions, current_price, required_margin_rate)
 
         supply_and_demand = sum_variables([
             sub(add(agent.unfulfilled_long_open, agent.unfulfilled_short_close),
@@ -591,7 +605,7 @@ if __name__ == "__main__":
         ])
 
         for agent in agents:
-            agent.process_position_update(current_price, Variable(required_margin_rate))
+            agent.process_position_update(current_price, required_margin_rate)
 
         random_index = random.randint(0, len(agents) - 1)
         gen_loss = agents[random_index].effective_margin
@@ -624,7 +638,7 @@ if __name__ == "__main__":
         history["slippage"].append(current_slippage)
         history["gen_gradients"].append(gen_gradients)
         history["gen_loss"].append(gen_loss)
-        history["scale_factor"].append(generator.scale_factor)
+        history["scale_factor"].append(generator.params["scale_factor"])
 
         if generation == generations // 2:
             use_rule_based = False
