@@ -590,7 +590,8 @@ if __name__ == "__main__":
             log(add(s, Variable(1e-6))) for s in states
         ]
         log_supply = log(add(abs_var(supply_and_demand), Variable(1e-6)))
-        signed_log_supply = mul(sign(supply_and_demand), log_supply)
+        #signed_log_supply = mul(sign(supply_and_demand), log_supply)
+        signed_log_supply = mul(tanh(supply_and_demand), log_supply)
         log_inputs.append(signed_log_supply)
 
         log_inputs_vec = combine_variables(log_inputs)
