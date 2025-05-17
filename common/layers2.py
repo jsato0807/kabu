@@ -167,6 +167,23 @@ def softplus(x):
     return Variable(s, parents=[(x, lambda g: g * sig)])
 
 
+def asinh(x):
+    """
+    y = arcsinh(x) = log(x + sqrt(x^2 + 1))
+    dy/dx = 1 / sqrt(x^2 + 1)
+    """
+    s = np.arcsinh(x.value)
+    return Variable(s, parents=[(x, lambda g: g / np.sqrt(x.value**2 + 1))])
+
+def sinh(x):
+    """
+    y = sinh(x) = (e^x - e^{-x}) / 2
+    dy/dx = cosh(x) = (e^x + e^{-x}) / 2
+    """
+    s = np.sinh(x.value)
+    return Variable(s, parents=[(x, lambda g: g * np.cosh(x.value))])
+
+
 def min_var(x, y):
     if x.value < y.value:
         return Variable(x.value, parents=[
