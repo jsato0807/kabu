@@ -8,53 +8,47 @@ class Variable:
         self.parents = parents or []  # list of (parent_var, local_grad_fn)
         self.grads = {}               # grads[wrt] = dL/dself
 
+    def build_topo_iterative(self):
+        visited = set()
+        topo_order = []
+        stack = [(self, False)]
+
+        while stack:
+            var, processed = stack.pop()
+            if var in visited:
+                continue
+
+            if processed:
+                visited.add(var)
+                topo_order.append(var)
+            else:
+                stack.append((var, True))  # 後で追加（処理対象）
+                for parent, _ in var.parents:
+                    stack.append((parent, False))
+
+        return topo_order
+
+
     def backward(self, wrt=None, upstream_grad=None):
         if not self.requires_grad:
             return
 
         if wrt is None:
             wrt = self
-
         if upstream_grad is None:
             upstream_grad = np.ones_like(self.value)
 
-        # === Step 1: トポロジカルソート ===
-        topo_order = []
-        visited = set()
+        # 非再帰的トポロジカル順
+        topo_order = self.build_topo_iterative()
+        self.grads[wrt] = upstream_grad
 
-        def build_topo(v):
-            if v not in visited:
-                visited.add(v)
-                for parent, _ in v.parents:
-                    build_topo(parent)
-                topo_order.append(v)
-
-        build_topo(self)
-
-        # === Step 2: 出発点に勾配を与える（∂L/∂L = 1）===
-        init = self.grads.get(wrt, np.zeros_like(self.value))
-        if np.isscalar(init):
-            init = np.ones_like(self.value) * init
-        self.grads[wrt] = init + upstream_grad
-
-        # === Step 3: 逆順で逆伝播 ===
         for node in reversed(topo_order):
             grad = node.grads.get(wrt, np.zeros_like(node.value))
-            if np.isscalar(grad):
-                grad = np.ones_like(node.value) * grad
-
             for parent, local_grad_fn in node.parents:
                 if parent.requires_grad:
                     local_grad = local_grad_fn(grad)
-                    if np.isscalar(local_grad):
-                        local_grad = np.ones_like(parent.value) * local_grad
-
-                    prev = parent.grads.get(wrt, np.zeros_like(parent.value))
-                    if np.isscalar(prev):
-                        prev = np.ones_like(parent.value) * prev
-
-                    parent.grads[wrt] = prev + local_grad
-
+                    prev_grad = parent.grads.get(wrt, np.zeros_like(parent.value))
+                    parent.grads[wrt] = prev_grad + local_grad
     def grad(self, wrt):
         g = self.grads.get(wrt, np.zeros_like(self.value))
         if np.isscalar(g):
