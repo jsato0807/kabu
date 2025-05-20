@@ -350,9 +350,11 @@ class RLAgent():
 
             size = sub(size, fulfilled_size)
             if pos_type.value == 1.0:
-                self.unfulfilled_long_close = sub(self.unfulfilled_long_close, fulfilled_size)
+                new_unfulfilled_long_close = sub(self.unfulfilled_long_close, fulfilled_size)
+                self.unfulfilled_long_close = new_unfulfilled_long_close
             if pos_type.value == -1.0:
-                self.unfulfilled_short_close = sub(self.unfulfilled_short_close, fulfilled_size)
+                new_unfulfilled_short_close = sub(self.unfulfilled_short_close, fulfilled_size)
+                self.unfulfilled_short_close = new_unfulfilled_short_close
 
             if size.value > 0:
                 self.positions[pos_id] = [size, generation, pos_type, open_price, Variable(0.0), add_required_margin, Variable(0.0)]
@@ -392,7 +394,8 @@ class RLAgent():
             else:
                 unrealized_profit = mul(size, sub(open_price, current_price))
 
-            self.effective_margin = add(self.effective_margin, sub(unrealized_profit, before_unrealized_profit))
+            new_effective_margin = add(self.effective_margin, sub(unrealized_profit, before_unrealized_profit))
+            self.effective_margin = new_effective_margin
             self.effective_margin_max, self.effective_margin_min = check_min_max_effective_margin(
                 self.effective_margin, self.effective_margin_max, self.effective_margin_min
             )
@@ -429,12 +432,16 @@ class RLAgent():
                 else:
                     profit = mul(size, sub(open_price, current_price))
 
-                self.effective_margin = add(self.effective_margin, sub(profit, before_unrealized_profit))
+                new_effective_margin = add(self.effective_margin, sub(profit, before_unrealized_profit))
+                self.effective_margin = new_effective_margin
                 self.effective_margin_max, self.effective_margin_min = check_min_max_effective_margin(
                     self.effective_margin, self.effective_margin_max, self.effective_margin_min
                 )
-                self.margin_deposit = add(self.margin_deposit, profit)
-                self.realized_profit = add(self.realized_profit, profit)
+
+                new_margin_deposit = add(self.margin_deposit, profit)
+                self.margin_deposit = new_margin_deposit
+                new_realized_profit = add(self.realized_profit, profit)
+                self.realized_profit = new_realized_profit
                 self.required_margin -= margin
 
                 pos = [size, generation, pos_type, open_price, 0, 0, profit]
@@ -538,10 +545,14 @@ def match_orders(agents, actions, current_price, required_margin_rate, generatio
             agent.process_position_closure(executed_long_close, executed_short_close, current_price,generation)
 
             # 未約定の更新（Variableに加算）
-            agent.unfulfilled_long_open = add(agent.unfulfilled_long_open, mul(final_remaining_long_open, long_open_ratio))
-            agent.unfulfilled_short_open = add(agent.unfulfilled_short_open, mul(final_remaining_short_open, short_open_ratio))
-            agent.unfulfilled_long_close = add(agent.unfulfilled_long_close, mul(final_remaining_long_close, long_close_ratio))
-            agent.unfulfilled_short_close = add(agent.unfulfilled_short_close, mul(final_remaining_short_close, short_close_ratio))
+            new_unfulfilled_long_open = add(agent.unfulfilled_long_open, mul(final_remaining_long_open, long_open_ratio))
+            agent.unfulfilled_long_open = new_unfulfilled_long_open
+            new_unfulfilled_short_open = add(agent.unfulfilled_short_open, mul(final_remaining_short_open, short_open_ratio))
+            agent.unfulfilled_short_open = new_unfulfilled_short_open
+            new_unfulfilled_long_close = add(agent.unfulfilled_long_close, mul(final_remaining_long_close, long_close_ratio))
+            agent.unfulfilled_long_close = new_unfulfilled_long_close
+            new_unfulfilled_short_close = add(agent.unfulfilled_short_close, mul(final_remaining_short_close, short_close_ratio))
+            agent.unfulfilled_short_close = new_unfulfilled_short_close
 
     print(f"executed_open_volume: {executed_open_volume.value}")
     print(f"executed_close_volume: {executed_close_volume.value}")
@@ -698,7 +709,7 @@ if __name__ == "__main__":
 
             position_value += sum(size.value * (current_price.value - open_price.value) if status.value==1 else
                          -size.value * (current_price.value - open_price.value) if status.value==-1 else
-                         0 for size, status, open_price, _, _, _ in agent.positions)
+                         0 for size, _, status, open_price, _, _, _ in agent.positions)
             #position_value = tf.reduce_sum(
             #    positions_tensor[:, 0] * tf.math.sign(positions_tensor[:, 1]) * (current_price - positions_tensor[:, 2])
             #    )
