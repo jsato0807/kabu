@@ -60,6 +60,12 @@ class Variable:
         if np.isscalar(g):
             g = np.ones_like(self.value) * g
         return g
+    
+    def __hash__(self):
+        return id(self)
+
+    def __eq__(self, other):
+        return id(self) == id(other)
 
 class SGD:
     def __init__(self, lr=0.01):
