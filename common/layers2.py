@@ -2,11 +2,12 @@ import numpy as np
 from functools import reduce
 
 class Variable:
-    def __init__(self, value, requires_grad=True, parents=None):
+    def __init__(self, value, requires_grad=True, parents=None, name=None):
         self.value = np.array(value) if not isinstance(value, np.ndarray) else value
         self.requires_grad = requires_grad
         self.parents = parents or []  # list of (parent_var, local_grad_fn)
         self.grads = {}               # grads[wrt] = dL/dself
+        self.name = name
 
     def build_topo_iterative(self):
         visited = set()
@@ -60,6 +61,10 @@ class Variable:
 
     def __eq__(self, other):
         return id(self) == id(other)
+    
+    def __repr__(self):
+        return f"Variable(name={self.name}, value={self.value})"
+
 
 class SGD:
     def __init__(self, lr=0.01):
@@ -117,25 +122,25 @@ def add(x, y):
     return Variable(x.value + y.value, parents=[
         (x, lambda g: g),
         (y, lambda g: g)
-    ])
+    ], name=f"add({x.name},{y.name})")
 
 def sub(x, y):
     return Variable(x.value - y.value, parents=[
         (x, lambda g: g),
         (y, lambda g: -g)
-    ])
+    ], name=f"sub({x.name},{y.name})")
 
 def mul(x, y):
     return Variable(x.value * y.value, parents=[
         (x, lambda g: g * y.value),
         (y, lambda g: g * x.value)
-    ])
+    ], name=f"mul({x.name},{y.name})")
 
 def div(x, y):
     return Variable(x.value / y.value, parents=[
         (x, lambda g: g / y.value),
         (y, lambda g: -g * x.value / (y.value ** 2))
-    ])
+    ], name=f"div({x.name},{y.name})")
 
 
 
@@ -144,27 +149,27 @@ def exp(x):
     return Variable(e, parents=[(x, lambda g: g * e)])
 
 def log(x):
-    return Variable(np.log(x.value), parents=[(x, lambda g: g / x.value)])
+    return Variable(np.log(x.value), parents=[(x, lambda g: g / x.value)], name=f"exp({x.name})")
 
 def sigmoid(x):
     s = 1 / (1 + np.exp(-x.value))
-    return Variable(s, parents=[(x, lambda g: g * s * (1 - s))])
+    return Variable(s, parents=[(x, lambda g: g * s * (1 - s))], name=f"sigmoid({x.name})")
 
 def tanh(x):
     t = np.tanh(x.value)
-    return Variable(t, parents=[(x, lambda g: g * (1 - t ** 2))])
+    return Variable(t, parents=[(x, lambda g: g * (1 - t ** 2))], name=f"tanh({x.name})")
 
 def relu(x):
     relu_val = np.maximum(0, x.value)
     def local_grad_fn(grad):
         return grad * (x.value > 0).astype(float)  # 要素ごとに勾配を 0 or 1 に
 
-    return Variable(relu_val, parents=[(x, local_grad_fn)])
+    return Variable(relu_val, parents=[(x, local_grad_fn)], name=f"relu{x.name}")
 
 def softplus(x):
     sig = 1 / (1 + np.exp(-x.value))
     s = np.log(1 + np.exp(x.value))
-    return Variable(s, parents=[(x, lambda g: g * sig)])
+    return Variable(s, parents=[(x, lambda g: g * sig)], name=f"softplus{x.name}")
 
 
 def asinh(x):
@@ -173,7 +178,7 @@ def asinh(x):
     dy/dx = 1 / sqrt(x^2 + 1)
     """
     s = np.arcsinh(x.value)
-    return Variable(s, parents=[(x, lambda g: g / np.sqrt(x.value**2 + 1))])
+    return Variable(s, parents=[(x, lambda g: g / np.sqrt(x.value**2 + 1))], name=f"asinh{x.name}")
 
 def sinh(x):
     """
@@ -181,7 +186,7 @@ def sinh(x):
     dy/dx = cosh(x) = (e^x + e^{-x}) / 2
     """
     s = np.sinh(x.value)
-    return Variable(s, parents=[(x, lambda g: g * np.cosh(x.value))])
+    return Variable(s, parents=[(x, lambda g: g * np.cosh(x.value))], name=f"sinh{x.name}")
 
 
 def min_var(x, y):
@@ -189,12 +194,12 @@ def min_var(x, y):
         return Variable(x.value, parents=[
             (x, lambda g: g),
             (y, lambda g: 0.0)
-        ])
+        ], name=f"min({x.name},{y.name})")
     else:
         return Variable(y.value, parents=[
             (x, lambda g: 0.0),
             (y, lambda g: g)
-        ])
+        ], name=f"min({x.name},{y.name})")
   
     
 def abs_var(x):
@@ -203,13 +208,13 @@ def abs_var(x):
     def local_grad_fn(g):
         return g * np.sign(x.value)
 
-    return Variable(val, parents=[(x, local_grad_fn)])
+    return Variable(val, parents=[(x, local_grad_fn)], name=f"abs({x.name})")
 
 
 
 def sign(x):
     s = np.sign(x.value)
-    return Variable(s, parents=[(x, lambda g: np.zeros_like(g))])
+    return Variable(s, parents=[(x, lambda g: np.zeros_like(g))], name=f"sign({x.name})")
 
 
 def affine(x, w, b):
@@ -217,16 +222,15 @@ def affine(x, w, b):
         (x, lambda g: np.dot(g, w.value.T)),
         (w, lambda g: np.outer(x.value, g)),
         (b, lambda g: g)
-    ])
+    ], name=f"affine({x.name},{w.name},{b.name})")
 
 if __name__  == "__main__":
-    x = Variable([1.0,1.0])
-    w = Variable(2.0)
-    b = Variable(0.5)
-
-    c = Variable(7)
-    d = Variable(6)
-    e = Variable(5)
+    x = Variable([1.0, 1.0], name="x")
+    w = Variable(2.0, name="w")
+    b = Variable(0.5, name="b")
+    c = Variable(7.0, name="c")
+    d = Variable(6.0, name="d")
+    e = Variable(5.0, name="e")
 
     y = affine(x, w, b)      # y = 2.0 * 1.0 + 0.5 = 2.5
 
