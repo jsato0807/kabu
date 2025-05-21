@@ -618,6 +618,7 @@ if __name__ == "__main__":
         generated_states = generator.predict(asinh_inputs_vec)
 
         price_var, liquidity_var, slippage_var = split_vector(generated_states)
+        generated_states = [price_var, liquidity_var, slippage_var]
         current_price = sinh(price_var)
         current_liquidity = sinh(liquidity_var)
         current_slippage = sinh(slippage_var)
@@ -679,20 +680,27 @@ if __name__ == "__main__":
 
             agent.optimizer.update(agent.params, disc_gradient)
 
-        
+
         print(f"Generation {generation}, Gen Loss: {gen_loss.value:.15f}, Gen gradients:{gen_gradients}")
 
 
-        history["disc_gradients"].append(disc_gradients)
-        history["disc_losses"].append(disc_losses)
-        history["generated_states"].append(generated_states)
-        history["actions"].append(actions)
-        history["agent_assets"].append([agent.effective_margin for agent in agents])
-        history["liquidity"].append(current_liquidity)
-        history["slippage"].append(current_slippage)
-        history["gen_gradients"].append(gen_gradients)
-        history["gen_loss"].append(gen_loss)
-        history["scale_factor"].append(generator.params["scale_factor"])
+        history["generated_states"].append([serialize(v) for v in generated_states])
+
+        history["actions"].append([[serialize(s) for s in split_vector(a)] for a in actions])
+
+        history["agent_assets"].append([serialize(agent.effective_margin) for agent in agents])
+
+        history["liquidity"].append(serialize(current_liquidity))
+        history["slippage"].append(serialize(current_slippage))
+        history["scale_factor"].append(serialize(generator.params["scale_factor"]))
+
+        history["gen_loss"].append(serialize(gen_loss))
+        history["gen_gradients"].append({k: v.tolist() if isinstance(v, np.ndarray) else float(v) for k, v in gen_gradients.items()})
+
+        history["disc_losses"].append([serialize(d) for d in disc_losses])
+
+        history["disc_gradients"].append([{k: v.tolist() if isinstance(v, np.ndarray) else float(v) for k, v in disc_grad.items()} for disc_grad in disc_gradients])
+
 
         if generation == generations // 2:
             use_rule_based = False
@@ -730,4 +738,4 @@ if __name__ == "__main__":
 
     # ファイルへの記録
     with open(f"./txt_dir/kabu_agent_based_metatraining_seed-{seed}_lsf-{initial_scale_factor.value}_generations-{generations}.json", "w") as f:
-        json.dump(serialize(history), f, indent=2)
+        json.dump(history, f, indent=2)
