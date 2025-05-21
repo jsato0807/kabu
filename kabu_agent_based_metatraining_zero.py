@@ -10,7 +10,7 @@ import json
     
 
 seed = 0
-initial_scale_factor = Variable(1.0)
+initial_scale_factor = Variable(1.0,name="scale_factor")
 
 def set_seed(seed):
     os.environ['PYTHONHASHSEED'] = str(seed)
@@ -26,11 +26,13 @@ def combine_variables(vars):
         return local_grad_fn
 
     parents = [(v, make_local_grad_fn(i)) for i, v in enumerate(vars)]
-    return Variable(values, parents=parents)
+    names = [v.name for v in vars]
+    return Variable(values, parents=parents, name=names)
 
 
 def split_vector(x):
     val = x.value
+    name = x.name
 
     # スカラーならそのまま（g[i] 使えない）
     if isinstance(val, (int, float)) or (isinstance(val, np.ndarray) and val.ndim == 0):
@@ -45,7 +47,7 @@ def split_vector(x):
         return grad_fn
 
     return [
-        Variable(val[i], parents=[(x, make_grad_fn(i))])
+        Variable(val[i], parents=[(x, make_grad_fn(i))],name=name)
         for i in range(len(val))
     ]
 
@@ -69,10 +71,10 @@ class MarketGenerator:
     def __init__(self, input_size, hidden_size, output_size, scale_factor=initial_scale_factor):
         # ランダム初期化（正規分布）
         self.params = OrderedDict()
-        self.params['W1'] = Variable(np.random.randn(input_size, hidden_size) * 0.1)
-        self.params['b1'] = Variable(0.0)
-        self.params['W2'] = Variable(np.random.randn(hidden_size, output_size) * 0.1)
-        self.params['b2'] = Variable(0.0)
+        self.params['W1'] = Variable(np.random.randn(input_size, hidden_size) * 0.1,name="gen_W1")
+        self.params['b1'] = Variable(0.0,name="gen_b1")
+        self.params['W2'] = Variable(np.random.randn(hidden_size, output_size) * 0.1,name="gen_W2")
+        self.params['b2'] = Variable(0.0,name="gen_b2")
         self.params['scale_factor'] = scale_factor
 
         self.layers = OrderedDict()
@@ -183,29 +185,29 @@ def update_margin_maintenance_rate(effective_margin, required_margin, margin_cut
     return False, margin_maintenance_rate  # フラグと値を返す
 
 class RLAgent():
-    def __init__(self, input_size, hidden_size, output_size, weight_init_std=0.01, initial_cash=100000):
+    def __init__(self, input_size, hidden_size, output_size, index, weight_init_std=0.01, initial_cash=100000):
         self.positions = []
         self.closed_positions = []
-        self.effective_margin = Variable(initial_cash)
+        self.effective_margin = Variable(initial_cash,name="effective_margin")
         self.required_margin = 0
-        self.margin_deposit = Variable(initial_cash)
-        self.realized_profit = Variable(0.0)
-        self.long_position = Variable(0.0)
-        self.short_position = Variable(0.0)
-        self.unfulfilled_long_open = Variable(0.0)
-        self.unfulfilled_short_open = Variable(0.0)
-        self.unfulfilled_long_close = Variable(0.0)
-        self.unfulfilled_short_close = Variable(0.0)
+        self.margin_deposit = Variable(initial_cash,name="margin_deposit")
+        self.realized_profit = Variable(0.0,name="realized_profit")
+        self.long_position = Variable(0.0,name="long_position")
+        self.short_position = Variable(0.0,name="short_position")
+        self.unfulfilled_long_open = Variable(0.0,name="unfulfilled_long_open")
+        self.unfulfilled_short_open = Variable(0.0,name="unfulfilled_short_open")
+        self.unfulfilled_long_close = Variable(0.0,name="unfulfilled_long_close")
+        self.unfulfilled_short_close = Variable(0.0,name="unfulfilled_short_close")
         self.margin_maintenance_rate = np.inf
         self.margin_maintenance_flag = False
         self.effective_margin_max = -np.inf
         self.effective_margin_min = np.inf
 
         self.params = OrderedDict()
-        self.params['W1'] = Variable(np.random.randn(input_size, hidden_size) * 0.1)
-        self.params['b1'] = Variable(0.0)
-        self.params['W2'] = Variable(np.random.randn(hidden_size, output_size) * 0.1)
-        self.params['b2'] = Variable(0.0)
+        self.params['W1'] = Variable(np.random.randn(input_size, hidden_size) * 0.1,name=f"disc{index}_W1")
+        self.params['b1'] = Variable(0.0,name=f"disc{index}_b1")
+        self.params['W2'] = Variable(np.random.randn(hidden_size, output_size) * 0.1,name=f"disc{index}_W2")
+        self.params['b2'] = Variable(0.0,name=f"disc{index}_b2")
 
         self.layers = OrderedDict()
         self.layers['Affine1'] = lambda x: affine(x, self.params['W1'], self.params['b1'])
@@ -286,16 +288,16 @@ class RLAgent():
                 if long_order_size.value > 0:
                     new_long_order_size = add(long_order_size, self.unfulfilled_long_open)
                     long_order_size = new_long_order_size
-                    self.unfulfilled_long_open = Variable(0.0)
-                    pos = [long_order_size, generation, Variable(1.0), current_price, Variable(0.0), long_add_required_margin, Variable(0.0)]
+                    self.unfulfilled_long_open = Variable(0.0,name="unfulfilled_long_open")
+                    pos = [long_order_size, generation, Variable(1.0,name="pos_type"), current_price, Variable(0.0,name="unrealized_profit"), long_add_required_margin, Variable(0.0,name="profit")]
                     print(f"Opened Buy position at {current_price.value}, required_margin:{self.required_margin}")
                     self.positions.append(pos)
 
                 if short_order_size.value > 0:
                     new_short_order_size = add(short_order_size, self.unfulfilled_short_open)
                     short_order_size = new_short_order_size
-                    self.unfulfilled_short_open = Variable(0.0)
-                    pos = [short_order_size, generation, Variable(-1.0), current_price, Variable(0.0), short_add_required_margin, Variable(0.0)]
+                    self.unfulfilled_short_open = Variable(0.0,name="unfulfilled_short_open")
+                    pos = [short_order_size, generation, Variable(-1.0,name="pos_type"), current_price, Variable(0.0,name="unrealized_profit"), short_add_required_margin, Variable(0.0,name="profit")]
                     print(f"Opened Sell position at {current_price.value}, required_margin:{self.required_margin}")
                     self.positions.append(pos)
 
@@ -336,8 +338,9 @@ class RLAgent():
             else:
                 continue
 
-            new_effective_margin = add(self.effective_margin, sub(profit, unrealized_profit))
-            self.effective_margin = new_effective_margin
+            #new_effective_margin = add(self.effective_margin, sub(profit, unrealized_profit))
+            #self.effective_margin = new_effective_margin
+            self.effective_margin = add(self.effective_margin, sub(profit, unrealized_profit))
             self.effective_margin_max, self.effective_margin_min = check_min_max_effective_margin(self.effective_margin, self.effective_margin_max, self.effective_margin_min)
             
             new_margin_deposit = add(self.margin_deposit, profit)
@@ -357,10 +360,10 @@ class RLAgent():
                 self.unfulfilled_short_close = new_unfulfilled_short_close
 
             if size.value > 0:
-                self.positions[pos_id] = [size, generation, pos_type, open_price, Variable(0.0), add_required_margin, Variable(0.0)]
-                self.closed_positions.append([fulfilled_size, generation, pos_type, open_price, Variable(0.0), 0.0, profit])
+                self.positions[pos_id] = [size, generation, pos_type, open_price, Variable(0.0,name="unrealized_profit"), add_required_margin, Variable(0.0,name="profit")]
+                self.closed_positions.append([fulfilled_size, generation, pos_type, open_price, Variable(0.0,name="unrealized_profit"), 0.0, profit])
             else:
-                self.closed_positions.append([fulfilled_size, generation, pos_type, open_price, Variable(0.0), 0.0, profit])
+                self.closed_positions.append([fulfilled_size, generation, pos_type, open_price, Variable(0.0,name="unrealized_profit"), 0.0, profit])
                 to_be_removed.append(pos_id)
 
             #    self.unfulfilled_short_open = short_close_position - fulfilled_size
@@ -581,15 +584,15 @@ if __name__ == "__main__":
     use_rule_based = True
     generations = 165
     required_margin_rate = 0.04
-    gamma = Variable(1.0)
-    volume = Variable(0)
+    gamma = Variable(1.0,name="gamma")
+    volume = Variable(0,name="volume")
 
     set_seed(0)
-    agents = [RLAgent(input_size=2,hidden_size=128,output_size=4) for _ in range(num_agents)]
+    agents = [RLAgent(input_size=2,hidden_size=128,output_size=4,index=i) for i in range(num_agents)]
     generator = MarketGenerator(input_size=4,hidden_size=128,output_size=3)
 
-    states = [Variable(100.0), Variable(1.0), Variable(0.01)]
-    supply_and_demand = Variable(0.0)
+    states = [Variable(100.0,name="initial_curernt_price"), Variable(1.0,name="initial_current_liquidity"), Variable(0.01,name="initial_current_slippage")]
+    supply_and_demand = Variable(0.0,name="initial_supply_and_demand")
 
     history = {
         "generated_states": [],
@@ -681,7 +684,9 @@ if __name__ == "__main__":
 
 
 
-        print(f"Generation {generation}, Gen Loss: {gen_loss.value}, Gradients: {gen_gradients}")
+        print(f"Generation {generation}, Gen Loss: {gen_loss.value}, Gen Gradients: {gen_gradients}")
+        for disc_loss, disc_gradient in zip(disc_losses, disc_gradients):
+            print(f"disc Loss: {disc_loss.value}, disc Gradient: {disc_gradient}")
 
         history["disc_gradients"].append(disc_gradients)
         history["disc_losses"].append(disc_losses)
