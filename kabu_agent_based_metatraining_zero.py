@@ -63,6 +63,79 @@ def print_topo(v, level=0, seen=None):
         print_topo(parent, level + 1, seen)
 
 
+def grad_override(target_var, from_var, new_grad_fn):
+    new_parents = []
+    for parent, grad_fn in target_var.parents:
+        if parent is from_var:
+            new_parents.append((parent, new_grad_fn))
+            replaced = True
+            print(f"[grad_override] Replaced grad of '{parent.name}' → '{target_var.name}' with identity gradient.")
+        else:
+            new_parents.append((parent, grad_fn))
+    target_var.parents = new_parents
+
+    if not replaced:
+        print(f"[grad_override] Warning: from_var '{from_var.name}' not found in parents of '{target_var.name}'")
+
+
+def compute_gradient_impact_and_override(loss, target_param, candidate_nodes, threshold=1e-3):
+    """
+    各 candidate_node の逆伝播を恒等関数に置き換えた場合に、target_param の勾配がどれだけズレるかを評価。
+    ズレが小さい場合は grad_override を適用し、.grads を正しく更新する。
+
+    Parameters:
+        loss (Variable): 出力ノード
+        target_param (Variable): 勾配比較対象のパラメータ
+        candidate_nodes (list of Variable): 恒等関数適用候補
+        threshold (float): 勾配ズレ許容値（L2ノルム）
+
+    Returns:
+        dict: {node: diff} 各候補ノードに対する勾配ズレ（L2ノルム）
+    """
+    assert loss.last_topo_order is not None, "You must call loss.backward() before this function."
+
+    # 1. baseline（通常構造での勾配）を保存
+    baseline_grad = np.copy(target_param.grad(loss))
+
+    results = {}
+
+    for node in candidate_nodes:
+        # 保存しておく
+        original_parents = node.parents.copy()
+
+        # 恒等勾配に一時的に差し替え
+        node.parents = [(p, (lambda grad: grad)) for p, _ in original_parents]
+
+        # 2. 勾配をクリア（累積防止）
+        for n in loss.last_topo_order:
+            n.grads.clear()
+
+        # 3. 恒等構造での再backward
+        _ = loss.backward()
+
+        # 4. 新しい勾配取得・ズレを評価
+        approx_grad = np.copy(target_param.grad(loss))
+        diff = np.linalg.norm(baseline_grad - approx_grad)
+        results[node] = diff
+
+        if diff < threshold:
+            # 恒等関数を正式に適用
+            for parent, _ in original_parents:
+                grad_override(node, parent, lambda grad: grad)
+            target_param.grads[loss] = approx_grad
+            print(f"[impact] node '{node.name}' overridden (diff={diff:.4e})")
+        else:
+            # 恒等化せず → 元の勾配を復元
+            target_param.grads[loss] = baseline_grad
+            print(f"[impact] node '{node.name}' skipped (diff={diff:.4e})")
+
+        # 構造を元に戻す
+        node.parents = original_parents
+
+    return results
+
+
+
 
 class MarketGenerator:
     def __init__(self, input_size, hidden_size, output_size):
