@@ -63,76 +63,59 @@ def print_topo(v, level=0, seen=None):
         print_topo(parent, level + 1, seen)
 
 
-def grad_override(target_var, from_var, new_grad_fn):
-    new_parents = []
-    for parent, grad_fn in target_var.parents:
-        if parent is from_var:
-            new_parents.append((parent, new_grad_fn))
-            replaced = True
-            print(f"[grad_override] Replaced grad of '{parent.name}' → '{target_var.name}' with identity gradient.")
-        else:
-            new_parents.append((parent, grad_fn))
-    target_var.parents = new_parents
-
-    if not replaced:
-        print(f"[grad_override] Warning: from_var '{from_var.name}' not found in parents of '{target_var.name}'")
-
-
-def compute_gradient_impact_and_override(loss, target_param, candidate_nodes, threshold=1e-3):
+def find_children(topo_order):
     """
-    各 candidate_node の逆伝播を恒等関数に置き換えた場合に、target_param の勾配がどれだけズレるかを評価。
-    ズレが小さい場合は grad_override を適用し、.grads を正しく更新する。
-
-    Parameters:
-        loss (Variable): 出力ノード
-        target_param (Variable): 勾配比較対象のパラメータ
-        candidate_nodes (list of Variable): 恒等関数適用候補
-        threshold (float): 勾配ズレ許容値（L2ノルム）
-
-    Returns:
-        dict: {node: diff} 各候補ノードに対する勾配ズレ（L2ノルム）
+    topo_order に基づいて各ノードの子ノードを逆探索する。
+    Returns: dict {node: [child1, child2, ...]}
     """
-    assert loss.last_topo_order is not None, "You must call loss.backward() before this function."
+    children_map = {node: [] for node in topo_order}
+    for node in topo_order:
+        for parent, _ in node.parents:
+            children_map[parent].append(node)
+    return children_map
 
-    # 1. baseline（通常構造での勾配）を保存
-    baseline_grad = np.copy(target_param.grad(loss))
+def bypass_node(node, children_map):
+    """
+    指定されたノードをショートカット（バイパス）する。
+    node の親を、その子ノードに直接接続する（勾配関数を合成して）。
+    """
+    if node not in children_map:
+        return
 
-    results = {}
+    for child in children_map[node]:
+        new_parents = []
+        for parent, grad_fn1 in node.parents:
+            for parent2, grad_fn2 in child.parents:
+                if parent2 is node:
+                    # 合成勾配関数 g( f(grad) )
+                    def combined_grad_fn(grad, g1=grad_fn2, g2=grad_fn1):
+                        return g2(g1(grad))
+                    new_parents.append((parent, combined_grad_fn))
+                else:
+                    new_parents.append((parent2, grad_fn2))
+        child.parents = new_parents
+    print(f"[bypass] Node '{node.name}' bypassed.")
 
+def bypass_nodes_by_impact(loss, candidate_nodes, threshold=1e-3):
+    """
+    感度分析に基づいて、loss.grad に対する影響が threshold 未満のノードをバイパスする。
+    """
+    assert loss.last_topo_order is not None, "loss.backward() must be called before bypassing."
+
+    # 1. 子ノード構造の構築
+    children_map = find_children(loss.last_topo_order)
+
+    # 2. 感度評価とバイパス
     for node in candidate_nodes:
-        # 保存しておく
-        original_parents = node.parents.copy()
+        if not node.requires_grad:
+            continue
 
-        # 恒等勾配に一時的に差し替え
-        node.parents = [(p, (lambda grad: grad)) for p, _ in original_parents]
-
-        # 2. 勾配をクリア（累積防止）
-        for n in loss.last_topo_order:
-            n.grads.clear()
-
-        # 3. 恒等構造での再backward
-        _ = loss.backward()
-
-        # 4. 新しい勾配取得・ズレを評価
-        approx_grad = np.copy(target_param.grad(loss))
-        diff = np.linalg.norm(baseline_grad - approx_grad)
-        results[node] = diff
-
+        grad_val = node.grad(loss)
+        diff = np.abs(grad_val).sum()  # L1感度
         if diff < threshold:
-            # 恒等関数を正式に適用
-            for parent, _ in original_parents:
-                grad_override(node, parent, lambda grad: grad)
-            target_param.grads[loss] = approx_grad
-            print(f"[impact] node '{node.name}' overridden (diff={diff:.4e})")
+            bypass_node(node, children_map)
         else:
-            # 恒等化せず → 元の勾配を復元
-            target_param.grads[loss] = baseline_grad
-            print(f"[impact] node '{node.name}' skipped (diff={diff:.4e})")
-
-        # 構造を元に戻す
-        node.parents = original_parents
-
-    return results
+            print(f"[bypass] Node '{node.name}' retained (impact={diff:.4e}).")
 
 
 
@@ -163,7 +146,6 @@ class MarketGenerator:
         return x
 
     def gradient(self, loss):
-        loss.backward()
         grads = {
             name: param.grad(loss)
             for name, param in self.params.items()
@@ -294,7 +276,6 @@ class RLAgent():
         return x
 
     def gradient(self, loss):
-        loss.backward()
         grads = {
             name: param.grad(loss)
             for name, param in self.params.items()
@@ -737,6 +718,10 @@ if __name__ == "__main__":
 
         #print_topo(gen_loss)  # ← あなたの損失変数
 
+        gen_loss.backward()
+
+        bypass_nodes_by_impact(gen_loss, gen_loss.last_topo_order, threshold=1e-3)
+
         gen_gradient = generator.gradient(gen_loss)
         gen_gradients = gen_gradient
 
@@ -748,6 +733,11 @@ if __name__ == "__main__":
             # ここで明示的にVariableを使った損失構築（これにより.backward()で連鎖的に勾配計算可能に）
             disc_loss = mul(Variable(-1.0), agent.effective_margin)
             disc_losses.append(disc_loss)
+
+            disc_loss.backward()
+
+            bypass_nodes_by_impact(disc_loss, disc_loss.last_topo_order, threshold=1e-3)
+
             disc_gradient = agent.gradient(disc_loss)
             disc_gradients.append(disc_gradient)
 
