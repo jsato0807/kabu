@@ -75,47 +75,56 @@ def find_children(topo_order):
     return children_map
 
 def bypass_node(node, children_map):
-    """
-    指定されたノードをショートカット（バイパス）する。
-    node の親を、その子ノードに直接接続する（勾配関数を合成して）。
-    """
     if node not in children_map:
         return
 
     for child in children_map[node]:
         new_parents = []
-        for parent, grad_fn1 in node.parents:
-            for parent2, grad_fn2 in child.parents:
-                if parent2 is node:
-                    # 合成勾配関数 g( f(grad) )
-                    def combined_grad_fn(grad, g1=grad_fn2, g2=grad_fn1):
-                        return g2(g1(grad))
-                    new_parents.append((parent, combined_grad_fn))
-                else:
-                    new_parents.append((parent2, grad_fn2))
+        for parent2, grad_fn2 in child.parents:
+            if parent2 is node:
+                for parent1, grad_fn1 in node.parents:
+                    if parent1 is child:
+                        # 自己ループになるのでスキップ（ショートカットせず保持）
+                        new_parents.append((node, grad_fn2))
+                    else:
+                        new_parents.append((parent1, grad_fn1))
+            else:
+                new_parents.append((parent2, grad_fn2))
         child.parents = new_parents
-    print(f"[bypass] Node '{node.name}' bypassed.")
 
-def bypass_nodes_by_impact(loss, candidate_nodes, threshold=1e-3):
+    #print(f"[bypass] Node '{node.name}' bypassed.")
+
+def bypass_nodes_by_impact(loss, candidate_nodes, percentile=10):
     """
-    感度分析に基づいて、loss.grad に対する影響が threshold 未満のノードをバイパスする。
+    感度分析に基づいて、loss.grad に対する影響が percentile 以下のノードをバイパスする。
     """
     assert loss.last_topo_order is not None, "loss.backward() must be called before bypassing."
 
     # 1. 子ノード構造の構築
     children_map = find_children(loss.last_topo_order)
 
-    # 2. 感度評価とバイパス
+    # 2. 各ノードの勾配スコア（L1ノルム）を一括計算
+    scores = []
+    filtered_nodes = []
+
     for node in candidate_nodes:
         if not node.requires_grad:
             continue
+        score = np.abs(node.grad(loss)).sum()
+        scores.append(score)
+        filtered_nodes.append(node)
 
-        grad_val = node.grad(loss)
-        diff = np.abs(grad_val).sum()  # L1感度
-        if diff < threshold:
+    # 3. 分布のしきい値を決定（下位 percentile%）
+    threshold = np.percentile(scores, percentile)
+
+    # 4. 実際にバイパスを適用
+    for node, score in zip(filtered_nodes, scores):
+        if score <= threshold:
             bypass_node(node, children_map)
         else:
-            print(f"[bypass] Node '{node.name}' retained (impact={diff:.4e}).")
+            #print(f"[bypass] Node '{node.name}' retained (impact={score:.4e}).")
+            pass
+
 
 
 
@@ -720,7 +729,7 @@ if __name__ == "__main__":
 
         gen_loss.backward()
 
-        bypass_nodes_by_impact(gen_loss, gen_loss.last_topo_order, threshold=1e-3)
+        bypass_nodes_by_impact(gen_loss, gen_loss.last_topo_order)
 
         gen_gradient = generator.gradient(gen_loss)
         gen_gradients = gen_gradient
@@ -736,7 +745,7 @@ if __name__ == "__main__":
 
             disc_loss.backward()
 
-            bypass_nodes_by_impact(disc_loss, disc_loss.last_topo_order, threshold=1e-3)
+            bypass_nodes_by_impact(disc_loss, disc_loss.last_topo_order)
 
             disc_gradient = agent.gradient(disc_loss)
             disc_gradients.append(disc_gradient)
