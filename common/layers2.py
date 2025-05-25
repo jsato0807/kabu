@@ -8,6 +8,7 @@ class Variable:
         self.parents = parents or []  # list of (parent_var, local_grad_fn)
         self.grads = {}               # grads[wrt] = dL/dself
         self.name = name
+        self.last_topo_order = None
 
     def build_topo_iterative(self):
         visited = set()
@@ -50,6 +51,8 @@ class Variable:
                     local_grad = local_grad_fn(grad)
                     prev_grad = parent.grads.get(wrt, np.zeros_like(parent.value))
                     parent.grads[wrt] = prev_grad + local_grad
+        self.last_topo_order = topo_order
+    
     def grad(self, wrt):
         g = self.grads.get(wrt, np.zeros_like(self.value))
         if np.isscalar(g):
@@ -224,25 +227,42 @@ def affine(x, w, b):
         (b, lambda g: g)
     ], name=f"affine({x.name},{w.name},{b.name})")
 
+def stop_grad_with_identity(x):
+    """
+    Forward: 値そのものをそのまま返す
+    Backward: 恒等関数（g → g）として勾配をそのまま返す（chain-ruleの伝播抑制）
+    """
+    return Variable(x.value, parents=[(x, lambda g: g * 1.0)])
+
+
 if __name__  == "__main__":
-    x = Variable([1.0, 1.0], name="x")
-    w = Variable(2.0, name="w")
-    b = Variable(0.5, name="b")
-    c = Variable(7.0, name="c")
-    d = Variable(6.0, name="d")
-    e = Variable(5.0, name="e")
 
-    y = affine(x, w, b)      # y = 2.0 * 1.0 + 0.5 = 2.5
+    x = Variable(1.0)
+    y = relu(stop_grad_with_identity(tanh(x)))  # tanh(x) の勾配は 1.0 として流す
+    z = mul(y,Variable(2))
 
-    t = add(mul(div(y,c),d),e)
+    z.backward()
 
-    z = relu(t)
+    print(f"∂z/∂x ={x.grad(z)}")
 
-    z.backward()             # 自動的に wrt=z が設定される
-
-    print("∂z/∂x =", x.grad(z))  # 2.0 if y > 0 else 0.0
-    print("∂z/∂w =", w.grad(z))  # 1.0 if y > 0 else 0.0
-    print("∂z/∂b =", b.grad(z))  # 1.0 if y > 0 else 0.0
-    print("∂z/∂c =", c.grad(z))  
-    print("∂z/∂d =", d.grad(z))  
-    print("∂z/∂e =", e.grad(z))  
+    #x = Variable([1.0, 1.0], name="x")
+    #w = Variable(2.0, name="w")
+    #b = Variable(0.5, name="b")
+    #c = Variable(7.0, name="c")
+    #d = Variable(6.0, name="d")
+    #e = Variable(5.0, name="e")
+#
+    #y = affine(x, w, b)      # y = 2.0 * 1.0 + 0.5 = 2.5
+#
+    #t = add(mul(div(y,c),d),e)
+#
+    #z = relu(t)
+#
+    #z.backward()             # 自動的に wrt=z が設定される
+#
+    #print("∂z/∂x =", x.grad(z))  # 2.0 if y > 0 else 0.0
+    #print("∂z/∂w =", w.grad(z))  # 1.0 if y > 0 else 0.0
+    #print("∂z/∂b =", b.grad(z))  # 1.0 if y > 0 else 0.0
+    #print("∂z/∂c =", c.grad(z))  
+    #print("∂z/∂d =", d.grad(z))  
+    #print("∂z/∂e =", e.grad(z))  
