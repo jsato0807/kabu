@@ -2,6 +2,8 @@ import numpy as np
 from functools import reduce
 
 class Variable:
+    _instances = set()  # 全インスタンスを保持
+
     def __init__(self, value, requires_grad=True, parents=None, name=None):
         self.value = np.array(value) if not isinstance(value, np.ndarray) else value
         self.requires_grad = requires_grad
@@ -9,6 +11,8 @@ class Variable:
         self.grads = {}               # grads[wrt] = dL/dself
         self.name = name
         self.last_topo_order = None
+
+        Variable._instances.add(self)
 
     def build_topo_iterative(self):
         visited = set()
@@ -59,6 +63,11 @@ class Variable:
             g = np.ones_like(self.value) * g
         return g
     
+    @classmethod
+    def clear_graph(cls):
+        for v in cls._instances:
+            v.parents = []
+    
     def __hash__(self):
         return id(self)
 
@@ -67,6 +76,9 @@ class Variable:
     
     def __repr__(self):
         return f"Variable(name={self.name}, value={self.value})"
+    
+    def __del__(self):
+        Variable._instances.discard(self)  # 削除時にもクリーンに
 
 
 class SGD:
@@ -244,6 +256,11 @@ if __name__  == "__main__":
     z.backward()
 
     print(f"∂z/∂x ={x.grad(z)}")
+
+    Variable.clear_graph()
+
+    print(z.parents)
+    print(x.grad(z))
 
     #x = Variable([1.0, 1.0], name="x")
     #w = Variable(2.0, name="w")
