@@ -156,7 +156,7 @@ class MarketGenerator:
 
     def gradient(self, loss):
         grads = {
-            name: param.grad(loss)
+            name: np.copy(param.grad(loss)) # ← lambda 等を含まない純粋な数値データに変換
             for name, param in self.params.items()
         }
         return grads
@@ -286,7 +286,7 @@ class RLAgent():
 
     def gradient(self, loss):
         grads = {
-            name: param.grad(loss)
+            name: np.copy(param.grad(loss)) # ← lambda 等を含まない純粋な数値データに変換
             for name, param in self.params.items()
         }
         return grads
@@ -776,6 +776,9 @@ if __name__ == "__main__":
 
         if generation == generations // 2:
             use_rule_based = False
+
+        #reset parents holding .grads dict information
+        Variable.clear_graph()
 
     # Calculate position value
     i = 0
