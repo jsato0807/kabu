@@ -11,6 +11,7 @@ class Variable:
         self.grads = {}               # grads[wrt] = dL/dself
         self.name = name
         self.last_topo_order = None
+        self.prev_grad = None
 
         Variable._instances.add(self)
 
@@ -65,8 +66,10 @@ class Variable:
     
     @classmethod
     def clear_graph(cls):
-        for v in cls._instances:
+        for v in list(cls._instances):
             v.parents = []
+            v.grads = {}
+        cls._instances.clear()
     
     def __hash__(self):
         return id(self)
