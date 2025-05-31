@@ -70,6 +70,9 @@ class Variable:
             v.parents = []
             v.grads = {}
         cls._instances.clear()
+
+    def detach(self):
+        return Variable(np.copy(self.value))
     
     def __hash__(self):
         return id(self)
