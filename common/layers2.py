@@ -93,7 +93,7 @@ class Variable:
             # スカラー勾配 g を、元の shape に合わせて one-hot 勾配に変換
             full_grad = np.zeros_like(parent.value)
             full_grad[idx] = g
-            return (full_grad,)
+            return full_grad
 
         return Variable(val, parents=[(self, grad_fn)], name=f"{self.name}[{idx}]")
 
@@ -152,61 +152,61 @@ def sum_variables(vars):
 
 
 def add(x, y):
-    def grad_fn_x(g, node, parent): return (g,)
-    def grad_fn_y(g, node, parent): return (g,)
+    def grad_fn_x(g, node, parent): return g
+    def grad_fn_y(g, node, parent): return g
     return Variable(x.value + y.value, parents=[(x, grad_fn_x), (y, grad_fn_y)], name=f"add({x.name},{y.name})")
 
 def sub(x, y):
-    def grad_fn_x(g, node, parent): return (g,)
-    def grad_fn_y(g, node, parent): return (-g,)
+    def grad_fn_x(g, node, parent): return g
+    def grad_fn_y(g, node, parent): return -g
     return Variable(x.value - y.value, parents=[(x, grad_fn_x), (y, grad_fn_y)], name=f"sub({x.name},{y.name})")
 
 def mul(x, y):
-    def grad_fn_x(g, node, parent): return (g * y.value,)
-    def grad_fn_y(g, node, parent): return (g * x.value,)
+    def grad_fn_x(g, node, parent): return g * y.value
+    def grad_fn_y(g, node, parent): return g * x.value
     return Variable(x.value * y.value, parents=[(x, grad_fn_x), (y, grad_fn_y)], name=f"mul({x.name},{y.name})")
 
 def div(x, y):
-    def grad_fn_x(g, node, parent): return (g / y.value,)
-    def grad_fn_y(g, node, parent): return (-g * x.value / (y.value ** 2),)
+    def grad_fn_x(g, node, parent): return g / y.value
+    def grad_fn_y(g, node, parent): return -g * x.value / (y.value ** 2)
     return Variable(x.value / y.value, parents=[(x, grad_fn_x), (y, grad_fn_y)], name=f"div({x.name},{y.name})")
 
 def relu(x):
-    def grad_fn(g, node, parent): return (g * (x.value > 0).astype(float),)
+    def grad_fn(g, node, parent): return g * (x.value > 0).astype(float)
     return Variable(np.maximum(0, x.value), parents=[(x, grad_fn)], name=f"relu({x.name})")
 
 def sigmoid(x):
     sig = 1 / (1 + np.exp(-x.value))
-    def grad_fn(g, node, parent): return (g * sig * (1 - sig),)
+    def grad_fn(g, node, parent): return g * sig * (1 - sig)
     return Variable(sig, parents=[(x, grad_fn)], name=f"sigmoid({x.name})")
 
 def tanh(x):
     th = np.tanh(x.value)
-    def grad_fn(g, node, parent): return (g * (1 - th ** 2),)
+    def grad_fn(g, node, parent): return g * (1 - th ** 2)
     return Variable(th, parents=[(x, grad_fn)], name=f"tanh({x.name})")
 
 def exp(x):
     ex = np.exp(x.value)
-    def grad_fn(g, node, parent): return (g * ex,)
+    def grad_fn(g, node, parent): return g * ex
     return Variable(ex, parents=[(x, grad_fn)], name=f"exp({x.name})")
 
 def log(x):
-    def grad_fn(g, node, parent): return (g / x.value,)
+    def grad_fn(g, node, parent): return g / x.value
     return Variable(np.log(x.value), parents=[(x, grad_fn)], name=f"log({x.name})")
 
 def softplus(x):
     val = np.log1p(np.exp(x.value))
-    def grad_fn(g, node, parent): return (g * (1 / (1 + np.exp(-x.value))),)
+    def grad_fn(g, node, parent): return g * (1 / (1 + np.exp(-x.value)))
     return Variable(val, parents=[(x, grad_fn)], name=f"softplus({x.name})")
 
 def asinh(x):
     val = np.arcsinh(x.value)
-    def grad_fn(g, node, parent): return (g / np.sqrt(x.value ** 2 + 1),)
+    def grad_fn(g, node, parent): return g / np.sqrt(x.value ** 2 + 1)
     return Variable(val, parents=[(x, grad_fn)], name=f"asinh({x.name})")
 
 def sinh(x):
     val = np.sinh(x.value)
-    def grad_fn(g, node, parent): return (g * np.cosh(x.value),)
+    def grad_fn(g, node, parent): return g * np.cosh(x.value)
     return Variable(val, parents=[(x, grad_fn)], name=f"sinh({x.name})")
 
 def min_var(x, y):
@@ -214,32 +214,32 @@ def min_var(x, y):
 
     def grad_fn_x(g, node, parent):
         mask = x.value < y.value
-        return (g * mask.astype(float),)
+        return g * mask.astype(float)
 
     def grad_fn_y(g, node, parent):
         mask = x.value >= y.value
-        return (g * mask.astype(float),)
+        return g * mask.astype(float)
 
     return Variable(val, parents=[(x, grad_fn_x), (y, grad_fn_y)], name=f"min({x.name},{y.name})")
 
 def abs_var(x):
     val = np.abs(x.value)
-    def grad_fn(g, node, parent): return (g * np.sign(x.value),)
+    def grad_fn(g, node, parent): return g * np.sign(x.value)
     return Variable(val, parents=[(x, grad_fn)], name=f"abs({x.name})")
 
 def sign(x):
-    def grad_fn(g, node, parent): return (np.zeros_like(x.value),)
+    def grad_fn(g, node, parent): return np.zeros_like(x.value)
     return Variable(np.sign(x.value), parents=[(x, grad_fn)], name=f"sign({x.name})")
 
 def identity(x):
-    def grad_fn(g, node, parent): return (g,)
+    def grad_fn(g, node, parent): return g
     return Variable(x.value, parents=[(x, grad_fn)], name=f"identity({x.name})")
 
 
 def affine(x, w, b):
-    def grad_fn_x(g, node, parent): return (g * w.value,)
-    def grad_fn_w(g, node, parent): return (g * x.value,)
-    def grad_fn_b(g, node, parent): return (g,)
+    def grad_fn_x(g, node, parent): return g * w.value
+    def grad_fn_w(g, node, parent): return g * x.value
+    def grad_fn_b(g, node, parent): return g
     return Variable(x.value * w.value + b.value,
                     parents=[(x, grad_fn_x), (w, grad_fn_w), (b, grad_fn_b)],
                     name=f"affine({x.name},{w.name},{b.name})")
