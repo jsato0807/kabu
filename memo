@@ -623,3 +623,9 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     Weight Separation for Memory-Efficient and Accurate Deep Multitask Learning(https://chatgpt.com/g/g-hxDOCBQrs-paper-interpreter-japanese/c/681d5793-3cc4-800e-8d43-28ec7b5fa585)
         →hessianは2回微分のためO(n^2)だが、正則条件下では一回微分の二乗平均(=fisher情報)と等しいので、正則条件が満たされると仮定して近似的に計算を軽くできる
         cf) EWC（Elastic Weight Consolidation） 「重要な重みを保護しつつ、新しいタスクの学習を許容する」ことで、「破滅的忘却（Catastrophic Forgetting）」を防ぐ方法。
+
+    2025-6-1
+        lambda濫用を防ぐことでメモリ爆発を最小限に抑えることに成功し、generation=75くらいまではkillされずに進めることができた。
+    
+        bypass_node_impactを追加実行するとエラーが出るのでその対処をせよ
+        __getitem__をsplit_vectorのかわり使用したが、これで計算がずれてないか確認せよ
