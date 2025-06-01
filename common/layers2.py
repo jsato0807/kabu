@@ -237,10 +237,10 @@ def identity(x):
 
 
 def affine(x, w, b):
-    def grad_fn_x(g, node, parent): return g * w.value
-    def grad_fn_w(g, node, parent): return g * x.value
+    def grad_fn_x(g, node, parent): return np.dot(g, w.value.T)
+    def grad_fn_w(g, node, parent): return np.outer(x.value, g)
     def grad_fn_b(g, node, parent): return g
-    return Variable(x.value * w.value + b.value,
+    return Variable(np.dot(x.value, w.value) + b.value,
                     parents=[(x, grad_fn_x), (w, grad_fn_w), (b, grad_fn_b)],
                     name=f"affine({x.name},{w.name},{b.name})")
 
