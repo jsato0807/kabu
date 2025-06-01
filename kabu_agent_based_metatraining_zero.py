@@ -28,26 +28,6 @@ def combine_variables(vars):
     return Variable(values, parents=parents)
 
 
-def split_vector(x):
-    val = x.value
-
-    # スカラーならそのまま（g[i] 使えない）
-    if isinstance(val, (int, float)) or (isinstance(val, np.ndarray) and val.ndim == 0):
-        return [x]
-
-    def make_grad_fn(i):
-        def grad_fn(g):
-            if np.isscalar(g):
-                # 安全処理：全体 shape を仮定して再ベクトル化
-                g = np.ones_like(x.value) * g
-            return g[i]
-        return grad_fn
-
-    return [
-        Variable(val[i], parents=[(x, make_grad_fn(i))])
-        for i in range(len(val))
-    ]
-
 def print_topo(v, level=0, seen=None):
     if seen is None:
         seen = set()
@@ -532,7 +512,11 @@ def match_orders(agents, actions, current_price, required_margin_rate, generatio
     short_close_orders = []
 
     for agent, action in zip(agents, actions):
-        long_open, short_open, long_close, short_close = split_vector(action)
+        long_open = action[0]
+        short_open = action[1]
+        long_close = action[2]
+        short_close = action[3]
+
         long_open_orders.append(long_open)
         short_open_orders.append(short_open)
         long_close_orders.append(long_close)
@@ -680,7 +664,10 @@ if __name__ == "__main__":
 
         generated_states = generator.predict(asinh_inputs_vec)
 
-        price_var, liquidity_var, slippage_var = split_vector(generated_states)
+        price_var = generated_states[0]
+        liquidity_var = generated_states[1]
+        slippage_var = generated_states[2]
+
         generated_states = [price_var, liquidity_var, slippage_var]
         current_price = sinh(price_var)
         current_liquidity = sinh(liquidity_var)
@@ -708,8 +695,8 @@ if __name__ == "__main__":
             actions.append(action)
 
         volume = sum_variables(
-            abs_var(scalar) for a in actions for scalar in split_vector(a)
-        )
+                    abs_var(a[i]) for a in actions for i in range(len(a.value))
+                )
 
         match_orders(agents, actions, current_price, required_margin_rate, generation)
 
@@ -729,7 +716,7 @@ if __name__ == "__main__":
 
         gen_loss.backward()
 
-        bypass_nodes_by_impact(gen_loss, gen_loss.last_topo_order)
+        #bypass_nodes_by_impact(gen_loss, gen_loss.last_topo_order)
 
         gen_gradient = generator.gradient(gen_loss)
         gen_gradients = gen_gradient
@@ -745,7 +732,7 @@ if __name__ == "__main__":
 
             disc_loss.backward()
 
-            bypass_nodes_by_impact(disc_loss, disc_loss.last_topo_order)
+            #bypass_nodes_by_impact(disc_loss, disc_loss.last_topo_order)
 
             disc_gradient = agent.gradient(disc_loss)
             disc_gradients.append(disc_gradient)
@@ -758,7 +745,8 @@ if __name__ == "__main__":
 
         history["generated_states"].append([serialize(v) for v in generated_states])
 
-        history["actions"].append([[serialize(s) for s in split_vector(a)] for a in actions])
+        history["actions"].append([[serialize(a[i]) for i in range(len(a.value))] for a in actions])
+
 
         history["agent_assets"].append([serialize(agent.effective_margin) for agent in agents])
 

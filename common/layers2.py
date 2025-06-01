@@ -1,39 +1,6 @@
 import numpy as np
 from functools import reduce
 
-grad_fns = {
-    "add": lambda g, x, y: (g, g),
-    "sub": lambda g, x, y: (g, -g),
-    "mul": lambda g, x, y: (g * y.value, g * x.value),
-    "div": lambda g, x, y: (g / y.value, -g * x.value / (y.value ** 2)),
-    "exp": lambda g, x: (g * np.exp(x.value),),
-    "log": lambda g, x: (g / x.value,),
-    "sigmoid": lambda g, x: (
-        s := 1 / (1 + np.exp(-x.value)),
-        g * s * (1 - s),
-    ),
-    "tanh": lambda g, x: (
-        t := np.tanh(x.value),
-        g * (1 - t**2),
-    ),
-    "relu": lambda g, x: (g * (x.value > 0).astype(float),),
-    "softplus": lambda g, x: (
-        sig := 1 / (1 + np.exp(-x.value)),
-        g * sig,
-    ),
-    "asinh": lambda g, x: (g / np.sqrt(x.value**2 + 1),),
-    "sinh": lambda g, x: (g * np.cosh(x.value),),
-    "min": lambda g, x, y: (g if x.value < y.value else 0.0, g if y.value < x.value else 0.0),
-    "abs": lambda g, x: (g * np.sign(x.value),),
-    "sign": lambda g, x: (np.zeros_like(g),),
-    "affine": lambda g, x, w, b: (
-        np.dot(g, w.value.T),
-        np.outer(x.value, g),
-        g
-    ),
-    "identity": lambda g, x: (g,)
-}
-
 class Variable:
     _instances = set()  # 全インスタンスを保持
 
@@ -84,10 +51,9 @@ class Variable:
 
         for node in reversed(topo_order):
             grad = node.grads.get(wrt, np.zeros_like(node.value))
-            for parent, grad_fn_name in node.parents:
+            for parent, local_grad_fn in node.parents:
                 if parent.requires_grad:
-                    grad_fn = grad_fns[grad_fn_name]
-                    local_grad = grad_fn(grad, node, parent)  # 必ず3引数渡す
+                    local_grad = local_grad_fn(grad, node, parent)  # 必ず3引数渡す
                     prev_grad = parent.grads.get(wrt, np.zeros_like(parent.value))
                     parent.grads[wrt] = prev_grad + local_grad
         self.last_topo_order = topo_order
@@ -119,6 +85,18 @@ class Variable:
     
     def __del__(self):
         Variable._instances.discard(self)  # 削除時にもクリーンに
+
+    def __getitem__(self, idx):
+        val = self.value[idx]
+
+        def grad_fn(g, node, parent):
+            # スカラー勾配 g を、元の shape に合わせて one-hot 勾配に変換
+            full_grad = np.zeros_like(parent.value)
+            full_grad[idx] = g
+            return (full_grad,)
+
+        return Variable(val, parents=[(self, grad_fn)], name=f"{self.name}[{idx}]")
+
 
 
 class SGD:
@@ -174,61 +152,104 @@ def sum_variables(vars):
 
 
 def add(x, y):
-    return Variable(x.value + y.value, parents=[(x, "add"), (y, "add")], name=f"add({x.name},{y.name})")
+    def grad_fn_x(g, node, parent): return (g,)
+    def grad_fn_y(g, node, parent): return (g,)
+    return Variable(x.value + y.value, parents=[(x, grad_fn_x), (y, grad_fn_y)], name=f"add({x.name},{y.name})")
 
 def sub(x, y):
-    return Variable(x.value - y.value, parents=[(x, "sub"), (y, "sub")], name=f"sub({x.name},{y.name})")
+    def grad_fn_x(g, node, parent): return (g,)
+    def grad_fn_y(g, node, parent): return (-g,)
+    return Variable(x.value - y.value, parents=[(x, grad_fn_x), (y, grad_fn_y)], name=f"sub({x.name},{y.name})")
 
 def mul(x, y):
-    return Variable(x.value * y.value, parents=[(x, "mul"), (y, "mul")], name=f"mul({x.name},{y.name})")
+    def grad_fn_x(g, node, parent): return (g * y.value,)
+    def grad_fn_y(g, node, parent): return (g * x.value,)
+    return Variable(x.value * y.value, parents=[(x, grad_fn_x), (y, grad_fn_y)], name=f"mul({x.name},{y.name})")
 
 def div(x, y):
-    return Variable(x.value / y.value, parents=[(x, "div"), (y, "div")], name=f"div({x.name},{y.name})")
-
-def exp(x):
-    return Variable(np.exp(x.value), parents=[(x, "exp")], name=f"exp({x.name})")
-
-def log(x):
-    return Variable(np.log(x.value), parents=[(x, "log")], name=f"log({x.name})")
-
-def sigmoid(x):
-    return Variable(1 / (1 + np.exp(-x.value)), parents=[(x, "sigmoid")], name=f"sigmoid({x.name})")
-
-def tanh(x):
-    return Variable(np.tanh(x.value), parents=[(x, "tanh")], name=f"tanh({x.name})")
+    def grad_fn_x(g, node, parent): return (g / y.value,)
+    def grad_fn_y(g, node, parent): return (-g * x.value / (y.value ** 2),)
+    return Variable(x.value / y.value, parents=[(x, grad_fn_x), (y, grad_fn_y)], name=f"div({x.name},{y.name})")
 
 def relu(x):
-    return Variable(np.maximum(0, x.value), parents=[(x, "relu")], name=f"relu({x.name})")
+    def grad_fn(g, node, parent): return (g * (x.value > 0).astype(float),)
+    return Variable(np.maximum(0, x.value), parents=[(x, grad_fn)], name=f"relu({x.name})")
+
+def sigmoid(x):
+    sig = 1 / (1 + np.exp(-x.value))
+    def grad_fn(g, node, parent): return (g * sig * (1 - sig),)
+    return Variable(sig, parents=[(x, grad_fn)], name=f"sigmoid({x.name})")
+
+def tanh(x):
+    th = np.tanh(x.value)
+    def grad_fn(g, node, parent): return (g * (1 - th ** 2),)
+    return Variable(th, parents=[(x, grad_fn)], name=f"tanh({x.name})")
+
+def exp(x):
+    ex = np.exp(x.value)
+    def grad_fn(g, node, parent): return (g * ex,)
+    return Variable(ex, parents=[(x, grad_fn)], name=f"exp({x.name})")
+
+def log(x):
+    def grad_fn(g, node, parent): return (g / x.value,)
+    return Variable(np.log(x.value), parents=[(x, grad_fn)], name=f"log({x.name})")
 
 def softplus(x):
-    return Variable(np.log(1 + np.exp(x.value)), parents=[(x, "softplus")], name=f"softplus({x.name})")
+    val = np.log1p(np.exp(x.value))
+    def grad_fn(g, node, parent): return (g * (1 / (1 + np.exp(-x.value))),)
+    return Variable(val, parents=[(x, grad_fn)], name=f"softplus({x.name})")
 
 def asinh(x):
-    return Variable(np.arcsinh(x.value), parents=[(x, "asinh")], name=f"asinh({x.name})")
+    val = np.arcsinh(x.value)
+    def grad_fn(g, node, parent): return (g / np.sqrt(x.value ** 2 + 1),)
+    return Variable(val, parents=[(x, grad_fn)], name=f"asinh({x.name})")
 
 def sinh(x):
-    return Variable(np.sinh(x.value), parents=[(x, "sinh")], name=f"sinh({x.name})")
+    val = np.sinh(x.value)
+    def grad_fn(g, node, parent): return (g * np.cosh(x.value),)
+    return Variable(val, parents=[(x, grad_fn)], name=f"sinh({x.name})")
 
 def min_var(x, y):
-    return Variable(min(x.value, y.value), parents=[(x, "min"), (y, "min")], name=f"min({x.name},{y.name})")
+    val = np.minimum(x.value, y.value)
+
+    def grad_fn_x(g, node, parent):
+        mask = x.value < y.value
+        return (g * mask.astype(float),)
+
+    def grad_fn_y(g, node, parent):
+        mask = x.value >= y.value
+        return (g * mask.astype(float),)
+
+    return Variable(val, parents=[(x, grad_fn_x), (y, grad_fn_y)], name=f"min({x.name},{y.name})")
 
 def abs_var(x):
-    return Variable(np.abs(x.value), parents=[(x, "abs")], name=f"abs({x.name})")
+    val = np.abs(x.value)
+    def grad_fn(g, node, parent): return (g * np.sign(x.value),)
+    return Variable(val, parents=[(x, grad_fn)], name=f"abs({x.name})")
 
 def sign(x):
-    return Variable(np.sign(x.value), parents=[(x, "sign")], name=f"sign({x.name})")
+    def grad_fn(g, node, parent): return (np.zeros_like(x.value),)
+    return Variable(np.sign(x.value), parents=[(x, grad_fn)], name=f"sign({x.name})")
+
+def identity(x):
+    def grad_fn(g, node, parent): return (g,)
+    return Variable(x.value, parents=[(x, grad_fn)], name=f"identity({x.name})")
+
 
 def affine(x, w, b):
-    return Variable(np.dot(x.value, w.value) + b.value, parents=[(x, "affine"), (w, "affine"), (b, "affine")], name=f"affine({x.name},{w.name},{b.name})")
+    def grad_fn_x(g, node, parent): return (g * w.value,)
+    def grad_fn_w(g, node, parent): return (g * x.value,)
+    def grad_fn_b(g, node, parent): return (g,)
+    return Variable(x.value * w.value + b.value,
+                    parents=[(x, grad_fn_x), (w, grad_fn_w), (b, grad_fn_b)],
+                    name=f"affine({x.name},{w.name},{b.name})")
 
-def stop_grad_with_identity(x):
-    return Variable(x.value, parents=[(x, "identity")], name=f"identity({x.name})")
 
 
 if __name__  == "__main__":
 
     x = Variable(1.0)
-    y = relu(stop_grad_with_identity(tanh(x)))  # tanh(x) の勾配は 1.0 として流す
+    y = relu(identity(tanh(x)))  # tanh(x) の勾配は 1.0 として流す
     z = mul(y,Variable(2))
 
     z.backward()
