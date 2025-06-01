@@ -1,6 +1,39 @@
 import numpy as np
 from functools import reduce
 
+grad_fns = {
+    "add": lambda g, x, y: (g, g),
+    "sub": lambda g, x, y: (g, -g),
+    "mul": lambda g, x, y: (g * y.value, g * x.value),
+    "div": lambda g, x, y: (g / y.value, -g * x.value / (y.value ** 2)),
+    "exp": lambda g, x: (g * np.exp(x.value),),
+    "log": lambda g, x: (g / x.value,),
+    "sigmoid": lambda g, x: (
+        s := 1 / (1 + np.exp(-x.value)),
+        g * s * (1 - s),
+    ),
+    "tanh": lambda g, x: (
+        t := np.tanh(x.value),
+        g * (1 - t**2),
+    ),
+    "relu": lambda g, x: (g * (x.value > 0).astype(float),),
+    "softplus": lambda g, x: (
+        sig := 1 / (1 + np.exp(-x.value)),
+        g * sig,
+    ),
+    "asinh": lambda g, x: (g / np.sqrt(x.value**2 + 1),),
+    "sinh": lambda g, x: (g * np.cosh(x.value),),
+    "min": lambda g, x, y: (g if x.value < y.value else 0.0, g if y.value < x.value else 0.0),
+    "abs": lambda g, x: (g * np.sign(x.value),),
+    "sign": lambda g, x: (np.zeros_like(g),),
+    "affine": lambda g, x, w, b: (
+        np.dot(g, w.value.T),
+        np.outer(x.value, g),
+        g
+    ),
+    "identity": lambda g, x: (g,)
+}
+
 class Variable:
     _instances = set()  # 全インスタンスを保持
 
@@ -51,9 +84,10 @@ class Variable:
 
         for node in reversed(topo_order):
             grad = node.grads.get(wrt, np.zeros_like(node.value))
-            for parent, local_grad_fn in node.parents:
+            for parent, grad_fn_name in node.parents:
                 if parent.requires_grad:
-                    local_grad = local_grad_fn(grad)
+                    grad_fn = grad_fns[grad_fn_name]
+                    local_grad = grad_fn(grad, node, parent)  # 必ず3引数渡す
                     prev_grad = parent.grads.get(wrt, np.zeros_like(parent.value))
                     parent.grads[wrt] = prev_grad + local_grad
         self.last_topo_order = topo_order
@@ -140,117 +174,55 @@ def sum_variables(vars):
 
 
 def add(x, y):
-    return Variable(x.value + y.value, parents=[
-        (x, lambda g: g),
-        (y, lambda g: g)
-    ], name=f"add({x.name},{y.name})")
+    return Variable(x.value + y.value, parents=[(x, "add"), (y, "add")], name=f"add({x.name},{y.name})")
 
 def sub(x, y):
-    return Variable(x.value - y.value, parents=[
-        (x, lambda g: g),
-        (y, lambda g: -g)
-    ], name=f"sub({x.name},{y.name})")
+    return Variable(x.value - y.value, parents=[(x, "sub"), (y, "sub")], name=f"sub({x.name},{y.name})")
 
 def mul(x, y):
-    return Variable(x.value * y.value, parents=[
-        (x, lambda g: g * y.value),
-        (y, lambda g: g * x.value)
-    ], name=f"mul({x.name},{y.name})")
+    return Variable(x.value * y.value, parents=[(x, "mul"), (y, "mul")], name=f"mul({x.name},{y.name})")
 
 def div(x, y):
-    return Variable(x.value / y.value, parents=[
-        (x, lambda g: g / y.value),
-        (y, lambda g: -g * x.value / (y.value ** 2))
-    ], name=f"div({x.name},{y.name})")
-
-
+    return Variable(x.value / y.value, parents=[(x, "div"), (y, "div")], name=f"div({x.name},{y.name})")
 
 def exp(x):
-    e = np.exp(x.value)
-    return Variable(e, parents=[(x, lambda g: g * e)])
+    return Variable(np.exp(x.value), parents=[(x, "exp")], name=f"exp({x.name})")
 
 def log(x):
-    return Variable(np.log(x.value), parents=[(x, lambda g: g / x.value)], name=f"exp({x.name})")
+    return Variable(np.log(x.value), parents=[(x, "log")], name=f"log({x.name})")
 
 def sigmoid(x):
-    s = 1 / (1 + np.exp(-x.value))
-    return Variable(s, parents=[(x, lambda g: g * s * (1 - s))], name=f"sigmoid({x.name})")
+    return Variable(1 / (1 + np.exp(-x.value)), parents=[(x, "sigmoid")], name=f"sigmoid({x.name})")
 
 def tanh(x):
-    t = np.tanh(x.value)
-    return Variable(t, parents=[(x, lambda g: g * (1 - t ** 2))], name=f"tanh({x.name})")
+    return Variable(np.tanh(x.value), parents=[(x, "tanh")], name=f"tanh({x.name})")
 
 def relu(x):
-    relu_val = np.maximum(0, x.value)
-    def local_grad_fn(grad):
-        return grad * (x.value > 0).astype(float)  # 要素ごとに勾配を 0 or 1 に
-
-    return Variable(relu_val, parents=[(x, local_grad_fn)], name=f"relu{x.name}")
+    return Variable(np.maximum(0, x.value), parents=[(x, "relu")], name=f"relu({x.name})")
 
 def softplus(x):
-    sig = 1 / (1 + np.exp(-x.value))
-    s = np.log(1 + np.exp(x.value))
-    return Variable(s, parents=[(x, lambda g: g * sig)], name=f"softplus{x.name}")
-
+    return Variable(np.log(1 + np.exp(x.value)), parents=[(x, "softplus")], name=f"softplus({x.name})")
 
 def asinh(x):
-    """
-    y = arcsinh(x) = log(x + sqrt(x^2 + 1))
-    dy/dx = 1 / sqrt(x^2 + 1)
-    """
-    s = np.arcsinh(x.value)
-    return Variable(s, parents=[(x, lambda g: g / np.sqrt(x.value**2 + 1))], name=f"asinh{x.name}")
+    return Variable(np.arcsinh(x.value), parents=[(x, "asinh")], name=f"asinh({x.name})")
 
 def sinh(x):
-    """
-    y = sinh(x) = (e^x - e^{-x}) / 2
-    dy/dx = cosh(x) = (e^x + e^{-x}) / 2
-    """
-    s = np.sinh(x.value)
-    return Variable(s, parents=[(x, lambda g: g * np.cosh(x.value))], name=f"sinh{x.name}")
-
+    return Variable(np.sinh(x.value), parents=[(x, "sinh")], name=f"sinh({x.name})")
 
 def min_var(x, y):
-    if x.value < y.value:
-        return Variable(x.value, parents=[
-            (x, lambda g: g),
-            (y, lambda g: 0.0)
-        ], name=f"min({x.name},{y.name})")
-    else:
-        return Variable(y.value, parents=[
-            (x, lambda g: 0.0),
-            (y, lambda g: g)
-        ], name=f"min({x.name},{y.name})")
-  
-    
+    return Variable(min(x.value, y.value), parents=[(x, "min"), (y, "min")], name=f"min({x.name},{y.name})")
+
 def abs_var(x):
-    val = np.abs(x.value)
-
-    def local_grad_fn(g):
-        return g * np.sign(x.value)
-
-    return Variable(val, parents=[(x, local_grad_fn)], name=f"abs({x.name})")
-
-
+    return Variable(np.abs(x.value), parents=[(x, "abs")], name=f"abs({x.name})")
 
 def sign(x):
-    s = np.sign(x.value)
-    return Variable(s, parents=[(x, lambda g: np.zeros_like(g))], name=f"sign({x.name})")
-
+    return Variable(np.sign(x.value), parents=[(x, "sign")], name=f"sign({x.name})")
 
 def affine(x, w, b):
-    return Variable(np.dot(x.value, w.value) + b.value, parents=[
-        (x, lambda g: np.dot(g, w.value.T)),
-        (w, lambda g: np.outer(x.value, g)),
-        (b, lambda g: g)
-    ], name=f"affine({x.name},{w.name},{b.name})")
+    return Variable(np.dot(x.value, w.value) + b.value, parents=[(x, "affine"), (w, "affine"), (b, "affine")], name=f"affine({x.name},{w.name},{b.name})")
 
 def stop_grad_with_identity(x):
-    """
-    Forward: 値そのものをそのまま返す
-    Backward: 恒等関数（g → g）として勾配をそのまま返す（chain-ruleの伝播抑制）
-    """
-    return Variable(x.value, parents=[(x, lambda g: g * 1.0)])
+    return Variable(x.value, parents=[(x, "identity")], name=f"identity({x.name})")
 
 
 if __name__  == "__main__":

@@ -5,7 +5,6 @@ import random
 from collections import OrderedDict
 from common.layers2 import *
 import json
-import gc
 
 
     
@@ -156,25 +155,11 @@ class MarketGenerator:
         return x
 
     def gradient(self, loss):
-        # ∂L/∂C_t: 今回の局所勾配
-        local_grads = {
-            name: np.copy(param.grad(loss))
+        grads = {
+            name: param.grad(loss)
             for name, param in self.params.items()
         }
-
-        # ∂C_t/∂x: 前回保存した連鎖元の勾配（初期は1.0またはNone）
-        chained_grads = {}
-        for name, param in self.params.items():
-            if hasattr(param, 'prev_grad'):
-                chained_grads[name] = local_grads[name] * param.prev_grad
-            else:
-                chained_grads[name] = local_grads[name]  # 初回 or 直列の最初
-
-            # 次の世代用に保存
-            param.prev_grad = chained_grads[name]
-
-        return chained_grads
-
+        return grads
     
     def numerical_gradient(self, x, loss_func, h=1e-4):
         grads = {}
@@ -300,25 +285,11 @@ class RLAgent():
         return x
 
     def gradient(self, loss):
-        # ∂L/∂C_t: 今回の局所勾配
-        local_grads = {
-            name: np.copy(param.grad(loss))
+        grads = {
+            name: param.grad(loss)
             for name, param in self.params.items()
         }
-
-        # ∂C_t/∂x: 前回保存した連鎖元の勾配（初期は1.0またはNone）
-        chained_grads = {}
-        for name, param in self.params.items():
-            if hasattr(param, 'prev_grad'):
-                chained_grads[name] = local_grads[name] * param.prev_grad
-            else:
-                chained_grads[name] = local_grads[name]  # 初回 or 直列の最初
-
-            # 次の世代用に保存
-            param.prev_grad = chained_grads[name]
-
-        return chained_grads
-
+        return grads
 
     def numerical_gradient(self, x, loss_func, h=1e-4):
         grads = {}
@@ -805,15 +776,6 @@ if __name__ == "__main__":
 
         if generation == generations // 2:
             use_rule_based = False
-
-        #reset parents holding .grads dict information
-        Variable.clear_graph()
-        print(f"length of _instances: {len(Variable._instances)}")  # 毎世代減っていく or 0 になるか？
-
-
-        #PythonのGCに明示的に回収を依頼
-
-        gc.collect()
 
     # Calculate position value
     i = 0
