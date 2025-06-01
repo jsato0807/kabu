@@ -20,7 +20,7 @@ def combine_variables(vars):
     values = np.array([v.value for v in vars])
 
     def make_local_grad_fn(i):
-        def local_grad_fn(grad):
+        def local_grad_fn(grad,node,parent):
             return grad[i]  # grad is vector, return scalar component
         return local_grad_fn
 
