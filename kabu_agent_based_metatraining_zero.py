@@ -106,6 +106,35 @@ def bypass_nodes_by_impact(loss, candidate_nodes, percentile=10):
             pass
 
 
+def check_gradient_consistency(auto_grads, numerical_grads, atol=1e-5, rtol=1e-3):
+    """
+    自動微分と数値微分の勾配の一致度を比較する。
+    
+    Parameters:
+    - auto_grads: dict[str, np.ndarray]  自動微分の勾配
+    - numerical_grads: dict[str, np.ndarray]  数値微分の勾配
+    - atol: float  絶対誤差の許容範囲
+    - rtol: float  相対誤差の許容範囲
+
+    Returns:
+    - 一致していれば True、そうでなければ False
+    """
+    all_close = True
+    for name in auto_grads:
+        ag = auto_grads[name]
+        ng = numerical_grads.get(name)
+        if ng is None:
+            print(f"[Warning] {name} not found in numerical gradients.")
+            all_close = False
+            continue
+        if not np.allclose(ag, ng, atol=atol, rtol=rtol):
+            print(f"[Mismatch] Gradient mismatch in '{name}':")
+            print(f"  Auto     : {ag}")
+            print(f"  Numerical: {ng}")
+            print(f"  Diff     : {ag - ng}")
+            all_close = False
+    return all_close
+
 
 
 
@@ -141,7 +170,7 @@ class MarketGenerator:
         }
         return grads
     
-    def numerical_gradient(self, x, loss_func, h=1e-4):
+    def numerical_gradient(self, loss_func, h=1e-4):
         grads = {}
         for name, param in self.params.items():
             grad = np.zeros_like(param.value)
@@ -154,10 +183,10 @@ class MarketGenerator:
                 tmp = param.value[idx]
 
                 param.value[idx] = tmp + h
-                fxh1 = loss_func(self.predict(x)).value
+                fxh1 = loss_func(self.predict(param.value[idx])).value
 
                 param.value[idx] = tmp - h
-                fxh2 = loss_func(self.predict(x)).value
+                fxh2 = loss_func(self.predict(param.value[idx])).value
 
                 grad[idx] = (fxh1 - fxh2) / (2 * h)
                 param.value[idx] = tmp
@@ -271,7 +300,7 @@ class RLAgent():
         }
         return grads
 
-    def numerical_gradient(self, x, loss_func, h=1e-4):
+    def numerical_gradient(self, loss_func, h=1e-4):
         grads = {}
         for name, param in self.params.items():
             grad = np.zeros_like(param.value)
@@ -284,10 +313,10 @@ class RLAgent():
                 tmp = param.value[idx]
 
                 param.value[idx] = tmp + h
-                fxh1 = loss_func(self.predict(x)).value
+                fxh1 = loss_func(self.predict(param.value[idx])).value
 
                 param.value[idx] = tmp - h
-                fxh2 = loss_func(self.predict(x)).value
+                fxh2 = loss_func(self.predict(param.value[idx])).value
 
                 grad[idx] = (fxh1 - fxh2) / (2 * h)
                 param.value[idx] = tmp
