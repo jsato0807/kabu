@@ -1,10 +1,12 @@
 import numpy as np
 from functools import reduce
 
+NUMERICAL_FLAG = False
+
 class Variable:
     _instances = set()  # 全インスタンスを保持
 
-    def __init__(self, value, requires_grad=True, parents=None, name=None):
+    def __init__(self, value, requires_grad=True, parents=None, name=None, epsilon=1e-4):
         self.value = np.array(value) if not isinstance(value, np.ndarray) else value
         self.requires_grad = requires_grad
         self.parents = parents or []  # list of (parent_var, local_grad_fn)
@@ -12,6 +14,9 @@ class Variable:
         self.name = name
         self.last_topo_order = None
         self.prev_grad = None
+        if NUMERICAL_FLAG:
+            self.perturbed_pos = self.value + epsilon
+            self.perturbed_neg = self.value - epsilon
 
         Variable._instances.add(self)
 

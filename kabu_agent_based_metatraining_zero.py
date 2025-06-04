@@ -3,7 +3,8 @@ import math
 import os
 import random
 from collections import OrderedDict
-from common.layers2 import *
+from common.layers2 import Variable,Adam,sum_variables,add,sub,mul,div,relu,sigmoid,softplus,asinh,sinh,min_var,abs_var,affine
+import common.layers2 as layers2
 import json
 
 
@@ -653,6 +654,8 @@ def serialize(obj):
 
 
 if __name__ == "__main__":
+    layers2.NUMERICAL_FLAG = True
+
     num_agents = 5
     use_rule_based = True
     generations = 165
