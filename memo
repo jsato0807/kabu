@@ -627,5 +627,7 @@ kabu_swap.pyで、self.business_holidaysを作る際に、祝日を１年単位�
     2025-6-1
         lambda濫用を防ぐことでメモリ爆発を最小限に抑えることに成功し、generation=75くらいまではkillされずに進めることができた。
     
-        bypass_node_impactを追加実行するとエラーが出るのでその対処をせよ
-        __getitem__をsplit_vectorのかわり使用したが、これで計算がずれてないか確認せよ
+        ※bypass_node_impactを追加実行するとエラーが出るのでその対処をせよ
+        ※__getitem__をsplit_vectorのかわり使用したが、これで計算がずれてないか確認せよ
+        ※numerical_gradientでは通常の単純なネットワークの学習に対する数値微分しか計算できないので、摂動を加えた場合の値そのものをVariableに保持させ、NUMERICAL_FLAGに応じてそれを各演算子や各活性化関数で逐一更新することで、数値微分を複雑な計算プロセスに対しても正確に計算できる様にしたい。
+        →NUMERICAL_FLAG実装までは終了。次に各演算子や活性化関数もNUMERICAL_FLAGを考慮して修正
